@@ -50,7 +50,7 @@ const SECRETS = [
 /* ---- what to check ---- */
 let text = "", label = "";
 if (argv.includes("--staged")) { text = git("diff", "--cached", "-U0", "--no-color"); label = "staged changes"; }
-else if (argv.includes("--push")) { const r = argv[argv.indexOf("--push") + 1]; text = git("log", "-p", "--no-color", "--format=%H%n%an <%ae>%n%B", r); label = `commits ${r}`; }
+else if (argv.includes("--push")) { const r = argv[argv.indexOf("--push") + 1]; text = git("log", "-p", "--no-color", "--format=%H%n%an <%ae>%n%B", ...r.split(/\s+/).filter(Boolean)); label = `commits ${r}`; }
 else if (argv.includes("--all")) { text = git("grep", "-n", "-I", "-e", ".", "--", ".", ":!app/package-lock.json"); label = "tracked files"; }
 else { console.log("Usage: node agent/guard.mjs --staged | --push <range> | --all"); process.exit(2); }
 
