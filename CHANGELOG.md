@@ -3,6 +3,7 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- `projects.mjs sync`: the "no PRD" note no longer claims a project has no deadlines.
 - Privacy guard: `agent/guard.mjs` + `agent/install-hooks.mjs` block commits/pushes containing instance details or secrets.
 - `projects.overrides` can set a project's `id` and a subfolder `dir`, keyed by folder name or id.
 - `projects.mjs sync` no longer wipes deadlines when a PRD has no milestones table, and keeps existing taglines/status lines.

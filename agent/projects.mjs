@@ -157,7 +157,7 @@ async function sync() {
   for (const b of payloads) { await api("PUT", "/api/agent/projects", b); console.log(`✓ ${b.id} (${b.kind}, ${b.color}${b.deadlines.length ? `, ${b.deadlines.length} deadline(s)` : ""})`); }
   for (const g of gone) { await api("PUT", "/api/agent/projects", { id: g.id, name: g.name, archived: true }); console.log(`archived ${g.id} (folder gone)`); }
   const noPrd = ps.filter((p) => !p.hasPrd).map((p) => p.id);
-  if (noPrd.length) console.log(`\nNo PRD.md yet (no deadlines): ${noPrd.join(", ")} — run: node agent/projects.mjs scaffold`);
+  if (noPrd.length) console.log(`\nNo PRD.md yet: ${noPrd.join(", ")}. Their deadlines on the site are unchanged; add a PRD with a milestones table to manage them from the file (node agent/projects.mjs scaffold).`);
 }
 
 /* ---------------- first checklist ---------------- */
