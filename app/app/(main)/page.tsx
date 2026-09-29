@@ -146,6 +146,11 @@ export default async function Overview() {
               <div className="run" key={p.id}>
                 <div className="h"><b>{p.name}</b><span className={`state${p.state === "Live" ? " live" : p.state === "Automated" ? " auto" : ""}`}>{p.state}</span></div>
                 <p>{p.status}</p>
+                {(() => {
+                  // Running projects have no checklist tab, so link their open items (e.g. "write the PRD") from here.
+                  const n = items.filter((i) => i.project_id === p.id && i.status !== "done").length;
+                  return n ? <Link href={`/p/${p.id}`} className="due" style={{ textDecoration: "underline" }}>{n} open item{n > 1 ? "s" : ""} →</Link> : null;
+                })()}
               </div>
             ))}
           </div>

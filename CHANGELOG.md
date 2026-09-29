@@ -3,6 +3,7 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- Overview: running projects show their open checklist items with a link to the project page.
 - `projects.mjs sync`: the "no PRD" note no longer claims a project has no deadlines.
 - Privacy guard: `agent/guard.mjs` + `agent/install-hooks.mjs` block commits/pushes containing instance details or secrets.
 - `projects.overrides` can set a project's `id` and a subfolder `dir`, keyed by folder name or id.
