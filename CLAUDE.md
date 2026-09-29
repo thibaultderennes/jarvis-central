@@ -15,7 +15,8 @@ If the owner asks to set up Jarvis Central, follow [`SETUP.md`](SETUP.md) phase 
 ## Rules for tool changes
 1. **Stay generic.** No names, paths, project ids, URLs, timezones or schedules in code. Read them from
    `jarvis.config.json` (via `agent/lib.mjs` `CONFIG`) or from env vars on the website. Before committing, run:
-   `git grep -nEi "/Users/|toronto|@gmail|vercel\.app" -- ':!*.example.json' ':!docs/*'` → must be empty.
+   `git grep -nEi "/Users/|toronto|@gmail|vercel\.app" -- ':!*.example.json' ':!docs/*' ':!CLAUDE.md'` → only
+   obvious placeholders may remain (`your-jarvis.vercel.app`, `/Users/alex/...`).
 2. **Never commit instance data**: `jarvis.config.json`, `google/Code.gs`, `.env*`, `.vercel/`, exported data,
    screenshots of someone's dashboard. They're gitignored; keep it that way.
 3. **Config is backwards compatible.** New keys go in `jarvis.config.example.json` and `docs/config.md` with a
