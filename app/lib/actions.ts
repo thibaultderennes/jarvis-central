@@ -106,3 +106,40 @@ export async function track(kind: string, page: string, detail: Record<string, u
   await requireSession();
   await D.logActivity(kind.slice(0, 40), page.slice(0, 120), detail);
 }
+
+/* ---------- projects: top 3 and per-project settings ---------- */
+const SLOTS = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"];
+/** Put a project in top-3 slot 1–3. A project already in the top 3 moves there; otherwise it replaces the one in that slot. */
+export async function featureProject(id: string, slot: number) {
+  await requireSession();
+  if (![1, 2, 3].includes(slot)) return;
+  const all = await D.getProjects();
+  const me = all.find((p) => p.id === id);
+  if (!me) return;
+  const top = D.splitFeatured(all).featured.map((p) => p.id);
+  const from = top.indexOf(id);
+  if (from >= 0) { const other = top[slot - 1]; top[slot - 1] = id; if (other) top[from] = other; }
+  else top[slot - 1] = id;
+  const order = top.filter(Boolean).slice(0, 3);
+  await sql()`update projects set featured_rank = null where featured_rank is not null and not (id = any(${order}))`;
+  for (const [i, pid] of order.entries()) await sql()`update projects set featured_rank = ${i + 1} where id = ${pid}`;
+  // A project entering the top 3 needs its own colour, distinct from the other two.
+  const featured = all.filter((p) => order.includes(p.id));
+  const taken = new Set(featured.filter((p) => p.id !== id).map((p) => p.color));
+  if (!SLOTS.includes(me.color) || taken.has(me.color)) {
+    const used = new Set(all.filter((p) => p.id !== id && SLOTS.includes(p.color)).map((p) => p.color));
+    const pick = SLOTS.find((c) => !taken.has(c) && !used.has(c)) || SLOTS.find((c) => !taken.has(c))!;
+    await sql()`update projects set color = ${pick} where id = ${id}`;
+  }
+  await D.logActivity("project_feature", "/", { id, slot });
+  done();
+}
+export async function setProjectSettings(id: string, s: { plan_enabled?: boolean; weekly_minutes?: number | null; reviews_enabled?: boolean }) {
+  await requireSession();
+  const mins = s.weekly_minutes === undefined ? undefined : s.weekly_minutes === null || !Number.isFinite(s.weekly_minutes) ? null : Math.max(0, Math.min(80 * 60, Math.round(s.weekly_minutes)));
+  if (s.plan_enabled !== undefined) await sql()`update projects set plan_enabled = ${!!s.plan_enabled} where id = ${id}`;
+  if (mins !== undefined) await sql()`update projects set weekly_minutes = ${mins} where id = ${id}`;
+  if (s.reviews_enabled !== undefined) await sql()`update projects set reviews_enabled = ${!!s.reviews_enabled} where id = ${id}`;
+  await D.logActivity("project_settings", `/p/${id}`, { id, ...s });
+  done();
+}

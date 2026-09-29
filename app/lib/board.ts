@@ -9,7 +9,8 @@ export async function boardData(from: string, to: string) {
   const [projects, items, todos, cal] = await Promise.all([
     D.getProjects(), D.getItems(), D.getTodos(from, to, true), getEvents(from, to),
   ]);
-  const active = projects.filter((p) => p.kind === "checklist");
+  const active = projects;
+  const topIds = new Set(D.splitFeatured(projects).featured.map((p) => p.id));
   const secName = (pid: string, s: string) => active.find((p) => p.id === pid)?.sections.find((x) => x.id === s)?.name || s;
   const toB = (i: D.Item): BItem => ({ project_id: i.project_id, id: i.id, title: i.title, due: i.due, status: i.status, critical: i.critical, owner: i.owner, secName: secName(i.project_id, i.section) });
   const horizon = addDays(t, 14);
@@ -19,6 +20,6 @@ export async function boardData(from: string, to: string) {
   return {
     today: t, nowTime: timeInTZ(new Date()), todos, backlog, due,
     events: cal.events, calendarOn: calendarConfigured(), calendarError: cal.error,
-    projects: projects.filter((p) => p.kind === "checklist" || p.kind === "running").map((p) => ({ id: p.id, name: p.name, color: p.kind === "running" ? "other" : p.color })),
+    projects: projects.map((p) => ({ id: p.id, name: p.name, color: D.displayColor(p, topIds) })),
   };
 }

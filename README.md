@@ -4,8 +4,9 @@ A personal command centre for people who run several projects with Claude Code.
 
 Point it at the folder that holds your projects and it gives you:
 
-- **A private website** (password + authenticator app) with every project's checklist, deadlines and progress
-  charts, a daily list that mixes work and personal todos, and a week view with your Google/Apple calendar in it.
+- **A private website** (password + authenticator app) with your top 3 projects up front (drag to swap), a full
+  page per project (checklist, weekly reviews, strategy, and switches for calendar planning, weekly hours and
+  reviews), deadlines and progress charts, a daily list that mixes work and personal todos, and a week view with your Google/Apple calendar in it.
 - **A Sunday planner** that estimates what's due next week, fits it around your appointments and writes the
   blocks into your Google and Apple calendars.
 - **Monday reviews**: a CEO, a CMO and a product-owner advisor review each active project (what shipped, what

@@ -20,7 +20,7 @@ re-run it and redeploy after changing those.
 | `planner.max_focus_minutes_per_day` | `360` | Cap on planned focus time per day. |
 | `planner.buffer_minutes` | `15` | Gap kept around appointments and between blocks. |
 | `planner.weekends` | `"overflow"` | `never`, `overflow` (only when the week doesn't fit) or `always`. |
-| `planner.project_caps.<id>` | — | Weekly minutes cap for a project (e.g. a side project). |
+| `planner.project_caps.<id>` | — | Weekly minutes cap for a project (e.g. a side project). The "Hours per week" setting on the project's page overrides it. |
 | `reviews.run` | Monday 05:00 | When the weekly reviews start. |
 | `reviews.advisors` | `["ceo","cmo","po"]` | Which advisors review each active project. |
 | `reviews.stance` | sceptical | Instruction given to every advisor about how hard to push back. |

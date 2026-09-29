@@ -136,3 +136,8 @@ alter table week_plans add column if not exists force_resync boolean not null de
 alter table messages add column if not exists review_id uuid;
 alter table messages add column if not exists mode text not null default 'auto';
 create index if not exists messages_review on messages (review_id, created_at);
+-- Per-project settings you change on the site: top-3 position, calendar planning, weekly time, weekly reviews.
+alter table projects add column if not exists featured_rank int;
+alter table projects add column if not exists plan_enabled boolean not null default true;
+alter table projects add column if not exists weekly_minutes int;
+alter table projects add column if not exists reviews_enabled boolean not null default true;

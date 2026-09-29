@@ -262,6 +262,11 @@ async function main() {
   const data = FIXTURE ? loadFixture(FIXTURE) : await loadLive(weekStart);
   const S = { ...DEFAULTS, ...data.settings, project_caps: { ...DEFAULTS.project_caps, ...(data.settings.project_caps || {}) } };
   S.weekends = normWeekends(S.weekends);
+  // Per-project settings from the site win over jarvis.config.json: "Plan into my calendar" off → skip the
+  // project; "Hours per week" → its weekly cap.
+  const planOff = new Set(data.projects.filter((p) => p.plan_enabled === false).map((p) => p.id));
+  for (const p of data.projects) if (Number.isFinite(p.weekly_minutes) && p.weekly_minutes !== null) S.project_caps[p.id] = p.weekly_minutes;
+  if (planOff.size) data.items = data.items.filter((i) => !planOff.has(i.project_id));
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const busy = busyByDay(data.events, data.todos, days);
   // Never plan into the past: earlier days are closed, and today opens 15 minutes from now.

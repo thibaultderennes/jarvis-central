@@ -7,6 +7,7 @@ export type Project = {
   state: string; status: string; dir: string; sections: Section[];
   deadlines: { date: string; label: string }[]; links: { label: string; url: string }[];
   sort: number; archived: boolean; updated_at: string;
+  featured_rank: number | null; plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean;
 };
 export type Item = {
   project_id: string; id: string; section: string; title: string; detail: string;
@@ -45,7 +46,7 @@ export async function getProject(id: string): Promise<Project | null> {
   const rows = await sql()`select * from projects where id = ${id}`;
   return rows[0] ? normProject(rows[0]) : null;
 }
-const PROJECT_FIELDS = ["name", "kind", "color", "tagline", "state", "status", "dir", "sections", "deadlines", "links", "sort", "archived"] as const;
+const PROJECT_FIELDS = ["name", "kind", "color", "tagline", "state", "status", "dir", "sections", "deadlines", "links", "sort", "archived", "featured_rank", "plan_enabled", "weekly_minutes", "reviews_enabled"] as const;
 export async function upsertProject(p: Partial<Project> & { id: string }): Promise<Project> {
   const cols = PROJECT_FIELDS.filter((k) => p[k] !== undefined);
   const vals = cols.map((k) => (["sections", "deadlines", "links"].includes(k) ? JSON.stringify(p[k]) : p[k]));
@@ -58,6 +59,16 @@ export async function upsertProject(p: Partial<Project> & { id: string }): Promi
   );
   return normProject(rows[0]);
 }
+
+/** The top 3 shown in the nav and as full cards: explicit `featured_rank` 1–3, else the first 3 checklist projects. */
+export function splitFeatured(projects: Project[]): { featured: Project[]; others: Project[] } {
+  const ranked = projects.filter((p) => p.featured_rank && p.featured_rank >= 1 && p.featured_rank <= 3).sort((a, b) => a.featured_rank! - b.featured_rank!);
+  const featured = ranked.length ? ranked.slice(0, 3) : projects.filter((p) => p.kind === "checklist").slice(0, 3);
+  const ids = new Set(featured.map((p) => p.id));
+  return { featured, others: projects.filter((p) => !ids.has(p.id)) };
+}
+/** Colour for charts and lists: top-3 projects keep their slot, the rest share "other". */
+export const displayColor = (p: Project, featuredIds: Set<string>) => (featuredIds.has(p.id) ? p.color : "other");
 
 /* ---------- items ---------- */
 export async function getItems(opts: { project?: string; open?: boolean } = {}): Promise<Item[]> {
@@ -242,7 +253,7 @@ export async function insights(): Promise<{ projects: Insight[]; heat: { date: s
     sql()`select created_at from messages where created_at >= ${from}::date - 1`,
   ]);
   const out: Insight[] = [];
-  for (const p of projects.filter((x) => x.kind === "checklist")) {
+  for (const p of splitFeatured(projects).featured) {
     const its = items.filter((i) => i.project_id === p.id);
     const created = its.map((i) => day(i.created_at)!).sort();
     const start = created[0] && created[0] > from ? created[0] : from;

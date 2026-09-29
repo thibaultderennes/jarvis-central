@@ -208,7 +208,10 @@ async function main() {
   const { turns, sessions } = await scan({ since: W.start, until: W.end });
   const events = await get("/api/agent/events" + qs({ since: W.start.toISOString() }), []).then((e) => e.filter((x) => x.at < W.end.toISOString()));
 
-  const todo = projects.filter((p) => !ONLY || p.id === ONLY);
+  // "Weekly review, strategy & audit" switched off on the site → no advisor run for that project.
+  const reviewsOff = projects.filter((p) => p.reviews_enabled === false).map((p) => p.id);
+  if (reviewsOff.length) log("reviews off for", reviewsOff.join(", "));
+  const todo = projects.filter((p) => (!ONLY || p.id === ONLY) && (p.reviews_enabled !== false || p.id === ONLY));
   const results = new Array(todo.length);
   let next = 0;
   const workers = Array.from({ length: Math.max(1, Math.min(Number(CONFIG.reviews?.concurrency) || 2, todo.length)) }, async () => {

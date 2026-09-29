@@ -3,6 +3,13 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+
+## 0.2.0 — 2026-09-29
+- **Top 3**: choose which three projects get full cards and nav tabs; drag a project onto a top-3 card (or use
+  "Swap into top 3") to swap. Every other project gets a compact card, and every project has a full page.
+- **Per-project settings** on each project page: plan into my calendar (on/off), hours per week (the planner's
+  weekly cap for that project, overriding `planner.project_caps`), weekly review, strategy & audit (on/off).
+- Charts colour the top 3 and group the rest as "Other projects".
 - Overview: running projects show their open checklist items with a link to the project page.
 - `projects.mjs sync`: the "no PRD" note no longer claims a project has no deadlines.
 - Privacy guard: `agent/guard.mjs` + `agent/install-hooks.mjs` block commits/pushes containing instance details or secrets.

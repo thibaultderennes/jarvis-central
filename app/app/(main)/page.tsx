@@ -6,6 +6,7 @@ import { addDays, daysBetween, fmtDate, mondayOf, today, TZ, WD, weekday } from 
 import { cap, OWNER, REVIEW_WHEN } from "@/lib/instance";
 import { HBars, StackedColumns, type Series } from "@/components/Charts";
 import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
+import ProjectsBoard, { type Card } from "@/components/ProjectsBoard";
 
 export default async function Overview() {
   await requireSession();
@@ -14,21 +15,23 @@ export default async function Overview() {
     D.getProjects(), D.getItems(), D.doneByWeek(4), D.openByDueWeek(4), D.insights(),
     D.getTodos(t, t), getEvents(t, t), D.getReviews({ limit: 40 }), D.getMessages({ limit: 100 }),
   ]);
-  const active = projects.filter((p) => p.kind === "checklist");
-  const running = projects.filter((p) => p.kind === "running");
-  const series: Series[] = active.map((p) => ({ key: p.id, label: p.name, color: p.color }));
+  // The top 3 get their own colour in every chart; everything else is grouped as "Other projects".
+  const { featured: active, others } = D.splitFeatured(projects);
+  const topIds = new Set(active.map((p) => p.id));
+  const series: Series[] = [...active.map((p) => ({ key: p.id, label: p.name, color: p.color })), ...(others.length ? [{ key: "__others", label: "Other projects", color: "other" }] : [])];
+  const inSeries = (pid: string, key: string) => (key === "__others" ? !topIds.has(pid) : pid === key);
   const byId = Object.fromEntries(projects.map((p) => [p.id, p]));
 
   // chart 1: done per week
   const weeks8 = Array.from({ length: 4 }, (_, i) => addDays(done8.start, 7 * i));
-  const doneVals = weeks8.map((w) => series.map((s) => done8.rows.filter((r) => r.week === w && r.project_id === s.key).reduce((a, r) => a + r.n, 0)));
+  const doneVals = weeks8.map((w) => series.map((s) => done8.rows.filter((r) => r.week === w && inSeries(r.project_id, s.key)).reduce((a, r) => a + r.n, 0)));
   // chart 2: open work by due week
   const weeks6 = Array.from({ length: 4 }, (_, i) => addDays(ahead6.start, 7 * i));
-  const aheadVals = weeks6.map((w) => series.map((s) => ahead6.rows.filter((r) => r.week === w && r.project_id === s.key).length));
+  const aheadVals = weeks6.map((w) => series.map((s) => ahead6.rows.filter((r) => r.week === w && inSeries(r.project_id, s.key)).length));
   // chart 4: time per project, from the latest weekly reviews
   const lastWeek = reviews.find((r) => r.type === "project")?.week_start;
   const timeRows = reviews.filter((r) => r.type === "project" && r.week_start === lastWeek)
-    .map((r) => ({ key: r.project_id || r.id, label: byId[r.project_id || ""]?.name || r.title, color: byId[r.project_id || ""]?.color || "other", v: Number(r.meta?.active_minutes) || 0 }))
+    .map((r) => ({ key: r.project_id || r.id, label: byId[r.project_id || ""]?.name || r.title, color: topIds.has(r.project_id || "") ? byId[r.project_id || ""]?.color : "other", v: Number(r.meta?.active_minutes) || 0 }))
     .filter((r) => r.v > 0).sort((a, b) => b.v - a.v);
 
   const open = items.filter((i) => i.status !== "done");
@@ -38,6 +41,19 @@ export default async function Overview() {
   const waiting = msgs.filter((m) => ["new", "seen", "working"].includes(m.status)).length;
   const needs = msgs.filter((m) => m.status === "needs_you" && !m.archived).length;
 
+  const card = (p: D.Project): Card => {
+    const its = items.filter((i) => i.project_id === p.id);
+    const nd = p.deadlines.filter((d) => d.date >= t).sort((x, y) => x.date.localeCompare(y.date))[0];
+    return {
+      id: p.id, name: p.name, color: topIds.has(p.id) ? p.color : "other", tagline: p.tagline, kind: p.kind, state: p.state, status: p.status,
+      done: its.filter((i) => i.status === "done").length, doing: its.filter((i) => i.status === "doing").length,
+      late: its.filter((i) => i.status !== "done" && i.due && i.due < t).length, total: its.length,
+      next: its.filter((i) => i.status !== "done" && i.due).sort((x, y) => Number(y.status === "doing") - Number(x.status === "doing") || x.due!.localeCompare(y.due!)).slice(0, 3).map((i) => ({ id: i.id, title: i.title, due: i.due! })),
+      verdict: reviews.find((r) => r.type === "project" && r.project_id === p.id)?.verdict || null,
+      deadline: nd ? { ...nd, days: daysBetween(t, nd.date) } : null,
+      plan_enabled: p.plan_enabled !== false, weekly_minutes: p.weekly_minutes ?? null, reviews_enabled: p.reviews_enabled !== false,
+    };
+  };
   const clocks = active.flatMap((p) => p.deadlines.filter((d) => d.date >= t).map((d) => ({ ...d, p })))
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
   const thisWeekReviews = reviews.filter((r) => r.type !== "doc" && r.week_start === (reviews.find((x) => x.type !== "doc")?.week_start));
@@ -70,7 +86,7 @@ export default async function Overview() {
       <div className="hello">
         <div>
           <h1 className="page">{new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: TZ })}</h1>
-          <div className="when">Week {isoWeek(t)} · {WD[weekday(t)]} · {open.length} open items across {active.length} projects</div>
+          <div className="when">Week {isoWeek(t)} · {WD[weekday(t)]} · {open.length} open items across {projects.length} projects</div>
         </div>
         <div className="clocks" aria-label="Upcoming deadlines">
           {clocks.map((c) => {
@@ -114,47 +130,9 @@ export default async function Overview() {
         </Link>
       </div>
 
-      <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-        <h2 className="lbl">Projects</h2>
-        <div className="grid3">
-          {active.map((p) => {
-            const its = items.filter((i) => i.project_id === p.id);
-            const dn = its.filter((i) => i.status === "done").length, dg = its.filter((i) => i.status === "doing").length;
-            const late = its.filter((i) => i.status !== "done" && i.due && i.due < t).length, n = its.length || 1;
-            const nextUp = its.filter((i) => i.status !== "done" && i.due).sort((a, b) => Number(b.status === "doing") - Number(a.status === "doing") || a.due!.localeCompare(b.due!)).slice(0, 3);
-            const rv = reviews.find((r) => r.type === "project" && r.project_id === p.id);
-            return (
-              <Link key={p.id} href={`/p/${p.id}`} className="panel proj" data-c={p.color}>
-                <div className="nm"><i className="dot" /><b>{p.name}</b>{rv?.verdict && <span className={`verdict v-${rv.verdict}`}>{rv.verdict.replace("-", " ")}</span>}<span className="pct">{Math.round((dn / n) * 100)}%</span></div>
-                <p className="tag">{p.tagline}</p>
-                <div className="seg" role="img" aria-label={`${dn} done, ${dg} in progress, ${late} overdue of ${its.length}`}>
-                  <i className="d" style={{ width: `${(dn / n) * 100}%` }} /><i className="g" style={{ width: `${(dg / n) * 100}%` }} /><i className="l" style={{ width: `${(late / n) * 100}%` }} />
-                </div>
-                <div className="nums"><span><b>{dn}</b> done</span><span><b>{dg}</b> in progress</span><span><b>{its.length - dn - dg}</b> to do</span>{late > 0 && <span className="late"><b>{late}</b> overdue</span>}</div>
-                <div className="next">
-                  <span className="lbl">Next up</span>
-                  {nextUp.map((i) => <div className="r" key={i.id}><span title={i.title}>{i.title}</span><Due d={i.due!} t={t} /></div>)}
-                  {!nextUp.length && <span className="due">Nothing open with a date</span>}
-                </div>
-              </Link>
-            );
-          })}
-        </div>
-        {running.length > 0 && (
-          <div className="running">
-            {running.map((p) => (
-              <div className="run" key={p.id}>
-                <div className="h"><b>{p.name}</b><span className={`state${p.state === "Live" ? " live" : p.state === "Automated" ? " auto" : ""}`}>{p.state}</span></div>
-                <p>{p.status}</p>
-                {(() => {
-                  // Running projects have no checklist tab, so link their open items (e.g. "write the PRD") from here.
-                  const n = items.filter((i) => i.project_id === p.id && i.status !== "done").length;
-                  return n ? <Link href={`/p/${p.id}`} className="due" style={{ textDecoration: "underline" }}>{n} open item{n > 1 ? "s" : ""} →</Link> : null;
-                })()}
-              </div>
-            ))}
-          </div>
-        )}
+      <section id="projects" style={{ display: "flex", flexDirection: "column", gap: 10, scrollMarginTop: 110 }}>
+        <h2 className="lbl">Your top 3</h2>
+        <ProjectsBoard featured={active.map(card)} others={others.map(card)} today={t} />
       </section>
 
       {ins.projects.length > 0 && (

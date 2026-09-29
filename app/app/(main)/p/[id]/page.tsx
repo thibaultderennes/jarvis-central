@@ -6,6 +6,7 @@ import { daysBetween, fmtDate, today } from "@/lib/time";
 import Checklist from "@/components/Checklist";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
+import ProjectSettings from "@/components/ProjectSettings";
 import { REVIEW_WHEN } from "@/lib/instance";
 
 type Search = { tab?: string; r?: string; t?: string };
@@ -20,6 +21,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const [items, weekly, docs] = await Promise.all([D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 })]);
   const dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const rank = D.splitFeatured(await D.getProjects()).featured.findIndex((x) => x.id === p.id) + 1;
   const href = (q: Record<string, string>) => `/p/${id}?${new URLSearchParams(q)}`;
 
   return (
@@ -36,6 +38,8 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           {p.links.map((l) => <a key={l.url} className="chip" href={l.url} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}
         </div>
       </div>
+
+      <ProjectSettings id={p.id} plan={p.plan_enabled !== false} minutes={p.weekly_minutes ?? null} reviews={p.reviews_enabled !== false} rank={rank || null} />
 
       {tab === "checklist" && <Checklist projectId={id} sections={p.sections} items={items} today={t} />}
 
