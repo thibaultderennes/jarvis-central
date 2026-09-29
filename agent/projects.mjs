@@ -40,11 +40,14 @@ export function scanProjects() {
     .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !exclude.has(e.name))
     .filter((e) => !include.length || include.includes(e.name) || include.includes(slugify(e.name)))
     .map((e) => {
-      const dir = path.join(PROJECTS_ROOT, e.name), id = slugify(e.name), o = overrides[id] || {};
+      // Overrides are keyed by folder name or by slug; they may set a different id and a subfolder (`dir`).
+      const o = overrides[e.name] || overrides[slugify(e.name)] || {};
+      const id = o.id || slugify(e.name);
+      const dir = o.dir ? path.resolve(PROJECTS_ROOT, e.name, o.dir) : path.join(PROJECTS_ROOT, e.name);
       const top = git(dir, "rev-parse", "--show-toplevel");
       const ownRepo = !!top && path.resolve(top) === path.resolve(dir);
       return {
-        id, folder: e.name, dir, name: o.name || e.name, kind: o.kind || "checklist", color: o.color || null, tagline: o.tagline || null,
+        id, folder: e.name, dir, name: o.name || e.name, kind: o.kind || "checklist", color: o.color || null, tagline: o.tagline || null, state: o.state || null, status: o.status || null,
         hasClaude: fs.existsSync(path.join(dir, "CLAUDE.md")), hasPrd: fs.existsSync(path.join(dir, "PRD.md")),
         remote: ownRepo ? git(dir, "remote", "get-url", "origin") : null, isRepo: ownRepo,
       };
@@ -132,11 +135,17 @@ async function sync() {
     const cur = byId[p.id];
     const prd = read(path.join(p.dir, "PRD.md"));
     const body = {
-      id: p.id, name: p.name, kind: p.kind, dir: p.dir, archived: false,
+      id: p.id, name: p.name, kind: p.kind, dir: p.dir, archived: false, ...(p.state ? { state: p.state } : {}), ...(p.status ? { status: p.status } : {}),
       color: p.color || cur?.color || nextColor(),
-      tagline: p.tagline || taglineFor(p) || cur?.tagline || "",
-      deadlines: parseMilestones(prd), sort: i + 1,
+      // Never clobber what's already on the site: a curated tagline wins over one guessed from CLAUDE.md,
+      // and deadlines only change when the PRD actually has a milestones table.
+      tagline: p.tagline || cur?.tagline || taglineFor(p) || "",
+      sort: i + 1,
     };
+    const ms = parseMilestones(prd);
+    body.deadlines = ms.length || !cur ? ms : cur.deadlines || [];
+    if (cur?.state && !p.state) body.state = cur.state;
+    if (cur?.status && !p.status) body.status = cur.status;
     if (!cur || !(cur.sections || []).length) body.sections = DEFAULT_SECTIONS; // never overwrite sections you edited
     return body;
   });

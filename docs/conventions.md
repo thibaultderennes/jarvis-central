@@ -6,8 +6,11 @@ These are the few rules the whole tool relies on. Setup enforces them; everythin
 - `projects_root` in `jarvis.config.json` (e.g. `~/Projects`) holds **one folder per project**.
 - Every direct subfolder is a project, except hidden folders (`.something`), anything in `projects.exclude`,
   and — when `projects.include` is non-empty — anything not listed there.
-- The project **id** is the folder name lowercased and slugified (`My App` → `my-app`). Display names, colours,
-  taglines and kinds can be overridden per id in `projects.overrides`.
+- The project **id** is the folder name lowercased and slugified (`My App` → `my-app`). `projects.overrides`, keyed by
+  folder name or id, can change the display name, colour, tagline, kind, the **id** itself (`"id": "acme"` for a
+  folder named `ACME-2024`) and point at a **subfolder** (`"dir": "app"` when the code lives in `MyProject/app`).
+- Re-running `sync` never wipes what's on the site: deadlines change only when the PRD has a milestones table,
+  and an existing tagline or status line is kept unless you override it.
 - The Jarvis tool itself can live inside `projects_root`; it then shows up as a project like any other.
 
 ## Every project folder has two files

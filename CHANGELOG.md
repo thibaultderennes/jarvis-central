@@ -3,6 +3,10 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- Privacy guard: `agent/guard.mjs` + `agent/install-hooks.mjs` block commits/pushes containing instance details or secrets.
+- `projects.overrides` can set a project's `id` and a subfolder `dir`, keyed by folder name or id.
+- `projects.mjs sync` no longer wipes deadlines when a PRD has no milestones table, and keeps existing taglines/status lines.
+- Pull requests from accounts other than the maintainer are closed automatically; ideas go to issues.
 
 ## 0.1.0 — 2026-09-29
 First public version, extracted from a personal setup.

@@ -7,7 +7,16 @@ always know which one you're making:
 |---|---|---|
 | What | This owner's projects, schedules, hours, caps, calendars, checklists, habits | Code, templates, personas, docs, schema |
 | Where | `jarvis.config.json`, Vercel env vars, the database, the owner's project folders | Files tracked in this repo |
-| In git? | **Never** | Yes: branch → PR → CHANGELOG → release |
+| In git? | **Never** | Yes: branch → PR → CHANGELOG → release (maintainer only) |
+
+## Who changes this repo
+Only the maintainer. Their personal instance **is** a working copy of this repo: when they adjust Jarvis (by hand,
+from the Monday Jarvis review, or with "Build it (PR)" on the `jarvis` project), tool changes are committed here and
+pushed to the public repo; their settings and data never are. The privacy guard (`agent/guard.mjs`, installed as
+pre-commit and pre-push hooks by `agent/install-hooks.mjs`) blocks any commit or push containing instance details
+or secrets. **Never bypass it with `--no-verify`.** If it blocks, make the code generic or move the value into
+`jarvis.config.json`; if a term is a false positive, rename the thing in the code rather than weakening the guard.
+Other people's pull requests are closed automatically; their ideas come in as issues.
 
 ## Setting it up
 If the owner asks to set up Jarvis Central, follow [`SETUP.md`](SETUP.md) phase by phase.

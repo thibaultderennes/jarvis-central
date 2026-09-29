@@ -17,3 +17,8 @@ Or open Claude in the repo and say "update Jarvis": it follows the same steps an
 ## If you changed the code yourself
 Keep your change on a branch and rebase it on each release, or better, contribute it (see `CONTRIBUTING.md`) so
 you don't carry it forever. Settings belong in `jarvis.config.json`, not in code.
+
+## If you are the maintainer
+Your instance is the working copy of the public repo. Run `node agent/install-hooks.mjs` once so the privacy guard
+checks every commit and push (including the worker's "Build it" branches). Ship a tool change the same way you'd
+review anyone's: branch, check, CHANGELOG, merge, tag, push.

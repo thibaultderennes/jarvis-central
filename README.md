@@ -56,7 +56,7 @@ Full model and checklist: [`docs/security.md`](docs/security.md).
 Your settings live in `jarvis.config.json` (not in git); everything else is shared code. Every Monday, Jarvis
 reviews how you used it and proposes changes, labelled either **your settings** or **tool change**. Tool changes
 come out as ready-to-file issues for this repo. To update your copy: [`docs/updating.md`](docs/updating.md).
-To contribute: [`CONTRIBUTING.md`](CONTRIBUTING.md).
+Found a bug or have an idea? Open an issue: see [`CONTRIBUTING.md`](CONTRIBUTING.md).
 
 ## Repository map
 | Path | What |

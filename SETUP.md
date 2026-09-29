@@ -68,6 +68,10 @@ Redeploy after changing any env var.
 `node agent/install-skill.mjs` installs the `jarvis` skill and prints a short block for `~/.claude/CLAUDE.md`.
 Ask before running it again with `--write` (it only edits between `<!-- jarvis:start -->` markers).
 
+## Phase 7b — Privacy guard (recommended)
+`node agent/install-hooks.mjs` installs git hooks that block commits or pushes containing the owner's details
+or secrets. Useful for anyone who keeps their own changes in a fork.
+
 ## Phase 8 — Schedules
 Explain: an inbox worker every minute, the planner weekly, the reviews weekly; the Mac must be awake (a missed run
 happens at the next wake). With consent, run `agent/install.sh`. On Linux, give the cron lines from `agent/README.md`.

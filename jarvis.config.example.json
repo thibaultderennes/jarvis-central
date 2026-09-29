@@ -38,6 +38,10 @@
     "timeout_minutes": 25
   },
 
+  "guard": {
+    "deny": []
+  },
+
   "calendars": {
     "read_google": true,
     "read_apple": false,

@@ -32,3 +32,4 @@ re-run it and redeploy after changing those.
 | `worker.timeout_minutes` | `25` | Hard limit per message. |
 | `calendars.read_google` / `read_apple` | `true` / `false` | Show those appointments and plan around them. |
 | `calendars.write_google` / `write_apple_feed` | `true` / `false` | Put the week plan in those calendars. |
+| `guard.deny` | `[]` | Extra words the privacy guard must never let into a commit (client names, product names…). Your name, project folders and names, site address and home path are always blocked. |
