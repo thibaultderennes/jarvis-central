@@ -1,0 +1,47 @@
+{
+  "$schema": "./docs/config.schema.json",
+  "owner_name": "Alex",
+  "projects_root": "~/Projects",
+  "timezone": "America/New_York",
+  "site_url": "https://your-jarvis.vercel.app",
+
+  "projects": {
+    "include": [],
+    "exclude": ["node_modules", ".jarvis-worktrees", "archive"],
+    "overrides": {
+      "example-project": { "name": "Example", "kind": "checklist", "color": "p1", "tagline": "One line on what it is." }
+    }
+  },
+
+  "planner": {
+    "run": { "weekday": "sunday", "time": "17:00" },
+    "work_days": ["Mon", "Tue", "Wed", "Thu", "Fri"],
+    "hours": [["09:00", "12:30"], ["13:30", "18:00"]],
+    "max_focus_minutes_per_day": 360,
+    "buffer_minutes": 15,
+    "weekends": "overflow",
+    "project_caps": { "example-project": 360 }
+  },
+
+  "reviews": {
+    "run": { "weekday": "monday", "time": "05:00" },
+    "advisors": ["ceo", "cmo", "po"],
+    "stance": "Be sceptical by default. Challenge optimistic plans with evidence; validate only what the evidence supports.",
+    "concurrency": 2
+  },
+
+  "worker": {
+    "interval_seconds": 60,
+    "allow_build": true,
+    "discuss_model": "sonnet",
+    "build_model": null,
+    "timeout_minutes": 25
+  },
+
+  "calendars": {
+    "read_google": true,
+    "read_apple": false,
+    "write_google": true,
+    "write_apple_feed": false
+  }
+}

@@ -1,0 +1,13 @@
+# instance data — never commit
+jarvis.config.json
+google/Code.gs
+.env*
+!.env.example
+.vercel/
+# build
+node_modules/
+.next/
+*.tsbuildinfo
+next-env.d.ts
+*.log
+.DS_Store

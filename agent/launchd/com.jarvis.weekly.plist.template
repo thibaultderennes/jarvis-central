@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!-- Rendered by agent/schedule.mjs from jarvis.config.json. Edit the config, not the rendered file. -->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.jarvis.weekly</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>{{NODE}}</string>
+    <string>{{REPO}}/agent/weekly.mjs</string>
+  </array>
+  <key>WorkingDirectory</key>
+  <string>{{REPO}}</string>
+{{SCHEDULE}}
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>{{PATH}}</string>
+    <key>HOME</key>
+    <string>{{HOME}}</string>
+    <key>JARVIS_TZ</key>
+    <string>{{TZ}}</string>
+  </dict>
+  <key>StandardOutPath</key>
+  <string>{{LOGS}}/weekly.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>{{LOGS}}/weekly.err.log</string>
+  <key>ProcessType</key>
+  <string>Background</string>
+</dict>
+</plist>

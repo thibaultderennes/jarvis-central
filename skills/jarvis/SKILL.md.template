@@ -1,0 +1,40 @@
+---
+name: jarvis
+description: Jarvis Central Dashboard (JCD) — the owner's all-projects site (checklists, daily todos, calendars, inbox to Claude, weekly plan, Monday reviews). Use to read or change any project checklist, put todos on the owner's days, check or answer inbox messages left on the site, or read the weekly reviews. Triggers — /jarvis, "check jarvis", "check my inbox", "tick/move/add a checklist item", "put X on my day", the start of a session in a project folder under {{PROJECTS_ROOT}}, and the end of any session that finished checklist items.
+---
+
+# Jarvis Central Dashboard
+
+Website: {{SITE_URL}} (password + authenticator; the owner's only).
+Tool repo: `{{REPO}}` — `app/` website, `agent/` scripts, `docs/architecture.md` API contract, `CLAUDE.md` rules for changing the tool.
+Projects: every folder under `{{PROJECTS_ROOT}}` is a project (id = folder name, slugified) with a `CLAUDE.md` and a `PRD.md`.
+**The website is the single source of truth for checklists.**
+
+## The CLI (use this, not raw HTTP)
+`node {{REPO}}/agent/jarvis.mjs <command>` — reads `~/.config/jarvis/env` (URL + agent token). `help` lists everything:
+- `projects` · `items <project> [--open] [--section S]` · `item <project> <id>`
+- `set <project> <id> status=done due=YYYY-MM-DD note="…"` · `add <project> <section> "title" --due D --owner claude`
+- `inbox [--project P]` · `reply <message-id> "text" --status answered|done|needs_you`
+- `todo add "title" --date today --project P --item ID` · `todos`
+- `reviews --project P --type project|recap|coaching|jarvis|doc --full`
+Owner values: `founder` = the owner (you'd say "you"), `claude`, `both`.
+
+## At session start in a project folder
+1. `jarvis inbox --project <id>`: mention waiting messages. The background worker normally answers within a minute;
+   only pick one up if it's `new` and older than ~10 min (worker offline) — then `reply` when done.
+2. `jarvis items <id> --open` for the live checklist when planning work. Items set to `doing` with owner `claude`
+   are a go signal.
+
+## During / end of session
+- Finished something on the checklist → `jarvis set <project> <id> status=done`. New work discovered → `jarvis add`.
+- Never mark an item done that isn't done. Due-date moves are logged and show up as "slipped" in Monday reviews.
+- A new project folder → `node {{REPO}}/agent/projects.mjs scaffold --only <id>` then `projects.mjs sync`.
+
+## Changing Jarvis itself
+Follow `{{REPO}}/CLAUDE.md`: personal changes go in `jarvis.config.json` (never committed); tool changes are generic,
+go through a branch + PR, and get a CHANGELOG line.
+
+## What runs by itself (`node {{REPO}}/agent/schedule.mjs show`)
+- worker: inbox → `claude -p` in the project (code only on a `jarvis/<id>` branch + PR, never merges).
+- planner: the week's plan → todos + Google/Apple calendars.
+- weekly: per-project advisor reviews, recap, "working with AI" coaching, Jarvis usage review.
