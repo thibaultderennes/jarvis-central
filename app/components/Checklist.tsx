@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
 import { cycleItem, newItem, saveNote, setDue } from "@/lib/actions";
 import type { Item, Section } from "@/lib/data";
 
@@ -17,6 +18,10 @@ export default function Checklist({ projectId, sections: given, items, today }: 
   }, [given, items]);
   const [list, setList] = useState(items);
   useEffect(() => setList(items), [items]);
+  const router = useRouter();
+  const refining = items.some((i) => i.refine === "pending");
+  // While Claude is refining a new item, refresh so its steps, date and estimate appear on their own.
+  useEffect(() => { if (!refining) return; const t = setInterval(() => router.refresh(), 10000); return () => clearInterval(t); }, [refining, router]);
   const [, start] = useTransition();
   const [err, setErr] = useState("");
   const [f, setF] = useState({ cat: "", crit: false, open: false, own: "", when: "any" });
@@ -101,6 +106,12 @@ function Row({ i, s, today, onCycle, run, projectId }: { i: Item; s: Section; to
           <span className="pill code" title="Say this code to Claude to refer to the item">{i.id}</span>
           {i.owner && <span className={`pill${i.owner === "founder" ? " you" : ""}`}>{OWN[i.owner] || i.owner}</span>}
           {i.critical && <span className="pill crit">critical</span>}
+          {i.priority === 1 && !i.critical && <span className="pill crit">high</span>}
+          {i.priority === 3 && <span className="pill">low</span>}
+          {i.estimate_minutes ? <span className="pill" title="Estimated time">~{i.estimate_minutes >= 60 ? `${Math.round(i.estimate_minutes / 30) / 2} h` : `${i.estimate_minutes} min`}</span> : null}
+          {i.refine === "pending" && <span className="pill go" title="Claude is reading this item and will add steps, a priority, an estimate and a due date that doesn't clash">refining…</span>}
+          {i.refine === "done" && <span className="pill" title={i.refine_note || "Refined by Claude"}>refined by Claude</span>}
+          {i.refine === "flagged" && <span className="pill crit" title={i.refine_note}>check: overlaps</span>}
           {i.owner === "claude" && i.status === "doing" && <span className="pill go">go given</span>}
         </div>
         {i.detail && <><div className={`dt${long && !open ? " collapsed" : ""}`}>{i.detail}</div>{long && <button className="more" onClick={() => setOpen(!open)}>{open ? "Show less" : "Show more"}</button>}</>}

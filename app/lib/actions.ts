@@ -39,7 +39,8 @@ export async function newItem(project_id: string, section: string, title: string
   if (!t) return;
   const p = await D.getProject(project_id);
   const sec = p?.sections.find((s) => s.id === section);
-  await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder" });
+  // Claude refines items you add by hand (steps, section, priority, estimate, a due date that doesn't clash).
+  await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder", refine: process.env.JARVIS_REFINE_ITEMS === "off" ? null : "pending" });
   await D.logActivity("item_add", `/p/${project_id}`, { section });
   done();
 }

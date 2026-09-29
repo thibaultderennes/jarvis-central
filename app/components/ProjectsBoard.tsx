@@ -50,7 +50,7 @@ export default function ProjectsBoard({ featured, others, today }: { featured: C
         <>
           <div className="lbl" style={{ marginTop: 6 }}>Other projects · drag one onto a card above to swap it into your top 3</div>
           <div className="minis">
-            {rest.map((c) => <Mini key={c.id} c={c} top={top} onSwap={(slot) => place(c.id, slot)} />)}
+            {rest.map((c) => <Mini key={c.id} c={c} />)}
           </div>
         </>
       )}
@@ -107,7 +107,7 @@ function Full({ c, today }: { c: Card; today: string }) {
   );
 }
 
-function Mini({ c, top, onSwap }: { c: Card; top: Card[]; onSwap: (slot: number) => void }) {
+function Mini({ c }: { c: Card }) {
   const n = c.total || 1, open = c.total - c.done;
   return (
     <div className="panel mini" data-c={c.color}>
@@ -120,10 +120,6 @@ function Mini({ c, top, onSwap }: { c: Card; top: Card[]; onSwap: (slot: number)
       {c.total > 0 && <div className="seg thin"><i className="d" style={{ width: `${(c.done / n) * 100}%` }} /><i className="g" style={{ width: `${(c.doing / n) * 100}%` }} /><i className="l" style={{ width: `${(c.late / n) * 100}%` }} /></div>}
       <div className="row2">
         <Link className="due" href={`/p/${c.id}`}>{open ? `${open} open${c.late ? ` · ${c.late} late` : ""}` : "No open items"} →</Link>
-        <select className="plan-sel" aria-label={`Swap ${c.name} into the top 3`} value="" onChange={(e) => e.target.value && onSwap(Number(e.target.value))}>
-          <option value="">Swap into top 3…</option>
-          {[1, 2, 3].map((s) => <option key={s} value={s}>{top[s - 1] ? `Replace ${top[s - 1].name}` : `Slot ${s}`}</option>)}
-        </select>
       </div>
     </div>
   );

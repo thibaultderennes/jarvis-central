@@ -10,6 +10,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { api, qs, makeLog, acquireLock, todayTZ, hostName, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
+import { refinePending } from "./refine.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -193,8 +194,10 @@ async function pass() {
   try {
     await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName() } }).catch((e) => log("heartbeat failed", e.message));
     const messages = await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }));
-    if (!messages.length) return;
     const projects = await api("GET", "/api/agent/projects");
+    // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
+    await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
+    if (!messages.length) return;
     for (const m of messages) {
       try { await handle(m, projects); }
       catch (e) {

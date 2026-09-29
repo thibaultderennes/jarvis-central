@@ -33,6 +33,7 @@
   "worker": {
     "interval_seconds": 60,
     "allow_build": true,
+    "refine_new_items": true,
     "discuss_model": "sonnet",
     "build_model": null,
     "timeout_minutes": 25

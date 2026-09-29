@@ -21,7 +21,7 @@ async function handle(req: NextRequest, ctx: Ctx) {
     case "GET projects": return J(await D.getProjects(sp.get("all") === "1"));
     case "PUT projects": if (!b.id) return bad("id required"); return J({ project: await D.upsertProject(b as D.Project) });
 
-    case "GET items": return J(await D.getItems({ project: sp.get("project") || undefined, open: sp.get("open") === "1" }));
+    case "GET items": return J(await D.getItems({ project: sp.get("project") || undefined, open: sp.get("open") === "1", refine: sp.get("refine") || undefined }));
     case "POST items": {
       if (!b.project_id || !b.section || !b.title) return bad("project_id, section and title are required");
       if (b.due && !isDate(b.due)) return bad("due must be YYYY-MM-DD");
@@ -54,6 +54,14 @@ async function handle(req: NextRequest, ctx: Ctx) {
     }
 
     case "GET messages": return J(await D.getMessages({ review: sp.get("review") || undefined, status: sp.get("status") || undefined, limit: +(sp.get("limit") || (sp.get("since") ? 200 : 20)), since: sp.get("since") || undefined, includeArchived: true }));
+    case "POST messages": {
+      // The agent can leave a note in the inbox (e.g. "I refined your new item"), already answered.
+      if (!b.text) return bad("text required");
+      const { sql } = await import("@/lib/db");
+      const [m] = await sql()`insert into messages (text, project_id, status, reply, meta, mode, replied_at)
+        values (${String(b.text).slice(0, 2000)}, ${b.project_id || null}, ${b.status || "answered"}, ${String(b.reply || "").slice(0, 8000)}, ${JSON.stringify(b.meta || {})}, 'discuss', now()) returning id`;
+      return J({ message: m }, 201);
+    }
     case "PATCH messages": {
       if (!b.id) return bad("id required");
       const msg = await D.patchMessage(b.id, b);

@@ -13,6 +13,7 @@ export type Item = {
   project_id: string; id: string; section: string; title: string; detail: string;
   status: "todo" | "doing" | "done"; due: string | null; owner: string | null; critical: boolean;
   sort: number; note: string; created_at: string; updated_at: string; done_at: string | null;
+  estimate_minutes: number | null; priority: number | null; refine: string | null; refine_note: string;
 };
 export type Todo = {
   id: string; date: string | null; title: string; kind: "life" | "work"; project_id: string | null;
@@ -71,8 +72,9 @@ export function splitFeatured(projects: Project[]): { featured: Project[]; other
 export const displayColor = (p: Project, featuredIds: Set<string>) => (featuredIds.has(p.id) ? p.color : "other");
 
 /* ---------- items ---------- */
-export async function getItems(opts: { project?: string; open?: boolean } = {}): Promise<Item[]> {
+export async function getItems(opts: { project?: string; open?: boolean; refine?: string } = {}): Promise<Item[]> {
   const where: string[] = [], params: unknown[] = [];
+  if (opts.refine) { params.push(opts.refine); where.push(`refine = $${params.length}`); }
   if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
   if (opts.open) where.push(`status <> 'done'`);
   const rows = await q(`select * from items ${where.length ? "where " + where.join(" and ") : ""} order by project_id, sort, created_at`, params);
@@ -82,19 +84,19 @@ export function slugify(s: string, max = 4): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "").split("-").filter(Boolean).slice(0, max).join("-") || "item";
 }
-export async function addItem(i: { project_id: string; section: string; title: string; id?: string; detail?: string; due?: string | null; owner?: string | null; critical?: boolean }, actor = "founder"): Promise<Item> {
+export async function addItem(i: { project_id: string; section: string; title: string; id?: string; detail?: string; due?: string | null; owner?: string | null; critical?: boolean; refine?: string | null }, actor = "founder"): Promise<Item> {
   const [m] = await sql()`select coalesce(max(sort), 0) + 1 as s from items where project_id = ${i.project_id} and section = ${i.section}`;
   let id = i.id || slugify(i.title);
   const taken = await sql()`select id from items where project_id = ${i.project_id} and (id = ${id} or id like ${id + "-%"})`;
   if (taken.some((r) => r.id === id)) id = `${id}-${taken.length + 1}`;
-  const rows = await sql()`insert into items (project_id, id, section, title, detail, due, owner, critical, sort)
-    values (${i.project_id}, ${id}, ${i.section}, ${i.title}, ${i.detail || ""}, ${i.due || null}, ${i.owner || null}, ${!!i.critical}, ${m.s})
+  const rows = await sql()`insert into items (project_id, id, section, title, detail, due, owner, critical, sort, refine)
+    values (${i.project_id}, ${id}, ${i.section}, ${i.title}, ${i.detail || ""}, ${i.due || null}, ${i.owner || null}, ${!!i.critical}, ${m.s}, ${i.refine || null})
     returning *`;
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${i.project_id}, ${id}, 'created', null, ${i.section}, ${actor})`;
   return normItem(rows[0]);
 }
-const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note"] as const;
-const LOGGED = new Set(["status", "due", "section", "owner", "title"]);
+const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note"] as const;
+const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical"]);
 export async function updateItem(project_id: string, id: string, patch: Partial<Item>, actor = "founder"): Promise<Item | null> {
   const [cur] = (await sql()`select * from items where project_id = ${project_id} and id = ${id}`).map(normItem);
   if (!cur) return null;

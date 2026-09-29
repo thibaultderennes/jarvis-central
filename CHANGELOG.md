@@ -4,6 +4,14 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.3.0 — 2026-09-29
+- **Refine new items**: an item you add on a checklist is read by Claude within a minute: steps, section, owner,
+  priority, estimate, and a due date before the milestone on a day that still has room (checked against every
+  project's items and your calendar). Possible duplicates are flagged instead. Summary in the inbox.
+  `worker.refine_new_items: false` turns it off. Upgrade notes: redeploy (new columns), then `agent/install.sh`.
+- Overview: the "Swap into top 3" menu is gone from the compact cards; drag the handle, or use "Put in top 3" on
+  the project's page.
+
 ## 0.2.0 — 2026-09-29
 - **Top 3**: choose which three projects get full cards and nav tabs; drag a project onto a top-3 card (or use
   "Swap into top 3") to swap. Every other project gets a compact card, and every project has a full page.

@@ -141,3 +141,8 @@ alter table projects add column if not exists featured_rank int;
 alter table projects add column if not exists plan_enabled boolean not null default true;
 alter table projects add column if not exists weekly_minutes int;
 alter table projects add column if not exists reviews_enabled boolean not null default true;
+-- New checklist items are refined by Claude (steps, section, priority, estimate, a non-clashing due date).
+alter table items add column if not exists estimate_minutes int;
+alter table items add column if not exists priority smallint;
+alter table items add column if not exists refine text;
+alter table items add column if not exists refine_note text not null default '';

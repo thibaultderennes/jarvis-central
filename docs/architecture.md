@@ -26,7 +26,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
   - `deadlines`: `[{date, label}]`, `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
-- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at)` pk `(project_id, id)`
+- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note)` pk `(project_id, id)`
 - `item_events(id bigserial, project_id, item_id, field, old, new, actor 'founder'|'agent', at)` — every status/due/section change
 - `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at)`
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool)`
@@ -45,7 +45,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 |---|---|---|---|
 | GET | `/api/agent/projects` | | `[{project}]` |
 | PUT | `/api/agent/projects` | `{id, ...fields}` upsert | `{project}` |
-| GET | `/api/agent/items` | `?project=ID` (optional; all when absent) `&open=1` (not done only) | `[{item}]` |
+| GET | `/api/agent/items` | `?project=ID` (optional; all when absent) `&open=1` (not done only) `&refine=pending` | `[{item}]` |
 | POST | `/api/agent/items` | `{project_id, section, title, id?, detail?, due?, owner?, critical?}` | `{item}` (id = slug of title if absent) |
 | PATCH | `/api/agent/items` | `{project_id, id, ...fields}` | `{item}` (logs item_events with actor 'agent') |
 | DELETE | `/api/agent/items` | `?project=ID&id=ITEM` | `{ok}` |
