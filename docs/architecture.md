@@ -66,8 +66,9 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
   and opens the PR. Never merges, deploys, pays, emails, texts, or touches production data or secrets.
 - Anything outside that → status `needs_you` with a clear explanation.
 
-- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `auto` = legacy) and an
-  optional `review_id` (discussion thread under a review). `worker.allow_build: false` disables build mode.
+- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `plan` = "Plan this project";
+  `auto` = legacy), an optional `review_id` (discussion under a review) and `thread_id` (first message of an inbox
+  conversation; `GET /api/agent/messages?thread=ID`). `worker.allow_build: false` disables build mode.
 
 ## Week plans
 - `week_plans(week_start pk, blocks jsonb, unscheduled jsonb, notes_md, version, synced_version, synced_at, synced_count, force_resync)`.

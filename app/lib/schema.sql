@@ -146,3 +146,6 @@ alter table items add column if not exists estimate_minutes int;
 alter table items add column if not exists priority smallint;
 alter table items add column if not exists refine text;
 alter table items add column if not exists refine_note text not null default '';
+-- Replies in the inbox: a follow-up points at the first message of its conversation.
+alter table messages add column if not exists thread_id uuid;
+create index if not exists messages_thread on messages (thread_id, created_at);

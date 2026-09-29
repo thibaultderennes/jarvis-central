@@ -85,14 +85,20 @@ export async function removeTodo(id: string) {
 }
 
 /* ---------- inbox ---------- */
-export async function sendMessage(text: string, project_id: string | null, opts: { mode?: "discuss" | "build"; review_id?: string | null; review_tab?: string | null } = {}) {
+export async function sendMessage(text: string, project_id: string | null, opts: { mode?: "discuss" | "build"; review_id?: string | null; review_tab?: string | null; thread_id?: string | null } = {}) {
   await requireSession();
   const t = text.trim().slice(0, 8000);
   if (!t) return;
   const mode = opts.mode === "build" ? "build" : "discuss";
   const review = opts.review_id && /^[0-9a-f-]{36}$/.test(opts.review_id) ? opts.review_id : null;
-  await sql()`insert into messages (text, project_id, mode, review_id, meta)
-    values (${t}, ${project_id || null}, ${mode}, ${review}, ${JSON.stringify(opts.review_tab ? { review_tab: String(opts.review_tab).slice(0, 40) } : {})})`;
+  // A reply joins its conversation: same thread, and the project of the first message unless one was picked.
+  let thread = opts.thread_id && /^[0-9a-f-]{36}$/.test(opts.thread_id) ? opts.thread_id : null;
+  if (thread) {
+    const [root] = await sql()`select id, thread_id, project_id from messages where id = ${thread}`;
+    if (!root) thread = null; else { thread = root.thread_id || root.id; project_id = project_id || root.project_id; }
+  }
+  await sql()`insert into messages (text, project_id, mode, review_id, thread_id, meta)
+    values (${t}, ${project_id || null}, ${mode}, ${review}, ${thread}, ${JSON.stringify(opts.review_tab ? { review_tab: String(opts.review_tab).slice(0, 40) } : {})})`;
   await D.logActivity("message_sent", review ? "/review-thread" : "/inbox", { project_id, mode, review: !!review });
   done();
 }
@@ -142,5 +148,15 @@ export async function setProjectSettings(id: string, s: { plan_enabled?: boolean
   if (mins !== undefined) await sql()`update projects set weekly_minutes = ${mins} where id = ${id}`;
   if (s.reviews_enabled !== undefined) await sql()`update projects set reviews_enabled = ${!!s.reviews_enabled} where id = ${id}`;
   await D.logActivity("project_settings", `/p/${id}`, { id, ...s });
+  done();
+}
+
+/** "Plan this project": the Mac worker reviews the folder, writes a situation report and adds the missing checklist items. */
+export async function requestPlanning(project_id: string) {
+  await requireSession();
+  const busy = await sql()`select id from messages where project_id = ${project_id} and mode = 'plan' and status in ('new', 'seen', 'working') limit 1`;
+  if (busy.length) return;
+  await sql()`insert into messages (text, project_id, mode) values (${"Plan this project: go through the folder, tell me where it stands, and add what needs to happen next to the checklist."}, ${project_id}, 'plan')`;
+  await D.logActivity("project_plan", `/p/${project_id}`, { project_id });
   done();
 }

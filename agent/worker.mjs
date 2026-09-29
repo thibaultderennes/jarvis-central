@@ -11,6 +11,7 @@ import path from "node:path";
 import { api, qs, makeLog, acquireLock, todayTZ, hostName, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
 import { refinePending } from "./refine.mjs";
+import { planProject } from "./planproject.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -146,6 +147,7 @@ async function handle(message, projects) {
   const shortId = message.id.replace(/-/g, "").slice(0, 8);
   const project = projects.find((p) => p.id === message.project_id) || null;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "seen" });
+  if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : JARVIS_ROOT;
   const repo = project ? repoInfo(dir) : null;
   // The owner picks: "discuss" (read-only, lighter model) or "build" (branch + PR). Old messages: "auto".
@@ -161,6 +163,11 @@ async function handle(message, projects) {
     review = (await api("GET", "/api/agent/reviews" + qs({ id: message.review_id })))[0] || null;
     history = (await api("GET", "/api/agent/messages" + qs({ review: message.review_id, limit: 100 })))
       .filter((m) => m.id !== message.id && m.created_at < message.created_at).slice(-8);
+  }
+  if (message.thread_id) {
+    // A reply in the inbox: give Claude the conversation so far.
+    const convo = await api("GET", "/api/agent/messages" + qs({ thread: message.thread_id, limit: 100 }));
+    history = [...history, ...convo.filter((m) => m.id !== message.id && m.created_at < message.created_at).slice(-10)];
   }
   const prompt = buildPrompt({ message, project, projects, mode, today: todayTZ(), cwd, review, history, wantedBuild: wantedBuild && mode !== "code" });
   log("run", message.id, { project: project?.id, mode, cwd });

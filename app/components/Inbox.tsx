@@ -25,6 +25,15 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
     const v = text.trim(); if (!v) return;
     start(async () => { try { await sendMessage(v, proj || null, { mode }); setText(""); setErr(""); } catch { setErr("Couldn't send. Try again."); } });
   };
+  // Conversations: a first message plus its replies, newest activity first.
+  const byRoot = new Map<string, Message[]>();
+  for (const m of [...messages].sort((x, y) => x.created_at.localeCompare(y.created_at))) {
+    const k = m.thread_id || m.id;
+    if (!byRoot.has(k)) byRoot.set(k, []);
+    byRoot.get(k)!.push(m);
+  }
+  const threads = [...byRoot.values()].filter((t) => !t[0].thread_id) // the root must be loaded
+    .map((turns) => ({ root: turns[0], turns })).sort((a, b) => b.turns[b.turns.length - 1].created_at.localeCompare(a.turns[a.turns.length - 1].created_at));
   const offline = mounted && (!workerAt || Date.now() - +new Date(workerAt) > 5 * 60_000);
   return (
     <section className="panel">
@@ -48,27 +57,60 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
       </form>
       <div>
         {!messages.length && <div className="empty">No messages yet.</div>}
-        {messages.map((m) => {
-          const [label, cls] = ST[m.status] || [m.status, ""];
-          const p = m.project_id ? pmap[m.project_id] : null;
-          const meta = m.meta as { pr_url?: string; branch?: string; cost_usd?: number; duration_s?: number };
+        {threads.map(({ root, turns }) => {
+          const p = root.project_id ? pmap[root.project_id] : null;
           return (
-            <article className="msg" key={m.id} data-c={p?.color || "other"}>
+            <article className="msg" key={root.id} data-c={p?.color || "other"}>
               <div className="mh">
                 {p && <span style={{ display: "flex", gap: 6, alignItems: "center" }}><i className="dot" />{p.name}</span>}
-                <span className={`mst ${cls}`}>{label}</span>
-                <span>{m.mode === "build" ? "build" : "discuss"}{m.review_id ? " · on a review" : ""}</span>
-                <span>{mounted ? ago(m.created_at) : ""}</span>
-                {meta.duration_s ? <span>{Math.round(meta.duration_s / 60) || "<1"} min</span> : null}
-                <button className="x" onClick={() => start(() => archiveMessage(m.id))}>Hide</button>
+                <span>{root.mode === "build" ? "build" : root.mode === "plan" ? "project plan" : (root.meta as { kind?: string }).kind === "refine" ? "new item" : "discuss"}{root.review_id ? " · on a review" : ""}</span>
+                <span>{mounted ? ago(turns[turns.length - 1].created_at) : ""}</span>
+                {turns.length > 1 && <span>{turns.length} messages</span>}
+                <button className="x" onClick={() => start(() => archiveMessage(root.id))}>Hide</button>
               </div>
-              <div className="q">{m.text}</div>
-              {m.reply && <div className="a" style={{ whiteSpace: "pre-wrap" }}>{m.reply}</div>}
-              {meta.pr_url && <div className="a"><a href={meta.pr_url} target="_blank" rel="noopener noreferrer">Pull request: {meta.pr_url.replace("https://github.com/", "")} ↗</a> · not merged, review it on GitHub</div>}
+              {turns.map((m) => <Turn key={m.id} m={m} mounted={mounted} />)}
+              <Reply rootId={root.id} projectId={root.project_id} />
             </article>
           );
         })}
       </div>
     </section>
+  );
+}
+
+function Turn({ m, mounted }: { m: Message; mounted: boolean }) {
+  const [label, cls] = ST[m.status] || [m.status, ""];
+  const meta = m.meta as { pr_url?: string; duration_s?: number };
+  return (
+    <div className="turn" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+      <div className="q">{m.thread_id && <span className="pill" style={{ marginRight: 8 }}>{m.mode === "build" ? "build" : "you"}</span>}{m.text}</div>
+      {m.reply ? <div className="a" style={{ whiteSpace: "pre-wrap" }}>{m.reply}</div>
+        : <div className={`mst ${cls}`} style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{label}{mounted && meta.duration_s ? ` · ${Math.round(meta.duration_s / 60) || "<1"} min` : ""}</div>}
+      {meta.pr_url && <div className="a"><a href={meta.pr_url} target="_blank" rel="noopener noreferrer">Pull request: {meta.pr_url.replace("https://github.com/", "")} ↗</a> · not merged, review it on GitHub</div>}
+    </div>
+  );
+}
+
+/** Reply inside a conversation: Claude gets the whole thread before answering. */
+function Reply({ rootId, projectId }: { rootId: string; projectId: string | null }) {
+  const [open, setOpen] = useState(false), [text, setText] = useState(""), [err, setErr] = useState("");
+  const [pending, start] = useTransition();
+  if (!open) return <button className="more" style={{ alignSelf: "flex-start" }} onClick={() => setOpen(true)}>Reply</button>;
+  const send = (mode: "discuss" | "build") => {
+    const v = text.trim(); if (!v) return;
+    start(async () => { try { await sendMessage(v, projectId, { mode, thread_id: rootId }); setText(""); setOpen(false); setErr(""); } catch { setErr("Couldn't send. Try again."); } });
+  };
+  return (
+    <form className="composer" style={{ padding: 0, border: 0 }} onSubmit={(e) => { e.preventDefault(); send("discuss"); }}>
+      <textarea id={`reply-${rootId}`} className="textarea" rows={2} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Answer, push back, or ask for the next step…"
+        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send("discuss"); } if (e.key === "Escape") setOpen(false); }} />
+      <div className="crow">
+        <button type="button" className="more" onClick={() => setOpen(false)}>Cancel</button>
+        <span className="sp" />
+        <button type="button" className="btn ghost sm" disabled={pending || !text.trim()} onClick={() => send("build")}>Build it (PR)</button>
+        <button className="btn sm" disabled={pending || !text.trim()}>{pending ? "Sending…" : "Reply"}</button>
+      </div>
+      {err && <div className="due late" role="alert">{err}</div>}
+    </form>
   );
 }

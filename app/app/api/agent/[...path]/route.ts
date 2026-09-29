@@ -53,7 +53,7 @@ async function handle(req: NextRequest, ctx: Ctx) {
       return J({ todo: await D.addTodo({ ...b, date: b.date || null } as never) }, 201);
     }
 
-    case "GET messages": return J(await D.getMessages({ review: sp.get("review") || undefined, status: sp.get("status") || undefined, limit: +(sp.get("limit") || (sp.get("since") ? 200 : 20)), since: sp.get("since") || undefined, includeArchived: true }));
+    case "GET messages": return J(await D.getMessages({ thread: sp.get("thread") || undefined, review: sp.get("review") || undefined, status: sp.get("status") || undefined, limit: +(sp.get("limit") || (sp.get("since") ? 200 : 20)), since: sp.get("since") || undefined, includeArchived: true }));
     case "POST messages": {
       // The agent can leave a note in the inbox (e.g. "I refined your new item"), already answered.
       if (!b.text) return bad("text required");

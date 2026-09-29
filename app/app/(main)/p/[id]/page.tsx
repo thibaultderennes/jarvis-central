@@ -7,6 +7,7 @@ import Checklist from "@/components/Checklist";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
 import ProjectSettings from "@/components/ProjectSettings";
+import PlanButton from "@/components/PlanButton";
 import { REVIEW_WHEN } from "@/lib/instance";
 
 type Search = { tab?: string; r?: string; t?: string };
@@ -21,6 +22,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const [items, weekly, docs] = await Promise.all([D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 })]);
   const dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const planning = (await D.getMessages({ limit: 50 })).some((m) => m.project_id === id && m.mode === "plan" && ["new", "seen", "working"].includes(m.status));
   const rank = D.splitFeatured(await D.getProjects()).featured.findIndex((x) => x.id === p.id) + 1;
   const href = (q: Record<string, string>) => `/p/${id}?${new URLSearchParams(q)}`;
 
@@ -32,6 +34,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           <p className="sub">{p.tagline} · {dn} of {items.length} done{next ? ` · ${next.label} in ${daysBetween(t, next.date)} days (${fmtDate(next.date)})` : ""}</p>
         </div>
         <div className="subtabs" role="tablist">
+          <PlanButton projectId={id} running={planning} lastPlan={docs.find((d) => d.title.startsWith("Project plan"))?.created_at.slice(0, 10) || null} />
           <Link role="tab" className="chip" aria-pressed={tab === "checklist"} href={href({})}>Checklist</Link>
           <Link role="tab" className="chip" aria-pressed={tab === "reviews"} href={href({ tab: "reviews" })}>Weekly reviews {weekly.length > 0 && `(${weekly.length})`}</Link>
           <Link role="tab" className="chip" aria-pressed={tab === "strategy"} href={href({ tab: "strategy" })}>Strategy {docs.length > 0 && `(${docs.length})`}</Link>

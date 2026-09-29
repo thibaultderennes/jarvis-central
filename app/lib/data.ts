@@ -20,7 +20,7 @@ export type Todo = {
   item_id: string | null; time: string | null; sort: number; done: boolean; done_at: string | null; created_at: string;
 };
 export type Message = {
-  id: string; project_id: string | null; review_id: string | null; mode: "auto" | "discuss" | "build"; text: string; status: string; reply: string;
+  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; mode: "auto" | "discuss" | "build" | "plan"; text: string; status: string; reply: string;
   meta: Record<string, unknown>; archived: boolean; created_at: string; updated_at: string; replied_at: string | null;
 };
 export type Review = {
@@ -84,13 +84,14 @@ export function slugify(s: string, max = 4): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "").split("-").filter(Boolean).slice(0, max).join("-") || "item";
 }
-export async function addItem(i: { project_id: string; section: string; title: string; id?: string; detail?: string; due?: string | null; owner?: string | null; critical?: boolean; refine?: string | null }, actor = "founder"): Promise<Item> {
+export async function addItem(i: { project_id: string; section: string; title: string; id?: string; detail?: string; due?: string | null; owner?: string | null; critical?: boolean; refine?: string | null; estimate_minutes?: number | null; priority?: number | null; refine_note?: string }, actor = "founder"): Promise<Item> {
   const [m] = await sql()`select coalesce(max(sort), 0) + 1 as s from items where project_id = ${i.project_id} and section = ${i.section}`;
   let id = i.id || slugify(i.title);
   const taken = await sql()`select id from items where project_id = ${i.project_id} and (id = ${id} or id like ${id + "-%"})`;
   if (taken.some((r) => r.id === id)) id = `${id}-${taken.length + 1}`;
-  const rows = await sql()`insert into items (project_id, id, section, title, detail, due, owner, critical, sort, refine)
-    values (${i.project_id}, ${id}, ${i.section}, ${i.title}, ${i.detail || ""}, ${i.due || null}, ${i.owner || null}, ${!!i.critical}, ${m.s}, ${i.refine || null})
+  const rows = await sql()`insert into items (project_id, id, section, title, detail, due, owner, critical, sort, refine, estimate_minutes, priority, refine_note)
+    values (${i.project_id}, ${id}, ${i.section}, ${i.title}, ${i.detail || ""}, ${i.due || null}, ${i.owner || null}, ${!!i.critical}, ${m.s}, ${i.refine || null},
+            ${i.estimate_minutes ?? null}, ${i.priority ?? null}, ${i.refine_note || ""})
     returning *`;
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${i.project_id}, ${id}, 'created', null, ${i.section}, ${actor})`;
   return normItem(rows[0]);
@@ -139,10 +140,11 @@ export async function addTodo(t: { date: string | null; title: string; kind?: st
 }
 
 /* ---------- messages ---------- */
-export async function getMessages(opts: { status?: string; limit?: number; since?: string; includeArchived?: boolean; review?: string } = {}): Promise<Message[]> {
+export async function getMessages(opts: { status?: string; limit?: number; since?: string; includeArchived?: boolean; review?: string; thread?: string } = {}): Promise<Message[]> {
   const lim = Math.min(opts.limit || 50, 200);
   let rows;
-  if (opts.review) rows = await sql()`select * from messages where review_id = ${opts.review} order by created_at limit ${lim}`;
+  if (opts.thread) rows = await sql()`select * from messages where id = ${opts.thread} or thread_id = ${opts.thread} order by created_at limit ${lim}`;
+  else if (opts.review) rows = await sql()`select * from messages where review_id = ${opts.review} order by created_at limit ${lim}`;
   else if (opts.status) rows = await sql()`select * from messages where status = ${opts.status} and not archived order by created_at limit ${lim}`;
   else if (opts.since) rows = await sql()`select * from messages where created_at >= ${opts.since} order by created_at limit ${lim}`;
   else rows = opts.includeArchived

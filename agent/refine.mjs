@@ -23,7 +23,7 @@ export async function refinePending(projects, log) {
 }
 
 /** Minutes already committed per day: open items due that day (estimate or a default) + timed calendar events. */
-function dailyLoad(items, events, skipKey) {
+export function dailyLoad(items, events, skipKey) {
   const load = {};
   for (const i of items) {
     if (!i.due || i.status === "done" || `${i.project_id}/${i.id}` === skipKey) continue;
@@ -38,7 +38,7 @@ function dailyLoad(items, events, skipKey) {
 }
 
 /** Nearest working day with room, searching back from `want` (not before today), then forward up to `limit`. */
-function fitDay(want, minutes, load, { today, limit, cap, workDays }) {
+export function fitDay(want, minutes, load, { today, limit, cap, workDays }) {
   const ok = (d) => workDays.includes(wd(d)) && (load[d] || 0) + minutes <= cap;
   if (ok(want)) return { date: want, moved: false };
   for (let d = addDays(want, -1); d >= today; d = addDays(d, -1)) if (ok(d)) return { date: d, moved: true };

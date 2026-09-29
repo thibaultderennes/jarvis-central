@@ -4,6 +4,13 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.4.0 — 2026-09-29
+- **Plan this project**: a button on every project page. Claude reviews the folder (code, docs, git history, PRD,
+  current checklist), writes a situation report (Strategy tab) and adds the missing checklist items, placed in order
+  on days with room before the next deadline. Summary in the inbox.
+- **Inbox replies**: every conversation has a Reply box (discuss or build); the worker reads the whole thread first.
+  Upgrade notes: redeploy (new `messages.thread_id` column).
+
 ## 0.3.0 — 2026-09-29
 - **Refine new items**: an item you add on a checklist is read by Claude within a minute: steps, section, owner,
   priority, estimate, and a due date before the milestone on a day that still has room (checked against every
