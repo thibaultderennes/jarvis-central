@@ -13,7 +13,7 @@ export type Item = {
   project_id: string; id: string; section: string; title: string; detail: string;
   status: "todo" | "doing" | "done"; due: string | null; owner: string | null; critical: boolean;
   sort: number; note: string; created_at: string; updated_at: string; done_at: string | null;
-  estimate_minutes: number | null; priority: number | null; refine: string | null; refine_note: string;
+  estimate_minutes: number | null; priority: number | null; refine: string | null; refine_note: string; refine_request: string;
 };
 export type Todo = {
   id: string; date: string | null; title: string; kind: "life" | "work"; project_id: string | null;
@@ -96,7 +96,7 @@ export async function addItem(i: { project_id: string; section: string; title: s
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${i.project_id}, ${id}, 'created', null, ${i.section}, ${actor})`;
   return normItem(rows[0]);
 }
-const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note"] as const;
+const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note", "refine_request"] as const;
 const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical"]);
 export async function updateItem(project_id: string, id: string, patch: Partial<Item>, actor = "founder"): Promise<Item | null> {
   const [cur] = (await sql()`select * from items where project_id = ${project_id} and id = ${id}`).map(normItem);

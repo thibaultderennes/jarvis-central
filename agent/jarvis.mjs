@@ -40,6 +40,7 @@ function itemLine(i) {
   const bits = [`[${i.id}]`, pad(i.status, 5), pad(i.due || "—", 10), pad(i.owner || "—", 7), i.critical ? "CRIT" : "    ", "—", i.title];
   let s = bits.join(" ");
   if (i.note) s += `\n      note: ${i.note.replace(/\n/g, " ")}`;
+  if (i.refine_request) s += `\n      comment for Claude (pending): ${i.refine_request.replace(/\n/g, " / ")}`;
   return s;
 }
 

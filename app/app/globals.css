@@ -182,6 +182,10 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 .row .dt { color: var(--ink-2); font-size: 13.5px; margin-top: 3px; max-width: 80ch; white-space: pre-line; }
 .row .dt.collapsed { max-height: 2.9em; overflow: hidden; }
 .more { border: 0; background: none; color: var(--ink-2); font-size: 12px; padding: 0; cursor: pointer; text-decoration: underline; margin-top: 2px; }
+.comment { margin-top: 8px; display: flex; flex-direction: column; gap: 6px; }
+.comment .addrow { border: 1px solid var(--line-2); border-radius: 8px; padding: 6px; }
+.comment .said { font-size: 13px; color: var(--ink-2); white-space: pre-line; max-width: 80ch; }
+.comment .said .lbl { margin-right: 4px; }
 .note { margin-top: 6px; display: flex; flex-direction: column; gap: 3px; }
 .rowside { display: flex; flex-direction: column; align-items: flex-end; gap: 6px; }
 .duein { border: 1px solid transparent; background: transparent; color: var(--ink-3); font-family: var(--mono); font-size: 11.5px; padding: 1px 2px; border-radius: 4px; width: 118px; }
