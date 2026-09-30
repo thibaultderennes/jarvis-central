@@ -11,6 +11,9 @@ import path from "node:path";
 import { api, qs, CONFIG, PROJECTS_ROOT, JARVIS_ROOT, OWNER, TZ, todayTZ, parseModelJSON, makeLog } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
 import { oneLiner } from "./advisors.mjs";
+import { DEFAULT_SECTIONS, parseMilestones, slugify } from "./structure.mjs";
+
+export { DEFAULT_SECTIONS, parseMilestones, slugify };
 
 const log = makeLog("projects");
 const argv = process.argv.slice(2);
@@ -19,14 +22,7 @@ const opt = (k) => { const i = argv.indexOf(`--${k}`); return i >= 0 ? argv[i + 
 const DRY = flag("dry-run");
 const TEMPLATES = path.join(JARVIS_ROOT, "templates");
 const COLORS = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"];
-export const DEFAULT_SECTIONS = [
-  { id: "decide", name: "Decide", note: "Only you can make these calls; write your answer in the note box", notes: true },
-  { id: "build", name: "Build", note: "Set to in progress = go for Claude. Nothing merges without you", owner_default: "claude" },
-  { id: "launch", name: "Launch", note: "Everything the next milestone needs besides code" },
-  { id: "later", name: "Later", note: "Parked on purpose" },
-];
 
-export const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return null; } };
 const git = (dir, ...args) => { try { return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).trim(); } catch { return null; } };
 
@@ -55,16 +51,6 @@ export function scanProjects() {
     .sort((a, b) => a.id.localeCompare(b.id));
 }
 
-/** `| 2026-11-02 | Public launch |` rows under a Milestones heading (or anywhere) → deadlines. */
-export function parseMilestones(prd) {
-  if (!prd) return [];
-  const out = [];
-  for (const line of prd.split("\n")) {
-    const m = line.match(/^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+?)\s*\|/);
-    if (m && !/\{\{/.test(m[2])) out.push({ date: m[1], label: m[2].replace(/\*\*/g, "").slice(0, 80) });
-  }
-  return out.sort((a, b) => a.date.localeCompare(b.date));
-}
 function taglineFor(p) {
   const fromClaude = oneLiner(p.dir);
   if (fromClaude && !/\{\{/.test(fromClaude) && !/^TODO/i.test(fromClaude)) return fromClaude.slice(0, 160);

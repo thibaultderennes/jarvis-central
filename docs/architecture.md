@@ -66,7 +66,9 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
   and opens the PR. Never merges, deploys, pays, emails, texts, or touches production data or secrets.
 - Anything outside that → status `needs_you` with a clear explanation.
 
-- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `plan` = "Plan this project";
+- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `plan` = "Plan this project", `agent/planproject.mjs`:
+  reads CLAUDE.md, PRD.md, `docs/audits/` and the checklist, adds items only to existing sections under new ids, due
+  before the PRD milestone they serve; `node agent/planproject.mjs <id> --dry-run` shows what it would read;
   `auto` = legacy), an optional `review_id` (discussion under a review) and `thread_id` (first message of an inbox
   conversation; `GET /api/agent/messages?thread=ID`). `worker.allow_build: false` disables build mode.
 

@@ -88,7 +88,8 @@ export async function addItem(i: { project_id: string; section: string; title: s
   const [m] = await sql()`select coalesce(max(sort), 0) + 1 as s from items where project_id = ${i.project_id} and section = ${i.section}`;
   let id = i.id || slugify(i.title);
   const taken = await sql()`select id from items where project_id = ${i.project_id} and (id = ${id} or id like ${id + "-%"})`;
-  if (taken.some((r) => r.id === id)) id = `${id}-${taken.length + 1}`;
+  const ids = new Set(taken.map((r) => r.id as string));
+  for (let n = 2, base = id; ids.has(id); n++) id = `${base}-${n}`; // never reuse an existing item id
   const rows = await sql()`insert into items (project_id, id, section, title, detail, due, owner, critical, sort, refine, estimate_minutes, priority, refine_note)
     values (${i.project_id}, ${id}, ${i.section}, ${i.title}, ${i.detail || ""}, ${i.due || null}, ${i.owner || null}, ${!!i.critical}, ${m.s}, ${i.refine || null},
             ${i.estimate_minutes ?? null}, ${i.priority ?? null}, ${i.refine_note || ""})

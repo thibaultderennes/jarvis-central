@@ -23,6 +23,15 @@ Setup creates whichever is missing (`node agent/projects.mjs scaffold`): Claude 
 files, docs, git log) and drafts both from `templates/`. Anything it can't infer is marked `TODO(owner):` for the
 owner to fill in — it never invents facts, numbers or dates. Existing files are never overwritten.
 
+What "Plan this project" expects, and adds checklist items to create when missing (it doesn't invent a roadmap
+without a PRD):
+- `PRD.md` **at the repo root** with a dated Milestones table: the plan dates items before the milestone they serve.
+- A `## How we work` section in `CLAUDE.md` (in `templates/CLAUDE.md`): the checklist on Jarvis is the source of
+  truth, the loop rule (an item in Claude's section set to in progress is the go; branch + PR; nothing merges on its
+  own), the 3-day audit, the PRD.
+- `docs/audits/PROMPTS.md` (from `templates/audits-PROMPTS.md`): the audit prompts run every 3 days, with each
+  report next to it.
+
 Optional per project:
 - `personas/ceo.md`, `personas/cmo.md`, `personas/po.md` — project-specific advisor prompts. Without them the
   Monday reviews use the tool's generic `personas/` and adapt them to the project.

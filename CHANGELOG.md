@@ -3,6 +3,14 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Plan this project** plans from the project's own structure: it reads CLAUDE.md, the root PRD.md, `docs/audits/`
+  and the checklist; places new items only in the project's existing sections and never reuses an item id (proposals
+  already on the checklist are listed, not added); dates each item before the PRD milestone it serves, defaulting to
+  the milestone date when no day has room; and keeps the dashboard's deadlines in step with the PRD. A project with
+  no PRD.md, no "How we work" section in CLAUDE.md or no `docs/audits/PROMPTS.md` gets decide/build items to create
+  them instead of an invented roadmap. `node agent/planproject.mjs <id> --dry-run` shows what a plan would read.
+- Templates: a "How we work" section in `templates/CLAUDE.md` and `templates/audits-PROMPTS.md` (the 3-day audit).
+- Adding an item whose id is taken no longer risks colliding with another existing id.
 
 ## 0.4.0 — 2026-09-29
 - **Plan this project**: a button on every project page. Claude reviews the folder (code, docs, git history, PRD,

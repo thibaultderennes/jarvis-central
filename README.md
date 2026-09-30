@@ -12,8 +12,10 @@ Point it at the folder that holds your projects and it gives you:
 - **Monday reviews**: a CEO, a CMO and a product-owner advisor review each active project (what shipped, what
   slipped, a security/quality audit, risks, your top 3), plus a recap of the week, a note on how you work with
   Claude, and a review of how you use Jarvis itself.
-- **Plan this project**: one button and Claude reviews a project folder, writes where it stands, and fills the
-  checklist with what has to happen next — dated on days that still have room.
+- **Plan this project**: one button and Claude reviews a project folder (CLAUDE.md, PRD.md, `docs/audits/`, code,
+  the checklist), writes where it stands, and fills the checklist's existing sections with what has to happen next,
+  dated on days that still have room before the PRD's milestones. A project missing its PRD, audit prompts or
+  "How we work" rules gets items to create them first.
 - **An inbox to Claude that works without a terminal**: leave a message on the site; a worker on your Mac answers
   it inside the right project, or builds it on a new branch and opens a pull request. Reply in the thread to keep going. It never merges or deploys.
 
