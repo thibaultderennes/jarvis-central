@@ -17,9 +17,12 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const { id } = await params, sp = await searchParams;
   const p = await D.getProject(id);
   if (!p) notFound();
-  const tab = sp.tab === "reviews" || sp.tab === "strategy" ? sp.tab : "checklist";
+  const tab = sp.tab && ["reviews", "strategy", "security"].includes(sp.tab) ? sp.tab : "checklist";
   const t = today();
-  const [items, weekly, docs] = await Promise.all([D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 })]);
+  const [items, weekly, docs, audits] = await Promise.all([
+    D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 }),
+    D.getReviews({ type: "security", project: id, limit: 100 }).then((l) => l.sort(D.newestFileFirst)),
+  ]);
   const dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
   const planning = (await D.getMessages({ limit: 50 })).some((m) => m.project_id === id && m.mode === "plan" && ["new", "seen", "working"].includes(m.status));
@@ -38,6 +41,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           <Link role="tab" className="chip" aria-pressed={tab === "checklist"} href={href({})}>Checklist</Link>
           <Link role="tab" className="chip" aria-pressed={tab === "reviews"} href={href({ tab: "reviews" })}>Weekly reviews {weekly.length > 0 && `(${weekly.length})`}</Link>
           <Link role="tab" className="chip" aria-pressed={tab === "strategy"} href={href({ tab: "strategy" })}>Strategy {docs.length > 0 && `(${docs.length})`}</Link>
+          <Link role="tab" className="chip" aria-pressed={tab === "security"} href={href({ tab: "security" })}>Security {audits.length > 0 && `(${audits.length})`}</Link>
           {p.links.map((l) => <a key={l.url} className="chip" href={l.url} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}
         </div>
       </div>
@@ -51,6 +55,9 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
 
       {tab === "strategy" && (docs.length ? <ReviewPicker list={docs} sel={sp.r} base={{ tab: "strategy" }} href={href} subtab={sp.t} />
         : <div className="panel empty">No strategy documents for {p.name} yet. Ask Claude for one from the Inbox (for example &ldquo;Run a CEO review of {p.name}&rdquo;) and it lands here.</div>)}
+
+      {tab === "security" && (audits.length ? <ReviewPicker list={audits} sel={sp.r} base={{ tab: "security" }} href={href} />
+        : <div className="panel empty">No audit reports yet. Markdown reports in the project folder&apos;s audits directory (<code>docs/audits</code> unless <code>audits.dir</code> says otherwise) appear here after the next sync, within an hour of landing.</div>)}
     </div>
   );
 }
@@ -60,13 +67,16 @@ async function ReviewPicker({ list, sel, base, href, subtab }: { list: D.Review[
   const thread = await D.getMessages({ review: r.id, limit: 100 });
   const tabs = (r.meta?.tabs as { key: string; label: string; body_md: string; verdict?: string; headline?: string }[] | undefined) || [];
   const cur = tabs.find((x) => x.key === subtab);
+  // Reviews mirrored from a file (security audits) carry the file's date and path.
+  const fileDate = (x: D.Review) => (typeof x.meta?.date === "string" && x.meta.date ? fmtDate(x.meta.date) : null);
+  const file = typeof r.meta?.file === "string" ? r.meta.file : null;
   return (
     <div className="grid-review" style={{ display: "grid", gridTemplateColumns: "minmax(0, 260px) minmax(0, 1fr)", gap: 12, alignItems: "start" }}>
       <nav className="panel revlist" aria-label="Reviews">
         {list.map((x) => (
           <Link key={x.id} href={href({ ...base, r: x.id })} className="revrow" aria-current={x.id === r.id ? "page" : undefined} style={x.id === r.id ? { background: "var(--surface-2)" } : undefined}>
             <i className="dot" />
-            <span className="t"><b>{x.week_start ? `Week of ${fmtDate(x.week_start)}` : x.title}</b><span>{x.headline}</span></span>
+            <span className="t"><b>{x.week_start ? `Week of ${fmtDate(x.week_start)}` : x.title}</b><span>{[fileDate(x), x.headline].filter(Boolean).join(" · ")}</span></span>
             {x.verdict ? <span className={`verdict v-${x.verdict}`}>{x.verdict.replace("-", " ")}</span> : <span />}
           </Link>
         ))}
@@ -75,6 +85,7 @@ async function ReviewPicker({ list, sel, base, href, subtab }: { list: D.Review[
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           {r.verdict && <span className={`verdict v-${r.verdict}`}>{r.verdict.replace("-", " ")}</span>}
           <span className="lbl">{r.title}</span>
+          {file && <span className="hint">{fileDate(r) ? `${fileDate(r)} · ` : ""}{file}</span>}
         </div>
         {r.headline && <p style={{ fontSize: 17, fontWeight: 600, margin: "10px 0 4px", maxWidth: "70ch" }}>{r.headline}</p>}
         {tabs.length > 0 && (

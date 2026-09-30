@@ -9,7 +9,10 @@
    - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar.
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.
-   - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists and answer the inbox.
+   - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
+     to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
+     (`audits.sync_minutes`); `node agent/audits.mjs sync [--project id] [--dry-run]` runs it by hand.
+   - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
 Timezone: every date-like value uses `config.timezone` (env `JARVIS_TZ` on the website). Dates are `YYYY-MM-DD`.
@@ -32,9 +35,15 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool)`
   - status flow: `new` → `seen` (worker picked it) → `working` → `answered` | `done` | `needs_you` | `error`
   - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'}`
-- `reviews(id uuid, type 'project'|'recap'|'coaching'|'doc', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at)`
+- `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at)`
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - `doc` = long-lived documents (strategy reviews). `meta.tabs` may hold `[{key, label, body_md}]`.
+  - `security` = one audit report file, mirrored by `agent/audits.mjs`; `week_start` is null and
+    `meta = {kind: 'security-audit', file /* path relative to the project folder */, date /* from the file name */, sha /* sha256 of the file */, counts: {critical, high, medium, low} | null}`.
+    Unique `(type, coalesce(project_id,''), meta->>'file')` whenever `meta.file` is set → a re-sync updates the row.
+    `title` = the file's first H1 (else the file name); `headline` = its "N critical, N high, N low" line (or those
+    counts from its CRITICAL/HIGH/… sections) plus the first item of a "Ranked"/"Fix order" section; `verdict` =
+    off-track (critical > 0), at-risk (high > 0), on-track, or null when the counts can't be read.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `weekly.heartbeat`.
 - `login_attempts(ip, at, ok)`.
 
@@ -55,7 +64,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/messages` | `?status=new&limit=5` (oldest first) or `?since=ISO` | `[{message}]` |
 | PATCH | `/api/agent/messages` | `{id, status?, reply?, meta?}` (meta merged; reply sets replied_at) | `{message}` |
 | GET | `/api/agent/reviews` | `?type=&project=&limit=` newest first | `[{review}]` |
-| POST | `/api/agent/reviews` | `{type, project_id?, week_start?, title, verdict?, headline?, body_md, meta?}` upsert | `{review}` |
+| POST | `/api/agent/reviews` | `{type, project_id?, week_start?, title, verdict?, headline?, body_md, meta?}` upsert (key: `week_start` for weekly types, else `meta.file` when set, else `id`, else insert) | `{review}` |
 | POST | `/api/agent/heartbeat` | `{worker: 'worker'|'weekly', info?}` | `{ok}` |
 | POST | `/api/agent/import` | `{projects?:[], items?:[], reviews?:[]}` bulk upsert (migration) | `{counts}` |
 | GET | `/api/agent/calendar` | `?from=DATE&to=DATE` | `[{start, end, allDay, title, location}]` |
