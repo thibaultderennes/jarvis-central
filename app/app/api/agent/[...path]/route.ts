@@ -21,15 +21,24 @@ async function handle(req: NextRequest, ctx: Ctx) {
     case "GET projects": return J(await D.getProjects(sp.get("all") === "1"));
     case "PUT projects": if (!b.id) return bad("id required"); return J({ project: await D.upsertProject(b as D.Project) });
 
-    case "GET items": return J(await D.getItems({ project: sp.get("project") || undefined, open: sp.get("open") === "1", refine: sp.get("refine") || undefined }));
+    case "GET items": return J(await D.getItems({ project: sp.get("project") || undefined, open: sp.get("open") === "1", refine: sp.get("refine") || undefined, build: sp.get("build") || undefined }));
     case "POST items": {
       if (!b.project_id || !b.section || !b.title) return bad("project_id, section and title are required");
       if (b.due && !isDate(b.due)) return bad("due must be YYYY-MM-DD");
-      return J({ item: await D.addItem(b as never, "agent") }, 201);
+      try { return J({ item: await D.addItem(b as never, "agent") }, 201); }
+      catch (e) { if (e instanceof D.DuplicateError) return J({ error: e.message, duplicate: e.item }, 409); throw e; }
+    }
+    case "GET duplicates": {
+      // Exact duplicates (same normalised title) within each project, oldest first; cancelled items excluded.
+      const items = (await D.getItems({ project: sp.get("project") || undefined })).filter((i) => i.status !== "cancelled");
+      const groups = new Map<string, D.Item[]>();
+      for (const i of items) { const k = `${i.project_id}\u0000${D.normTitle(i.title)}`; if (!groups.has(k)) groups.set(k, []); groups.get(k)!.push(i); }
+      return J([...groups.values()].filter((g) => g.length > 1).map((g) => g.sort((a, b) => a.created_at.localeCompare(b.created_at))));
     }
     case "PATCH items": {
       if (!b.project_id || !b.id) return bad("project_id and id are required");
-      if (b.status && !["todo", "doing", "done"].includes(b.status)) return bad("status must be todo, doing or done");
+      if (b.status && !["todo", "doing", "done", "cancelled"].includes(b.status)) return bad("status must be todo, doing, done or cancelled");
+      if (b.build_status !== undefined && b.build_status !== null && !["working", "pr_open", "merge_requested", "merged", "failed", "sent_back"].includes(b.build_status)) return bad("bad build_status");
       if (b.due && !isDate(b.due)) return bad("due must be YYYY-MM-DD");
       const { project_id, id, ...patch } = b;
       const it = await D.updateItem(project_id, id, patch, "agent");
@@ -55,18 +64,32 @@ async function handle(req: NextRequest, ctx: Ctx) {
 
     case "GET messages": return J(await D.getMessages({ thread: sp.get("thread") || undefined, review: sp.get("review") || undefined, status: sp.get("status") || undefined, limit: +(sp.get("limit") || (sp.get("since") ? 200 : 20)), since: sp.get("since") || undefined, includeArchived: true }));
     case "POST messages": {
-      // The agent can leave a note in the inbox (e.g. "I refined your new item"), already answered.
+      // The agent can leave a note in the inbox (e.g. "I refined your new item"), already answered — or queue work for
+      // the worker (status 'new', mode 'build', item_id): the build run of an in-progress item.
       if (!b.text) return bad("text required");
-      const { sql } = await import("@/lib/db");
-      const [m] = await sql()`insert into messages (text, project_id, status, reply, meta, mode, replied_at)
-        values (${String(b.text).slice(0, 2000)}, ${b.project_id || null}, ${b.status || "answered"}, ${String(b.reply || "").slice(0, 8000)}, ${JSON.stringify(b.meta || {})}, 'discuss', now()) returning id`;
-      return J({ message: m }, 201);
+      if (b.status && !["new", "answered", "done", "needs_you"].includes(b.status)) return bad("bad status");
+      return J({ message: await D.insertMessage({ text: String(b.text), project_id: b.project_id, status: b.status, reply: b.reply, meta: b.meta, mode: b.mode, item_id: b.item_id, thread_id: b.thread_id }) }, 201);
     }
     case "PATCH messages": {
       if (!b.id) return bad("id required");
       const msg = await D.patchMessage(b.id, b);
       return msg ? J({ message: msg }) : bad("No such message", 404);
     }
+    case "GET stats": return J(await D.dailyStats(Math.min(90, Math.max(1, +(sp.get("days") || 14)))));
+
+    case "GET costs": return J(await D.getCosts({ project: sp.has("project") ? sp.get("project") || null : undefined, all: sp.get("all") === "1" }));
+    case "POST costs": {
+      if (!b.name || b.amount === undefined) return bad("name and amount are required");
+      if (b.next_renewal && !isDate(b.next_renewal)) return bad("next_renewal must be YYYY-MM-DD");
+      return J({ cost: await D.addCost(b as never) }, 201);
+    }
+    case "PATCH costs": {
+      if (!b.id) return bad("id required");
+      if (b.next_renewal && !isDate(b.next_renewal)) return bad("next_renewal must be YYYY-MM-DD");
+      const c = await D.updateCost(b.id, b);
+      return c ? J({ cost: c }) : bad("No such cost", 404);
+    }
+    case "DELETE costs": { const id = sp.get("id"); if (!id) return bad("id required"); await D.deleteCost(id); return J({ ok: true }); }
 
     case "GET reviews": if (sp.get("id")) { const r = await D.getReview(sp.get("id")!); return r ? J([r]) : J([]); }
       return J(await D.getReviews({ type: sp.get("type") || undefined, project: sp.get("project") || undefined, limit: +(sp.get("limit") || 20), week: sp.get("week") || undefined }));

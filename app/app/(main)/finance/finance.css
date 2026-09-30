@@ -1,0 +1,49 @@
+/* Finance: recurring costs (the /finance page and each project's Finance tab). Only what globals.css doesn't cover. */
+.costs { display: flex; flex-direction: column; gap: 12px; }
+.cost-tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+.ctile { padding: 12px 14px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.ctile .v { font-family: var(--mono); font-size: 20px; font-weight: 600; font-variant-numeric: tabular-nums; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ctile .s { font-size: 12px; color: var(--ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 720px) { .cost-tiles { grid-template-columns: 1fr; } }
+
+.renewals { display: flex; flex-direction: column; }
+.renew { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line-2); font-size: 13.5px; }
+.renew:first-child { border-top: 0; }
+.renew .t { display: flex; flex-direction: column; min-width: 0; }
+.renew .t b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.renew .t small { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.cost-table { display: flex; flex-direction: column; }
+.crow-h, .crow-c { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr) auto auto auto auto; gap: 12px; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line-2); }
+.crow-h { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); border-top: 0; }
+.crow-c { width: 100%; text-align: left; background: none; border-left: 0; border-right: 0; border-bottom: 0; cursor: pointer; font-size: 13.5px; color: inherit; }
+.crow-c:hover { background: var(--surface-2); }
+.crow-c.inactive { color: var(--ink-3); }
+.crow-c.inactive .n b { text-decoration: line-through; }
+.crow-c .n { display: flex; flex-direction: column; min-width: 0; }
+.crow-c .n b { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow-c .n small { font-size: 12px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.crow-c .p { display: flex; gap: 7px; align-items: center; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; color: var(--ink-2); }
+.crow-c .mono { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.crow-c .mono small { color: var(--ink-3); font-size: 10.5px; }
+.cost-table .r { text-align: right; }
+
+.crow-e { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding: 8px 14px; border-top: 1px solid var(--line-2); background: var(--surface-2); }
+.crow-e .input:first-child { flex: 1 1 160px; }
+.crow-e .amt { display: flex; gap: 6px; align-items: center; }
+.crow-e .amt input[type="number"] { width: 96px; }
+.crow-e .notes, .cost-add .notes { flex: 1 1 140px; }
+.crow-e .acts { display: flex; gap: 6px; flex-wrap: wrap; margin-left: auto; }
+.cur { width: 58px; text-transform: uppercase; font-family: var(--mono); }
+.btn.danger { color: var(--bad); border-color: var(--bad); }
+
+.cost-add { align-items: center; }
+.cost-add .input:first-child { flex: 1 1 200px; }
+
+@media (max-width: 760px) {
+  .crow-h { display: none; }
+  .crow-c { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "n amt" "p m" "due pill"; row-gap: 3px; }
+  .crow-c .n { grid-area: n; } .crow-c .p { grid-area: p; }
+  .crow-c .mono:nth-child(3) { grid-area: amt; } .crow-c .mono:nth-child(4) { grid-area: m; }
+  .crow-c .due { grid-area: due; text-align: left; } .crow-c .pill { grid-area: pill; justify-self: end; }
+}

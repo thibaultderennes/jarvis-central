@@ -110,10 +110,14 @@ async function scaffold() {
 }
 
 /* ---------------- sync ---------------- */
-async function sync() {
+/**
+ * Register / update every project folder on the dashboard. Never deletes: a project whose folder is gone is archived.
+ * Returns the ids it upserted, the ones that weren't registered before (`added`) and the ones it archived.
+ */
+export async function syncProjects({ dry = false, print = console.log } = {}) {
   const ps = scanProjects();
   let existing = [];
-  try { existing = await api("GET", "/api/agent/projects?all=1"); } catch (e) { if (!DRY) throw e; console.log(`(dry run: API unavailable — ${e.message})`); }
+  try { existing = await api("GET", "/api/agent/projects?all=1"); } catch (e) { if (!dry) throw e; print(`(dry run: API unavailable — ${e.message})`); }
   const byId = Object.fromEntries(existing.map((p) => [p.id, p]));
   const used = new Set(existing.filter((p) => !p.archived).map((p) => p.color));
   const nextColor = () => { const c = COLORS.find((x) => !used.has(x)) || COLORS[used.size % COLORS.length]; used.add(c); return c; };
@@ -136,15 +140,18 @@ async function sync() {
     return body;
   });
   const gone = existing.filter((e) => !e.archived && e.dir && path.resolve(e.dir).startsWith(path.resolve(PROJECTS_ROOT) + path.sep) && !ps.some((p) => p.id === e.id));
-  if (DRY) {
-    console.log(JSON.stringify({ upsert: payloads, archive: gone.map((g) => g.id) }, null, 2));
-    return;
+  const added = payloads.filter((b) => !byId[b.id]).map((b) => b.id);
+  if (dry) {
+    print(JSON.stringify({ upsert: payloads, archive: gone.map((g) => g.id) }, null, 2));
+    return { upserted: [], added, archived: [] };
   }
-  for (const b of payloads) { await api("PUT", "/api/agent/projects", b); console.log(`✓ ${b.id} (${b.kind}, ${b.color}${b.deadlines.length ? `, ${b.deadlines.length} deadline(s)` : ""})`); }
-  for (const g of gone) { await api("PUT", "/api/agent/projects", { id: g.id, name: g.name, archived: true }); console.log(`archived ${g.id} (folder gone)`); }
+  for (const b of payloads) { await api("PUT", "/api/agent/projects", b); print(`✓ ${b.id} (${b.kind}, ${b.color}${b.deadlines.length ? `, ${b.deadlines.length} deadline(s)` : ""})${byId[b.id] ? "" : "  new"}`); }
+  for (const g of gone) { await api("PUT", "/api/agent/projects", { id: g.id, name: g.name, archived: true }); print(`archived ${g.id} (folder gone)`); }
   const noPrd = ps.filter((p) => !p.hasPrd).map((p) => p.id);
-  if (noPrd.length) console.log(`\nNo PRD.md yet: ${noPrd.join(", ")}. Their deadlines on the site are unchanged; add a PRD with a milestones table to manage them from the file (node agent/projects.mjs scaffold).`);
+  if (noPrd.length) print(`\nNo PRD.md yet: ${noPrd.join(", ")}. Their deadlines on the site are unchanged; add a PRD with a milestones table to manage them from the file (node agent/projects.mjs scaffold).`);
+  return { upserted: payloads.map((b) => b.id), added, archived: gone.map((g) => g.id) };
 }
+const sync = () => syncProjects({ dry: DRY });
 
 /* ---------------- first checklist ---------------- */
 async function checklist() {

@@ -8,6 +8,7 @@ import { HBars } from "@/components/Charts";
 import { getPlan } from "@/lib/plan";
 import { cap, PLAN_WHEN } from "@/lib/instance";
 import { TZ } from "@/lib/time";
+import "../today/board.css";
 
 export default async function WeekPage({ searchParams }: { searchParams: Promise<{ w?: string }> }) {
   await requireSession();
@@ -25,7 +26,7 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
       <div className="hello">
         <div>
           <h1 className="page">Week of {fmtDate(w, { month: "long", day: "numeric" })}</h1>
-          <p className="sub">Drag todos between days. Checklist due dates and calendar events show on their day.</p>
+          <p className="sub">Overdue work first, then the week: each day shows its appointments, what&apos;s due (critical first) and your todos, with the load against a day of focus. Drag todos between days.</p>
         </div>
         <nav className="daynav" aria-label="Change week">
           <Link href={`/week?w=${addDays(w, -7)}`}>‹ Previous</Link>

@@ -1,0 +1,16 @@
+/* Admin page */
+.admin { display: flex; flex-direction: column; gap: 14px; }
+.rescan { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 14px; }
+.rescan .mst { font-family: var(--mono); font-size: 12px; }
+.admin table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.admin th, .admin td { padding: 7px 14px; border-top: 1px solid var(--line-2); text-align: left; vertical-align: top; }
+.admin th { font-family: var(--mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--ink-3); font-weight: 400; border-top: 0; }
+.admin td.dir { font-family: var(--mono); font-size: 11.5px; color: var(--ink-3); overflow-wrap: anywhere; }
+.admin td a { text-decoration: none; font-weight: 600; display: flex; gap: 7px; align-items: center; }
+.admin .archived td { color: var(--ink-3); }
+.kv { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 6px 16px; padding: 12px 14px; font-size: 13.5px; }
+.kv dt { color: var(--ink-3); font-family: var(--mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; padding-top: 3px; }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.kv dd small { display: block; color: var(--ink-3); font-size: 12px; }
+@media (max-width: 560px) { .kv { grid-template-columns: 1fr; gap: 2px 0; } .kv dd { margin-bottom: 8px; } }
+.admin .note-line { padding: 0 14px 12px; font-size: 12.5px; color: var(--ink-3); }

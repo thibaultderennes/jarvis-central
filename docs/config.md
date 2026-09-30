@@ -17,7 +17,7 @@ re-run it and redeploy after changing those.
 | `planner.run` | Sunday 17:00 | When next week is planned and written to your calendars. |
 | `planner.work_days` | Mon–Fri | Days the planner fills first. |
 | `planner.hours` | 09:00–12:30, 13:30–18:00 | Working intervals per day. |
-| `planner.max_focus_minutes_per_day` | `360` | Cap on planned focus time per day. |
+| `planner.max_focus_minutes_per_day` | `360` | Cap on planned focus time per day. The site gets it as `JARVIS_FOCUS_MINUTES` (Today/Week load bars) from `setup.mjs secrets`. |
 | `planner.buffer_minutes` | `15` | Gap kept around appointments and between blocks. |
 | `planner.weekends` | `"overflow"` | `never`, `overflow` (only when the week doesn't fit) or `always`. |
 | `planner.project_caps.<id>` | — | Weekly minutes cap for a project (e.g. a side project). The "Hours per week" setting on the project's page overrides it. |

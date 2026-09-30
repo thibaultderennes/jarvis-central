@@ -157,3 +157,36 @@ create index if not exists messages_thread on messages (thread_id, created_at);
 alter table reviews drop constraint if exists reviews_type_check;
 alter table reviews add constraint reviews_type_check check (type in ('project','recap','coaching','jarvis','doc','security'));
 create unique index if not exists reviews_file_unique on reviews (type, coalesce(project_id, ''), (meta->>'file')) where meta->>'file' is not null;
+-- 0.5.0. Items can be cancelled (kept, but out of every open count) and point at the item they duplicated; a decision
+-- typed in the note box is sent to Claude explicitly (note_sent_at); an in-progress item owned by Claude is built by
+-- the worker (build_status: working → pr_open → merge_requested → merged | failed | sent_back, pr_url, build_note).
+-- The status check is widened in place (drop + add is the only way; every run ends in the same state).
+alter table items drop constraint if exists items_status_check;
+alter table items add constraint items_status_check check (status in ('todo','doing','done','cancelled'));
+alter table items add column if not exists cancel_reason text not null default '';
+alter table items add column if not exists duplicate_of text;
+alter table items add column if not exists note_sent_at timestamptz;
+alter table items add column if not exists build_status text;
+alter table items add column if not exists build_note text not null default '';
+alter table items add column if not exists pr_url text;
+alter table items add column if not exists build_updated_at timestamptz;
+create index if not exists items_build on items (build_status) where build_status is not null;
+-- Inbox: a reply the owner has opened is "pending" until they mark it treated. A message can be the build run of an item.
+alter table messages add column if not exists opened_at timestamptz;
+alter table messages add column if not exists treated_at timestamptz;
+alter table messages add column if not exists item_id text;
+-- Finance: recurring costs (subscriptions, domains, hosting, API spend), per project or independent (project_id null).
+create table if not exists recurring_costs (
+  id uuid primary key default gen_random_uuid(),
+  project_id text references projects(id) on delete set null,
+  name text not null,
+  amount numeric(12,2) not null default 0,
+  currency text not null default 'USD',
+  period text not null default 'month' check (period in ('week','month','year')),
+  next_renewal date,
+  notes text not null default '',
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+create index if not exists recurring_costs_project on recurring_costs (project_id);

@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { boardData } from "@/lib/board";
 import { addDays, fmtDate, isDate, today } from "@/lib/time";
 import Board from "@/components/Board";
+import "./board.css";
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   await requireSession();
@@ -14,7 +15,7 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
       <div className="hello">
         <div>
           <h1 className="page">{d === t ? "Today" : fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}</h1>
-          <p className="sub">Your calendar, your list for the day (work and personal together), and the backlog to pull from. Ticking a work todo also ticks its checklist item.</p>
+          <p className="sub">Decide what happens to anything overdue or due today, then work the list: ticking a work todo also ticks its checklist item. The load line shows how much is left against a day of focus.</p>
         </div>
         <nav className="daynav" aria-label="Change day">
           <Link href={`/today?d=${addDays(d, -1)}`}>‹ {fmtDate(addDays(d, -1), { weekday: "short" })}</Link>

@@ -10,7 +10,8 @@ const diff = (a: string, b: string) => Math.round((+new Date(b + "T12:00:00Z") -
 export function BurnUp({ p, today }: { p: Insight; today: string }) {
   const ref = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<number | null>(null);
-  const W = 360, H = 170, L = 26, R = 12, T = 14, B = 22;
+  // T leaves a band above the plot for the deadline label so it never sits on the "N total" label.
+  const W = 360, H = 176, L = 26, R = 12, T = 22, B = 22;
   const end = [p.deadline?.date, p.projected && diff(today, p.projected) <= 70 ? p.projected : null, addDays(today, 14)].filter(Boolean).sort().pop()!;
   // Keep at least two weeks of axis behind today, even while the history is short.
   const x0 = [p.days[0], addDays(today, -13)].sort()[0], span = Math.max(1, diff(x0, end));
@@ -22,7 +23,20 @@ export function BurnUp({ p, today }: { p: Insight; today: string }) {
   const projEnd = p.projected && p.projected <= end ? p.projected : end;
   const projVal = p.ratePerWeek > 0 ? Math.min(scopeNow, doneNow + (p.ratePerWeek / 7) * diff(today, projEnd)) : doneNow;
   const late = p.deadline && (!p.projected || p.projected > p.deadline.date);
-  const ticks = [x0, today, end].filter((v, i, a) => a.indexOf(v) === i);
+  // Axis ticks: drop a date that would run into "today" when the axis is long (a far deadline).
+  const ticks = [x0, today, end].filter((v, i, a) => a.indexOf(v) === i && (v === today || Math.abs(x(v) - x(today)) > 64));
+  // Value labels sit right of today's point, or left of it when today is near the right edge.
+  const allDone = doneNow >= scopeNow;
+  // "N done" goes under the point, unless the point is so low it would collide with the axis dates.
+  const doneY = y(doneNow) > H - B - 18 ? y(doneNow) - 7 : y(doneNow) + 13;
+  const dl = p.deadline && p.deadline.date <= end ? p.deadline : null;
+  const dlLabel = dl ? (dl.label.length > 22 ? dl.label.slice(0, 21) + "…" : dl.label) : "";
+  const dlLeft = dl ? x(dl.date) - L > dlLabel.length * 6.2 + 8 : false; // label fits on the left of its line
+  // Value labels sit right of today's point; they move to its left when today is near the right edge, or when the
+  // deadline line is just to the right and there is room on the left.
+  const gapToDl = dl ? x(dl.date) - x(today) : Infinity;
+  const flip = x(today) > W - R - 70 || (gapToDl > 2 && gapToDl < 64 && x(today) - L > 64);
+  const lx = x(today) + (flip ? -7 : 7), anchor = flip ? "end" : "start";
   const onMove = (e: React.MouseEvent) => {
     const box = ref.current!.getBoundingClientRect(), px = ((e.clientX - box.left) / box.width) * W;
     const i = Math.round(((px - L) / (W - L - R)) * span);
@@ -31,7 +45,7 @@ export function BurnUp({ p, today }: { p: Insight; today: string }) {
   return (
     <section className="panel burn" data-c={p.color}>
       <div className="ph">
-        <i className="dot" /><h2 className="ph-t">{p.name}</h2><span className="sp" />
+        <h2 className="ph-t" title={p.name}><i className="dot" /><span>{p.name}</span></h2><span className="sp" />
         <span className={`v ${late ? "bad" : "ok"}`}>
           {!p.projected ? "Nothing finished yet" : late ? `At this pace: ${fmt(p.projected)} · due ${fmt(p.deadline!.date)}` : `On pace: done by ${fmt(p.projected)}`}
         </span>
@@ -40,9 +54,9 @@ export function BurnUp({ p, today }: { p: Insight; today: string }) {
         <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${p.name}: ${doneNow} of ${scopeNow} items done`}>
           <g className="grid">{[0, 0.5, 1].map((f) => <line key={f} x1={L} x2={W - R} y1={y(max * f / 1.1)} y2={y(max * f / 1.1)} />)}</g>
           <g className="axis">{[0, 0.5, 1].map((f) => <text key={f} x={L - 5} y={y(max * f / 1.1) + 3.5} textAnchor="end">{Math.round(max * f / 1.1)}</text>)}</g>
-          {p.deadline && p.deadline.date <= end && (
-            <g><line x1={x(p.deadline.date)} x2={x(p.deadline.date)} y1={T} y2={H - B} stroke="var(--ink-2)" strokeWidth={1} />
-              <text x={x(p.deadline.date) - 4} y={T + 8} textAnchor="end" style={{ fill: "var(--ink-2)" }}>{p.deadline.label}</text></g>
+          {dl && (
+            <g><line x1={x(dl.date)} x2={x(dl.date)} y1={T - 4} y2={H - B} stroke="var(--ink-2)" strokeWidth={1} />
+              <text x={x(dl.date) + (dlLeft ? -4 : 4)} y={T - 8} textAnchor={dlLeft ? "end" : "start"} style={{ fill: "var(--ink-2)" }}>{dlLabel}</text></g>
           )}
           <path d={`${line(p.done)} L${x(today)},${y(0)} L${x(p.days[0])},${y(0)} Z`} style={{ fill: "var(--pc)", opacity: 0.1 }} />
           <path d={line(p.scope)} fill="none" stroke="var(--ink-3)" strokeWidth={2} strokeLinejoin="round" />
@@ -50,8 +64,8 @@ export function BurnUp({ p, today }: { p: Insight; today: string }) {
           <path d={line(p.done)} fill="none" style={{ stroke: "var(--pc)" }} strokeWidth={2} strokeLinejoin="round" strokeLinecap="round" />
           <line x1={x(today)} y1={y(doneNow)} x2={x(projEnd)} y2={y(projVal)} style={{ stroke: "var(--pc)" }} strokeWidth={2} strokeDasharray="4 4" strokeLinecap="round" />
           <circle cx={x(today)} cy={y(doneNow)} r={4} style={{ fill: "var(--pc)" }} stroke="var(--surface)" strokeWidth={2} />
-          <text x={x(today) + 6} y={y(doneNow) + 12} style={{ fill: "var(--ink)" }}>{doneNow} done</text>
-          <text x={x(today) + 6} y={y(scopeNow) - 5} style={{ fill: "var(--ink-2)" }}>{scopeNow} total</text>
+          <text x={lx} y={doneY} textAnchor={anchor} style={{ fill: "var(--ink)" }}>{doneNow} done{allDone && scopeNow > 0 ? " · all" : ""}</text>
+          {!allDone && <text x={lx} y={y(scopeNow) - 5} textAnchor={anchor} style={{ fill: "var(--ink-2)" }}>{scopeNow} total</text>}
           {hover !== null && <line x1={x(p.days[hover])} x2={x(p.days[hover])} y1={T} y2={H - B} stroke="var(--ink-3)" strokeWidth={1} />}
           <line className="base" x1={L} x2={W - R} y1={y(0)} y2={y(0)} />
           {ticks.map((d) => <text key={d} x={x(d)} y={H - 6} textAnchor={d === x0 ? "start" : d === end ? "end" : "middle"} style={d === today ? { fill: "var(--ink)", fontWeight: 600 } : undefined}>{d === today ? "today" : fmt(d)}</text>)}

@@ -39,17 +39,18 @@ async function projectBundle(p, W, turnsAll, sessions, events) {
   const items = await get("/api/agent/items" + qs({ project: p.id }), []);
   const ev = events.filter((e) => e.project_id === p.id);
   const doneWeek = items.filter((i) => inWeek(i.done_at, W.start, W.end));
-  const overdue = items.filter((i) => i.status !== "done" && i.due && i.due < W.endDate);
+  const isOpen = (i) => i.status === "todo" || i.status === "doing";
+  const overdue = items.filter((i) => isOpen(i) && i.due && i.due < W.endDate);
   const slips = ev.filter((e) => e.field === "due" && e.old && (!e.new || e.new > e.old));
   L.push(`# ${p.name} (${p.id}) — week ${W.startDate} to ${W.lastDate}`, "");
   L.push("## Project", "```json", JSON.stringify({ ...p, items: undefined }, null, 1), "```", "");
   if (items.length) {
-    L.push(`## Checklist: ${items.length} items, ${items.filter((i) => i.status === "done").length} done, ${items.filter((i) => i.status === "doing").length} in progress`, "");
+    L.push(`## Checklist: ${items.length} items, ${items.filter((i) => i.status === "done").length} done, ${items.filter((i) => i.status === "doing").length} in progress${items.some((i) => i.status === "cancelled") ? `, ${items.filter((i) => i.status === "cancelled").length} cancelled` : ""}`, "");
     L.push(`### Done this week (${doneWeek.length})`, ...doneWeek.map((i) => `- [${i.id}] ${i.title} (${i.section}, done ${i.done_at.slice(0, 10)})`), "");
     L.push(`### Overdue at end of week (${overdue.length})`, ...overdue.map((i) => `- [${i.id}] ${i.title} | due ${i.due} | ${i.status} | ${i.owner || "—"}${i.critical ? " | critical" : ""}`), "");
     L.push(`### Due-date moves later (slips) this week (${slips.length})`, ...slips.map((e) => `- [${e.item_id}] ${e.old} → ${e.new || "no date"} (${e.actor}, ${e.at.slice(0, 10)})`), "");
     L.push(`### All changes this week (${ev.length})`, ...ev.slice(0, 150).map((e) => `- ${e.at.slice(0, 16)} [${e.item_id}] ${e.field}: ${trunc(String(e.old ?? ""), 60)} → ${trunc(String(e.new ?? ""), 60)} (${e.actor})`), "");
-    const open = items.filter((i) => i.status !== "done").sort((a, b) => (a.due || "9").localeCompare(b.due || "9"));
+    const open = items.filter(isOpen).sort((a, b) => (a.due || "9").localeCompare(b.due || "9"));
     L.push(`### Open items (${open.length})`, ...open.map((i) => `- [${i.id}] ${i.title} | ${i.section} | ${i.status} | due ${i.due || "—"} | ${i.owner || "—"}${i.critical ? " | critical" : ""}${i.note ? ` | founder note: ${trunc(i.note.replace(/\n/g, " "), 300)}` : ""}`), "");
   }
   let commits = [], prs = [], audit = null;

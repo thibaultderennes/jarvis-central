@@ -7,13 +7,14 @@ import { cap, OWNER, REVIEW_WHEN } from "@/lib/instance";
 import { HBars, StackedColumns, type Series } from "@/components/Charts";
 import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
 import ProjectsBoard, { type Card } from "@/components/ProjectsBoard";
+import DailyStats from "@/components/DailyStats";
 
 export default async function Overview() {
   await requireSession();
   const t = today(), wk = mondayOf(t);
-  const [projects, items, done8, ahead6, ins, todos, cal, reviews, msgs] = await Promise.all([
+  const [projects, items, done8, ahead6, ins, todos, cal, reviews, msgs, stats] = await Promise.all([
     D.getProjects(), D.getItems(), D.doneByWeek(4), D.openByDueWeek(4), D.insights(),
-    D.getTodos(t, t), getEvents(t, t), D.getReviews({ limit: 40 }), D.getMessages({ limit: 100 }),
+    D.getTodos(t, t), getEvents(t, t), D.getReviews({ limit: 40 }), D.getMessages({ limit: 100 }), D.dailyStats(14),
   ]);
   // The top 3 get their own colour in every chart; everything else is grouped as "Other projects".
   const { featured: active, others } = D.splitFeatured(projects);
@@ -34,21 +35,22 @@ export default async function Overview() {
     .map((r) => ({ key: r.project_id || r.id, label: byId[r.project_id || ""]?.name || r.title, color: topIds.has(r.project_id || "") ? byId[r.project_id || ""]?.color : "other", v: Number(r.meta?.active_minutes) || 0 }))
     .filter((r) => r.v > 0).sort((a, b) => b.v - a.v);
 
-  const open = items.filter((i) => i.status !== "done");
+  const open = items.filter(D.isOpen);
   const overdue = open.filter((i) => i.due && i.due < t);
   const dueToday = open.filter((i) => i.due === t);
   const nextEv = cal.events.filter((e) => !e.allDay && (e.endTime || "99") >= new Date().toLocaleTimeString("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }));
   const waiting = msgs.filter((m) => ["new", "seen", "working"].includes(m.status)).length;
-  const needs = msgs.filter((m) => m.status === "needs_you" && !m.archived).length;
+  const needs = msgs.filter((m) => m.status === "needs_you" && !m.archived && !m.treated_at).length;
+  const pending = msgs.filter((m) => D.inboxGroup(m) === "pending").length;
 
   const card = (p: D.Project): Card => {
-    const its = items.filter((i) => i.project_id === p.id);
+    const its = items.filter((i) => i.project_id === p.id && i.status !== "cancelled");
     const nd = p.deadlines.filter((d) => d.date >= t).sort((x, y) => x.date.localeCompare(y.date))[0];
     return {
       id: p.id, name: p.name, color: topIds.has(p.id) ? p.color : "other", tagline: p.tagline, kind: p.kind, state: p.state, status: p.status,
       done: its.filter((i) => i.status === "done").length, doing: its.filter((i) => i.status === "doing").length,
-      late: its.filter((i) => i.status !== "done" && i.due && i.due < t).length, total: its.length,
-      next: its.filter((i) => i.status !== "done" && i.due).sort((x, y) => Number(y.status === "doing") - Number(x.status === "doing") || x.due!.localeCompare(y.due!)).slice(0, 3).map((i) => ({ id: i.id, title: i.title, due: i.due! })),
+      late: its.filter((i) => D.isOpen(i) && i.due && i.due < t).length, total: its.length,
+      next: its.filter((i) => D.isOpen(i) && i.due).sort((x, y) => Number(y.status === "doing") - Number(x.status === "doing") || x.due!.localeCompare(y.due!)).slice(0, 3).map((i) => ({ id: i.id, title: i.title, due: i.due! })),
       verdict: reviews.find((r) => r.type === "project" && r.project_id === p.id)?.verdict || null,
       deadline: nd ? { ...nd, days: daysBetween(t, nd.date) } : null,
       plan_enabled: p.plan_enabled !== false, weekly_minutes: p.weekly_minutes ?? null, reviews_enabled: p.reviews_enabled !== false,
@@ -122,7 +124,7 @@ export default async function Overview() {
         <Link className="gl" href="/inbox">
           <span className="lbl">Messages</span>
           <span className="v">{waiting}</span>
-          <span className="s">{needs ? `${needs} need you` : waiting ? "with Claude" : "Nothing waiting"}</span>
+          <span className="s">{needs ? `${needs} need you` : pending ? `${pending} pending on you` : waiting ? "with Claude" : "Nothing waiting"}</span>
         </Link>
         <Link className="gl" href="/reviews">
           <span className="lbl">Latest review</span>
@@ -157,6 +159,10 @@ export default async function Overview() {
           <div className="pb" style={{ paddingBottom: 4 }}>
             <StackedColumns xs={weeks8} xLabels={weeks8.map((w) => fmtDate(w))} series={series} values={doneVals} unit="Items done" highlight={3} />
           </div>
+        </section>
+        <section className="panel">
+          <div className="ph"><h2 className="ph-t">Added and finished per day</h2><span className="sp" /><span className="hint">Last 14 days, all projects · finished after their due date in red</span></div>
+          <DailyStats stats={stats} today={t} />
         </section>
         <section className="panel">
           <div className="ph"><h2 className="ph-t">Your rhythm</h2><span className="sp" /><span className="hint">Last 4 weeks · items finished, todos ticked, messages sent</span></div>

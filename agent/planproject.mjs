@@ -6,8 +6,14 @@
 // lacks PRD.md, the "How we work" section in CLAUDE.md or docs/audits/PROMPTS.md, the plan adds items that create
 // them instead of inventing a roadmap.
 //
+// A project that already has a checklist gets a REFRESH instead ("Refresh this project checklist" on the site): the same
+// reading plus the git history and changed files since the checklist last moved and the earlier weekly reviews; the run
+// then reconciles rather than rewrites: it ticks items the folder shows are done (evidence kept on the item, one click
+// to undo), flags stale ones (nothing removed), and adds what's missing. New items apply directly, as before.
+//
 //   node planproject.mjs <project-id> --dry-run    print what a plan would read and add, without running Claude
 import fs from "node:fs";
+import { execFileSync } from "node:child_process";
 import { api, qs, CONFIG, JARVIS_ROOT, todayTZ, addDays, parseModelJSON } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
 import { dailyLoad } from "./refine.mjs";
@@ -18,6 +24,19 @@ const wd = (d) => WD[new Date(d + "T12:00:00Z").getUTCDay()];
 const norm = (t) => String(t || "").toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
 const clip = (s, n) => (s && s.length > n ? s.slice(0, n) + `\n\n[…truncated at ${n} characters; read the file for the rest]` : s);
 const OWNERS = ["founder", "claude", "both"];
+const git = (dir, ...args) => { try { return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 20_000 }).trim(); } catch { return null; } };
+
+/** What changed in the folder since the checklist last moved (or 30 days), and what the Monday reviews said. Refresh only. */
+async function recentContext(project, dir, mine) {
+  const last = mine.map((i) => i.updated_at || i.created_at).filter(Boolean).sort().pop();
+  const since = last ? String(last).slice(0, 10) : addDays(todayTZ(), -30);
+  const log = git(dir, "log", `--since=${since}`, "--format=%h %ad %s", "--date=short", "-n", "80") || "";
+  const files = git(dir, "diff", "--stat", `HEAD@{${since}}`, "HEAD") || git(dir, "log", `--since=${since}`, "--name-only", "--format=") || "";
+  const status = git(dir, "status", "--short") || "";
+  let reviews = [];
+  try { reviews = (await api("GET", "/api/agent/reviews" + qs({ type: "project", project: project.id, limit: 3 }))).map((r) => ({ week: r.week_start, verdict: r.verdict, headline: r.headline, body: clip(r.body_md, 3000) })); } catch {}
+  return { since, log: clip(log, 6000), files: clip([...new Set(files.split("\n"))].join("\n"), 4000), status: clip(status, 1500), reviews };
+}
 
 /** Everything the plan reads before Claude runs: folder structure, milestones, sections, the checklist. */
 export async function gather(project) {
@@ -35,14 +54,16 @@ export async function gather(project) {
   const milestones = (st.milestones.length ? st.milestones : project.deadlines || []).slice().sort((a, b) => a.date.localeCompare(b.date));
   const existingIds = new Set(mine.map((i) => i.id));
   const setup = setupItems(st, { project, roles, jarvisRoot: JARVIS_ROOT, existingIds });
-  return { dir, today, mine, open, events: Array.isArray(events) ? events : [], st, roles, milestones, existingIds, setup };
+  const refresh = mine.length > 0;
+  const recent = refresh ? await recentContext(project, dir, mine) : null;
+  return { dir, today, mine, open, events: Array.isArray(events) ? events : [], st, roles, milestones, existingIds, setup, refresh, recent };
 }
 
 export function buildPlanPrompt(project, g) {
-  const { dir, today, mine, st, roles, milestones, setup } = g;
-  const line = (i) => `- [${i.id}] ${i.status} | ${i.section} | ${i.title} | due ${i.due || "—"}${i.owner ? ` | ${i.owner}` : ""}`;
+  const { dir, today, mine, st, roles, milestones, setup, refresh, recent } = g;
+  const line = (i) => `- [${i.id}] ${i.status} | ${i.section} | ${i.title} | due ${i.due || "—"}${i.owner ? ` | ${i.owner}` : ""}${i.note ? ` | owner's note: ${i.note.replace(/\n/g, " ").slice(0, 200)}` : ""}`;
   const noPrd = !st.prd;
-  return `You are planning the next stretch of work on a project for its owner. You run headless: nobody will answer questions.
+  return `You are ${refresh ? "refreshing the checklist of" : "planning the next stretch of work on"} a project for its owner. You run headless: nobody will answer questions.
 Today: ${today}. Project: ${project.name} (${project.id}). Folder: ${dir} (your working directory).
 ${CONFIG.reviews?.stance ? `Owner's preference: ${CONFIG.reviews.stance}\n` : ""}
 ## Milestones (${st.milestones.length ? "from the PRD.md Milestones table" : "from the dashboard; PRD.md has no dated table"})
@@ -68,10 +89,27 @@ ${st.audits.length ? st.audits.map((f) => `- ${f}`).join("\n") : "(missing)"}${s
 ${setup.length ? `## Already being added (setup the project is missing; don't repeat these)
 ${setup.map((i) => `- [${i.id}] ${i.section} | ${i.title}`).join("\n")}
 
+` : ""}${refresh ? `## What changed since the checklist last moved (${recent.since})
+Commits:
+${recent.log || "(none)"}
+
+Files touched:
+${recent.files || "(none)"}
+
+Uncommitted (git status):
+${recent.status || "(clean)"}
+
+## Earlier weekly reviews of this project (newest first)
+${recent.reviews.length ? recent.reviews.map((r) => `### Week of ${r.week}${r.verdict ? ` · ${r.verdict}` : ""}\n${r.headline}\n${r.body}`).join("\n\n") : "(none yet)"}
+
 ` : ""}## Investigate
 Look at README and docs/, the code's structure, tests, TODO/FIXME notes and config; \`git log --oneline -60\` and
 \`git status\`; \`gh pr list --state all --limit 20\` if it's a GitHub repo. Work out what really exists (not what the docs
-promise), what's done, what's half-done or broken, and ${noPrd ? "what is concretely broken" : "what the PRD and its milestones still require"}.
+promise), what's done, what's half-done or broken, and ${noPrd ? "what is concretely broken" : "what the PRD and its milestones still require"}.${refresh ? `
+This is a RECONCILIATION of the existing checklist, not a rewrite. For every open item, check the folder: if the work is
+verifiably there (cite the file or commit), list it under "done" with that evidence; if it no longer makes sense, list it
+under "obsolete" with the reason (it is only flagged, never removed); keep the owner's wording and dates otherwise. Then
+add only what is missing.` : ""}
 ${noPrd ? `
 This project has NO PRD.md. Do not invent a roadmap, features, milestones or dates: the owner decides those in the PRD
 (an item for it is already being added). Only add items for defects or half-done work you verified in the code, citing
@@ -81,7 +119,8 @@ files, at most 8. Say in the report that planning waits for the PRD.
 {"verdict": "on-track|at-risk|off-track", "headline": "one sentence on where it stands",
  "situation_md": "## Where it stands\\n…\\n## What's done\\n…\\n## What's missing or broken\\n…\\n## Risks\\n…",
  "next_md": "## To continue\\nThe path to the next milestone, in phases, with what to do first and why.",
- "obsolete": ["ids of existing items that no longer make sense, with the reason in situation_md"],
+ "done": [{"id": "existing item id verified as done", "evidence": "file or commit that shows it"}],
+ "obsolete": [{"id": "existing item id that no longer makes sense", "reason": "why"}],
  "items": [{"id": "short-kebab-code-name", "section": "one of the ids above", "title": "…",
             "detail": "one line of purpose, then 3–7 numbered steps", "owner": "founder|claude|both",
             "milestone": "YYYY-MM-DD from the milestones list this item is needed for, or null",
@@ -168,6 +207,21 @@ export async function planProject(message, project, log) {
   if (!out || !Array.isArray(out.items)) throw new Error("The planning run didn't return a plan.");
 
   const { items, skipped } = normalizeItems(out.items, g, st.prd ? 20 : 8);
+  // Refresh: tick what the folder shows is done (evidence on the item; one click undoes it) and flag the stale ones.
+  const openIds = new Set(g.mine.filter((i) => i.status === "todo" || i.status === "doing").map((i) => i.id));
+  const asList = (v) => (Array.isArray(v) ? v : []).map((x) => (typeof x === "string" ? { id: x } : x)).filter((x) => x && openIds.has(String(x.id)));
+  const ticked = [], flagged = [];
+  if (g.refresh) {
+    for (const d of asList(out.done).slice(0, 30)) {
+      const note = `Marked done by "Refresh this project checklist" on ${today}: ${String(d.evidence || "verified in the folder").slice(0, 400)}`;
+      await api("PATCH", "/api/agent/items", { project_id: project.id, id: d.id, status: "done", refine: "done", refine_note: note }).then(() => ticked.push(d)).catch((e) => log("tick failed", d.id, e.message));
+    }
+    for (const o of asList(out.obsolete).slice(0, 30)) {
+      if (ticked.some((d) => d.id === o.id)) continue;
+      const note = `Flagged by "Refresh this project checklist" on ${today}: looks obsolete. ${String(o.reason || "").slice(0, 400)} Cancel it, or comment to keep it.`;
+      await api("PATCH", "/api/agent/items", { project_id: project.id, id: o.id, refine: "flagged", refine_note: note }).then(() => flagged.push(o)).catch((e) => log("flag failed", o.id, e.message));
+    }
+  }
   const placed = placeItems([...setup.map((i) => ({ ...i, milestone: null })), ...items], g);
   const added = [];
   for (const it of placed) {
@@ -175,7 +229,7 @@ export async function planProject(message, project, log) {
     const { item } = await api("POST", "/api/agent/items", {
       project_id: project.id, id: it.id, section: it.section, title: it.title, detail: it.detail, owner: it.owner, critical: it.critical,
       priority: it.priority, estimate_minutes: it.estimate_minutes, due: it.due,
-      refine: "done", refine_note: `Added by "Plan this project" on ${today}${it.target ? ` for ${it.target.label} (${it.target.date})` : ""}.${note}`,
+      refine: "done", refine_note: `Added by "${g.refresh ? "Refresh this project checklist" : "Plan this project"}" on ${today}${it.target ? ` for ${it.target.label} (${it.target.date})` : ""}.${note}`,
     });
     added.push(item);
   }
@@ -184,19 +238,21 @@ export async function planProject(message, project, log) {
   const next = milestones.find((m) => m.date > today);
   const list = added.map((i) => `- \`${i.id}\` ${i.title} · ${i.section} · ${i.due || "no date"} · ~${i.estimate_minutes} min`).join("\n");
   const body = `${setup.length ? `## Project setup missing\n${setup.map((i) => `- \`${i.id}\` ${i.title}`).join("\n")}\n\n` : ""}${out.situation_md || ""}\n\n${out.next_md || ""}\n\n## Added to the checklist (${added.length})\n${list || "Nothing new: the checklist already covers it."}${
+    ticked.length ? `\n\n## Ticked as done (${ticked.length}; untick on the checklist if wrong)\n${ticked.map((d) => `- \`${d.id}\` — ${d.evidence || "verified in the folder"}`).join("\n")}` : ""}${
+    flagged.length ? `\n\n## Flagged as obsolete (${flagged.length}; nothing removed: cancel or keep each one)\n${flagged.map((o) => `- \`${o.id}\` — ${o.reason || ""}`).join("\n")}` : ""}${
     skipped.length ? `\n\n## Already on the checklist (not added again)\n${skipped.map((s) => `- ${s.id ? `\`${s.id}\` ` : ""}${s.title}`).join("\n")}` : ""}${
-    (out.obsolete || []).length ? `\n\n## Items that look obsolete\n${out.obsolete.map((x) => `- \`${x}\``).join("\n")} — see above; nothing was removed.` : ""}${
     crowded ? `\n\n_${crowded} item(s) found no day with room before their milestone; they are due on the milestone date (or undated without one)._` : ""}`;
   const { review } = await api("POST", "/api/agent/reviews", {
-    type: "doc", project_id: project.id, title: `Project plan · ${today}`, verdict: out.verdict || null, headline: out.headline || "", body_md: body,
-    meta: { kind: "project-plan", cost_usd: res.cost_usd, duration_s: res.duration_s, added: added.map((i) => i.id), setup: setup.map((i) => i.id) },
+    type: "doc", project_id: project.id, title: `${g.refresh ? "Checklist refresh" : "Project plan"} · ${today}`, verdict: out.verdict || null, headline: out.headline || "", body_md: body,
+    meta: { kind: g.refresh ? "checklist-refresh" : "project-plan", cost_usd: res.cost_usd, duration_s: res.duration_s, added: added.map((i) => i.id), setup: setup.map((i) => i.id), ticked: ticked.map((d) => d.id), flagged: flagged.map((o) => o.id) },
   });
   const reply = `**${out.headline || "Plan ready."}**\n\nAdded ${added.length} item${added.length === 1 ? "" : "s"} to ${project.name}'s checklist, spread over days that still have room${next ? ` before ${next.label} (${next.date})` : ""}.${
     setup.length ? ` ${setup.length} of them set up what the project is missing (${setup.map((i) => `\`${i.id}\``).join(", ")}).` : ""}${
     skipped.length ? ` ${skipped.length} proposal(s) were already on the checklist.` : ""}${
-    (out.obsolete || []).length ? ` ${out.obsolete.length} existing item(s) look obsolete (nothing removed).` : ""}\n\nThe full situation report is on the project's Strategy tab.`;
+    ticked.length ? ` Ticked ${ticked.length} item(s) the folder shows are done.` : ""}${
+    flagged.length ? ` Flagged ${flagged.length} item(s) as obsolete (nothing removed).` : ""}\n\nThe full report is under the project's Project view (strategy documents).`;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "done", reply, meta: { mode: "plan", review_id: review?.id, cost_usd: res.cost_usd, duration_s: res.duration_s } });
-  log("plan done", project.id, { added: added.length, setup: setup.length, skipped: skipped.length, crowded, cost_usd: res.cost_usd });
+  log(g.refresh ? "refresh done" : "plan done", project.id, { added: added.length, ticked: ticked.length, flagged: flagged.length, setup: setup.length, skipped: skipped.length, crowded, cost_usd: res.cost_usd });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
