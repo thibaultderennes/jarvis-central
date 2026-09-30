@@ -6,7 +6,8 @@ import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
 import { cap, REVIEW_WHEN } from "@/lib/instance";
 
-const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document" };
+const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document", security: "Security audit" };
+const PROJECT_TAB: Record<string, string> = { doc: "strategy", security: "security" };
 const ORDER = ["recap", "coaching", "jarvis", "project"];
 
 export default async function Reviews({ searchParams }: { searchParams: Promise<{ id?: string; type?: string }> }) {
@@ -14,8 +15,10 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
   const sp = await searchParams;
   const [all, projects] = await Promise.all([D.getReviews({ limit: 300 }), D.getProjects(true)]);
   const byId = Object.fromEntries(projects.map((p) => [p.id, p]));
-  const weekly = all.filter((r) => r.type !== "doc" && (!sp.type || r.type === sp.type));
+  // Weekly reports carry a week_start; documents and security audits (mirrored from project files) don't.
+  const weekly = all.filter((r) => r.week_start && (!sp.type || r.type === sp.type));
   const docs = all.filter((r) => r.type === "doc");
+  const audits = all.filter((r) => r.type === "security").sort(D.newestFileFirst);
   const sel = sp.id ? all.find((r) => r.id === sp.id) : null;
   const weeks = [...new Set(weekly.map((r) => r.week_start!))];
   const color = (r: D.Review) => byId[r.project_id || ""]?.color || (r.type === "coaching" ? "life" : "other");
@@ -23,7 +26,7 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
   const thread = sel ? await D.getMessages({ review: sel.id, limit: 100 }) : [];
   if (sel) return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div className="daynav" style={{ marginTop: 16 }}><Link href="/reviews">‹ All reviews</Link>{sel.project_id && <Link href={`/p/${sel.project_id}?tab=${sel.type === "doc" ? "strategy" : "reviews"}&r=${sel.id}`}>Open in {byId[sel.project_id]?.name}</Link>}</div>
+      <div className="daynav" style={{ marginTop: 16 }}><Link href="/reviews">‹ All reviews</Link>{sel.project_id && <Link href={`/p/${sel.project_id}?tab=${PROJECT_TAB[sel.type] || "reviews"}&r=${sel.id}`}>Open in {byId[sel.project_id]?.name}</Link>}</div>
       <article className="panel" style={{ padding: "20px 24px" }} data-c={color(sel)}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <i className="dot" /><span className="lbl">{TYPE[sel.type]}{sel.week_start ? ` · week of ${fmtDate(sel.week_start, { month: "long", day: "numeric" })}` : ""}</span>
@@ -80,6 +83,20 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
             {docs.map((r) => (
               <Link key={r.id} href={`/reviews?id=${r.id}`} className="revrow" data-c={color(r)}>
                 <i className="dot" /><span className="t"><b>{r.title}</b><span>{r.headline}</span></span><span className="due">{fmtDate(r.created_at.slice(0, 10))}</span>
+              </Link>
+            ))}
+          </div>
+        </section>
+      )}
+      {audits.length > 0 && (
+        <section className="panel">
+          <div className="ph"><h2 className="ph-t">Security audits</h2><span className="sp" /><span className="hint">Reports from each project&apos;s audits folder</span></div>
+          <div className="revlist">
+            {audits.map((r) => (
+              <Link key={r.id} href={`/reviews?id=${r.id}`} className="revrow" data-c={color(r)}>
+                <i className="dot" /><span className="t"><b>{byId[r.project_id || ""]?.name ? `${byId[r.project_id || ""].name} · ` : ""}{r.title}</b><span>{r.headline}</span></span>
+                {r.verdict ? <span className={`verdict v-${r.verdict}`}>{r.verdict.replace("-", " ")}</span> : <span />}
+                <span className="due">{fmtDate(typeof r.meta?.date === "string" && r.meta.date ? r.meta.date : r.created_at.slice(0, 10))}</span>
               </Link>
             ))}
           </div>

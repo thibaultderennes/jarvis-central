@@ -3,6 +3,15 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Security tab**: every project page has a Security tab next to Strategy showing the project's security audit
+  reports, newest first, with verdict and a one-line summary (findings by severity, first item of the fix order).
+  Reports are markdown files in the project folder (`audits.dir`, default `docs/audits`, e.g.
+  `2026-10-01-sued-hacked.md`, typically written by a scheduled audit that opens a PR); `agent/audits.mjs` mirrors
+  them to the site as `security` reviews, one per file, and the worker runs it once an hour (`audits.sync_minutes`),
+  so a merged audit PR shows up within the hour. `jarvis audits <project>` lists them from the terminal; the
+  Reviews page gets a "Security audits" section. Upgrade notes: redeploy (review type `security`, a unique index on
+  `meta.file`); no `agent/install.sh` re-run needed. Run `node agent/audits.mjs sync` once to pick up existing reports
+  right away, or wait for the worker's first hourly pass.
 - **Comment on an item**: open any checklist item ("Show more", or "Comment" on short ones) and a bar at the bottom
   sends Claude a comment or a change ("split it", "move it to Friday", "it's blocked by…"). Within a minute Claude
   reads it like a new item and adjusts only what you asked (title, steps, section, owner, priority, estimate, status,

@@ -31,6 +31,8 @@ re-run it and redeploy after changing those.
 | `worker.discuss_model` | `"sonnet"` | Model for discussion messages (lighter on your plan). |
 | `worker.build_model` | `null` | Model for build messages (`null` = Claude Code's default). |
 | `worker.timeout_minutes` | `25` | Hard limit per message. |
+| `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Security tab. |
+| `audits.sync_minutes` | `60` | How often the worker mirrors those reports to the site (`0` = every worker pass). `node agent/audits.mjs sync` does it now. |
 | `calendars.read_google` / `read_apple` | `true` / `false` | Show those appointments and plan around them. |
 | `calendars.write_google` / `write_apple_feed` | `true` / `false` | Put the week plan in those calendars. |
 | `guard.deny` | `[]` | Extra words the privacy guard must never let into a commit (client names, product names…). Your name, project folders and names, site address and home path are always blocked. |

@@ -16,7 +16,8 @@ Projects: every folder under `{{PROJECTS_ROOT}}` is a project (id = folder name,
 - `set <project> <id> status=done due=YYYY-MM-DD note="…"` · `add <project> <section> "title" --due D --owner claude`
 - `inbox [--project P]` · `reply <message-id> "text" --status answered|done|needs_you`
 - `todo add "title" --date today --project P --item ID` · `todos`
-- `reviews --project P --type project|recap|coaching|jarvis|doc --full`
+- `reviews --project P --type project|recap|coaching|jarvis|doc|security --full`
+- `audits <project>` — security audit reports mirrored from the project's audits folder (date, verdict, headline)
 Owner values: `founder` = the owner (you'd say "you"), `claude`, `both`.
 
 ## At session start in a project folder
