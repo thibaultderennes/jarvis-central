@@ -3,6 +3,11 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Comment on an item**: open any checklist item ("Show more", or "Comment" on short ones) and a bar at the bottom
+  sends Claude a comment or a change ("split it", "move it to Friday", "it's blocked by…"). Within a minute Claude
+  reads it like a new item and adjusts only what you asked (title, steps, section, owner, priority, estimate, status,
+  or a date on a day with room), or answers a question; its reply shows under the bar and in the inbox. Comments are
+  answered even when `worker.refine_new_items` is off. Upgrade notes: redeploy (new `items.refine_request` column).
 
 ## 0.4.0 — 2026-09-29
 - **Plan this project**: a button on every project page. Claude reviews the folder (code, docs, git history, PRD,

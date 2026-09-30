@@ -1,5 +1,7 @@
 // Refines checklist items the owner adds on the website: steps, section, owner, priority, estimate, and a due date
 // that doesn't pile onto an already-full day. Run by the inbox worker each pass (worker.refine_new_items).
+// Also answers comments the owner leaves on an existing item (the comment bar under "Show more"): Claude reads the
+// comment and adjusts only what it asks for, with the same load check for a new date.
 // The model proposes; a deterministic check makes sure the chosen day has room (items due that day + calendar).
 import fs from "node:fs";
 import path from "node:path";
@@ -11,8 +13,9 @@ const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const wd = (d) => WD[new Date(d + "T12:00:00Z").getUTCDay()];
 
 export async function refinePending(projects, log) {
-  if (CONFIG.worker?.refine_new_items === false) return;
-  const pending = await api("GET", "/api/agent/items" + qs({ refine: "pending" }));
+  let pending = await api("GET", "/api/agent/items" + qs({ refine: "pending" }));
+  // A comment is an explicit request, so it's answered even when refining new items is turned off.
+  if (CONFIG.worker?.refine_new_items === false) pending = pending.filter((i) => i.refine_request);
   for (const it of pending.slice(0, 2)) {
     try { await refineOne(it, projects, log); }
     catch (e) {
@@ -65,11 +68,31 @@ async function refineOne(it, projects, log) {
   const line = (i) => `- [${i.project_id}/${i.id}] ${i.title} | ${i.section} | due ${i.due || "—"} | ${i.estimate_minutes ? i.estimate_minutes + " min" : "no estimate"} | ${i.owner || "owner"}${i.critical ? " | critical" : ""}${i.status === "doing" ? " | in progress" : ""}`;
   const dir = p.dir && fs.existsSync(p.dir) ? p.dir : JARVIS_ROOT;
 
-  const prompt = `You refine a checklist item the owner just added to their project dashboard. You run headless; nobody will answer questions.
+  const comment = (it.refine_request || "").trim();
+  const intro = comment
+    ? `You adjust an existing checklist item after the owner commented on it on their project dashboard. You run headless; nobody will answer questions.`
+    : `You refine a checklist item the owner just added to their project dashboard. You run headless; nobody will answer questions.`;
+  const task = comment ? `## The owner's comment on this item
+${comment}
+
+## Do this
+1. Do what the comment asks, and only that: reword the title, rewrite or extend the steps, change the section, owner,
+   priority, critical flag, estimate or due date, or mark it done or back to todo if it says so. Fields the comment
+   doesn't touch stay exactly as they are (copy them back unchanged).
+2. Status "doing" on an item owned by Claude is the owner's go to build it: set it only if the comment clearly gives that go.
+3. A new due date must sit on a working day whose load plus the estimate stays within capacity, before the milestone.
+4. If the comment is a question, answer it in "reply" and change nothing. If it points at a duplicate, say which in
+   "duplicate_of". Never invent facts about the project; unknowns become a step ("Confirm …").
+Output ONLY one JSON object with every field:
+{"duplicate_of": [], "title": "…", "detail": "…", "section": "…", "owner": "founder|claude|both", "priority": 1|2|3,
+ "critical": true|false, "estimate_minutes": 45, "due": "YYYY-MM-DD or null", "status": "todo|doing|done",
+ "reply": "one or two sentences to the owner: what you changed and why, or the answer"}` : null;
+
+  const prompt = `${intro}
 Today: ${today}. Project: ${p.name} (${p.id}), folder ${dir}. Read its PRD.md and CLAUDE.md if they exist, and look at the code only if it helps you size the work.
 ${CONFIG.reviews?.stance ? `Owner's preference: ${CONFIG.reviews.stance}\n` : ""}
-## The new item
-[${key}] "${it.title}" · section ${it.section} · due ${it.due || "not set"} · owner ${it.owner || "owner"}${it.detail ? `\nDetail: ${it.detail}` : ""}
+## ${comment ? "The item" : "The new item"}
+[${key}] "${it.title}" · section ${it.section} · due ${it.due || "not set"} · owner ${it.owner || "owner"} · status ${it.status}${comment ? ` · priority ${it.priority || "—"} · estimate ${it.estimate_minutes || "—"} min${it.critical ? " · critical" : ""}` : ""}${it.detail ? `\nDetail: ${it.detail}` : ""}${it.note ? `\nOwner's note: ${it.note}` : ""}
 
 ## Sections of this project
 ${(p.sections || []).map((s) => `- ${s.id}: ${s.name}${s.note ? ` (${s.note})` : ""}`).join("\n") || "- (none declared)"}
@@ -84,7 +107,7 @@ ${others.map(line).join("\n") || "(none)"}
 ## Load already committed per day (items due that day + calendar), capacity ${cap} min on ${workDays.join("/")}
 ${days}
 
-## Do this
+${task || `## Do this
 1. Decide whether it duplicates or largely overlaps an existing item (this project or another). If it does, say which.
 2. Otherwise make it actionable: keep the owner's wording for the title unless it's unclear; write the detail as one line of
    purpose followed by 3–7 numbered concrete steps; pick the right section; owner = "founder" (the owner), "claude" or "both";
@@ -94,7 +117,7 @@ ${days}
 4. Never invent facts about the project; if something is unknown, make it a step ("Confirm …").
 Output ONLY one JSON object:
 {"duplicate_of": ["project/id", …], "title": "…", "detail": "…", "section": "…", "owner": "founder|claude|both", "priority": 1|2|3,
- "critical": true|false, "estimate_minutes": 45, "due": "YYYY-MM-DD", "depends_on": ["project/id"], "reason": "one or two sentences: why this date, priority and size"}`;
+ "critical": true|false, "estimate_minutes": 45, "due": "YYYY-MM-DD", "depends_on": ["project/id"], "reason": "one or two sentences: why this date, priority and size"}`}`;
 
   log("refine", key);
   const res = await runClaude({
@@ -103,39 +126,54 @@ Output ONLY one JSON object:
   });
   const out = parseModelJSON(res.result);
   if (!out) throw new Error("the model didn't return JSON");
+  // A comment is answered once: clear it, unless the owner added another while Claude was reading (that one stays pending).
+  const after = async () => {
+    const now = (await api("GET", "/api/agent/items" + qs({ project: it.project_id }))).find((x) => x.id === it.id);
+    const rest = (now?.refine_request || "").trim();
+    return rest && rest !== comment ? { refine_request: rest.startsWith(comment) ? rest.slice(comment.length).trim() : rest, refine: "pending" } : { refine_request: "" };
+  };
 
   if (Array.isArray(out.duplicate_of) && out.duplicate_of.length) {
-    const note = `Looks like it overlaps ${out.duplicate_of.map((d) => `\`${d}\``).join(", ")}. ${out.reason || ""} Merge them or delete one.`;
-    await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, refine: "flagged", refine_note: note.slice(0, 1000) });
-    await note2inbox(p, it.title, `**Possible duplicate.** ${note}`);
+    const note = `Looks like it overlaps ${out.duplicate_of.map((d) => `\`${d}\``).join(", ")}. ${out.reply || out.reason || ""} Merge them or delete one.`;
+    await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, refine: "flagged", refine_note: note.slice(0, 1000), ...(await after()) });
+    await note2inbox(p, it.title, `**Possible duplicate.** ${note}`, comment);
     log("refine flagged", key, out.duplicate_of);
     return;
   }
 
   const sections = new Set((p.sections || []).map((s) => s.id));
-  const est = Math.min(480, Math.max(15, Math.round(Number(out.estimate_minutes) || DEFAULT_EST)));
+  const est = Math.min(480, Math.max(15, Math.round(Number(out.estimate_minutes) || it.estimate_minutes || DEFAULT_EST)));
   const limit = deadline && deadline.date > today ? deadline.date : horizon;
-  let want = /^\d{4}-\d{2}-\d{2}$/.test(out.due || "") ? out.due : it.due || addDays(today, 7);
+  const proposed = /^\d{4}-\d{2}-\d{2}$/.test(out.due || "") ? out.due : null;
+  let want = proposed || it.due || addDays(today, 7);
   if (want < today) want = today;
-  const fit = fitDay(want, est, load, { today, limit, cap, workDays });
+  // On a comment, the date stays put unless Claude proposes a new one; only a new date is load-checked.
+  const fit = comment && (!proposed || proposed === it.due) ? { date: it.due, moved: false } : fitDay(want, est, load, { today, limit, cap, workDays });
   const patch = {
     project_id: it.project_id, id: it.id,
     title: typeof out.title === "string" && out.title.trim() ? out.title.trim().slice(0, 300) : it.title,
     detail: typeof out.detail === "string" ? out.detail.slice(0, 4000) : it.detail,
     section: sections.has(out.section) ? out.section : it.section,
     owner: ["founder", "claude", "both"].includes(out.owner) ? out.owner : it.owner,
-    priority: [1, 2, 3].includes(Number(out.priority)) ? Number(out.priority) : 2,
-    critical: !!out.critical, estimate_minutes: est, due: fit.date, refine: "done",
+    priority: [1, 2, 3].includes(Number(out.priority)) ? Number(out.priority) : comment ? it.priority : 2,
+    critical: typeof out.critical === "boolean" ? out.critical : !!it.critical, estimate_minutes: est, due: fit.date, refine: "done",
   };
-  const why = [out.reason, fit.moved ? `Moved to ${fit.date} (${wd(fit.date)}): ${want} was already full.` : "", fit.overloaded ? `Every day before ${limit} is already over ${cap} min: the date stays at ${want} but that week is overloaded.` : ""].filter(Boolean).join(" ");
+  if (comment && ["todo", "doing", "done"].includes(out.status)) patch.status = out.status;
+  const why = [comment ? out.reply : out.reason, fit.moved ? `Moved to ${fit.date} (${wd(fit.date)}): ${want} was already full.` : "", fit.overloaded ? `Every day before ${limit} is already over ${cap} min: the date stays at ${want} but that week is overloaded.` : ""].filter(Boolean).join(" ");
   patch.refine_note = why.slice(0, 1000);
+  Object.assign(patch, await after());
   await api("PATCH", "/api/agent/items", patch);
-  const was = [it.due !== patch.due ? `due ${it.due || "—"} → **${patch.due}**` : `due **${patch.due}**`, `~${est} min`, `priority ${["", "high", "normal", "low"][patch.priority]}`, it.section !== patch.section ? `section ${it.section} → ${patch.section}` : "", patch.critical ? "critical" : ""].filter(Boolean).join(" · ");
-  await note2inbox(p, patch.title, `${was}\n\n${patch.detail}\n\n_${why}_`);
-  log("refined", key, { due: patch.due, est, moved: fit.moved, cost_usd: res.cost_usd });
+  const changed = (k, label, show = (v) => v ?? "—") => (k in patch && it[k] !== patch[k] ? `${label} ${show(it[k])} → **${show(patch[k])}**` : "");
+  const was = comment
+    ? [changed("title", "title"), changed("section", "section"), changed("owner", "owner"), changed("status", "status"), changed("due", "due"),
+       changed("estimate_minutes", "estimate", (v) => (v ? `~${v} min` : "—")), changed("priority", "priority", (v) => ["—", "high", "normal", "low"][v || 0]),
+       changed("critical", "critical", (v) => (v ? "yes" : "no")), it.detail !== patch.detail ? "steps rewritten" : ""].filter(Boolean).join(" · ") || "nothing changed"
+    : [it.due !== patch.due ? `due ${it.due || "—"} → **${patch.due}**` : `due **${patch.due}**`, `~${est} min`, `priority ${["", "high", "normal", "low"][patch.priority]}`, it.section !== patch.section ? `section ${it.section} → ${patch.section}` : "", patch.critical ? "critical" : ""].filter(Boolean).join(" · ");
+  await note2inbox(p, patch.title, comment ? `> ${comment.replace(/\n/g, "\n> ")}\n\n${was}\n\n_${why}_` : `${was}\n\n${patch.detail}\n\n_${why}_`, comment);
+  log(comment ? "comment answered" : "refined", key, { due: patch.due, est, moved: fit.moved, cost_usd: res.cost_usd });
 }
 
-async function note2inbox(p, title, reply) {
-  await api("POST", "/api/agent/messages", { project_id: p.id, text: `New checklist item on ${p.name}: ${title}`, reply, meta: { kind: "refine" } })
+async function note2inbox(p, title, reply, comment = "") {
+  await api("POST", "/api/agent/messages", { project_id: p.id, text: comment ? `Your comment on ${p.name}: ${title}` : `New checklist item on ${p.name}: ${title}`, reply, meta: { kind: comment ? "comment" : "refine" } })
     .catch(() => {}); // the inbox note is a courtesy; the item itself is already updated
 }

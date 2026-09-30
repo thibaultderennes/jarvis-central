@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { cycleItem, newItem, saveNote, setDue } from "@/lib/actions";
+import { commentItem, cycleItem, newItem, saveNote, setDue } from "@/lib/actions";
 import type { Item, Section } from "@/lib/data";
 
 // Owner values stored in the database: "founder" is you (the dashboard's owner), "claude", or "both".
@@ -20,7 +20,7 @@ export default function Checklist({ projectId, sections: given, items, today }: 
   useEffect(() => setList(items), [items]);
   const router = useRouter();
   const refining = items.some((i) => i.refine === "pending");
-  // While Claude is refining a new item, refresh so its steps, date and estimate appear on their own.
+  // While Claude is refining a new item or reading a comment, refresh so the changes appear on their own.
   useEffect(() => { if (!refining) return; const t = setInterval(() => router.refresh(), 10000); return () => clearInterval(t); }, [refining, router]);
   const [, start] = useTransition();
   const [err, setErr] = useState("");
@@ -109,12 +109,14 @@ function Row({ i, s, today, onCycle, run, projectId }: { i: Item; s: Section; to
           {i.priority === 1 && !i.critical && <span className="pill crit">high</span>}
           {i.priority === 3 && <span className="pill">low</span>}
           {i.estimate_minutes ? <span className="pill" title="Estimated time">~{i.estimate_minutes >= 60 ? `${Math.round(i.estimate_minutes / 30) / 2} h` : `${i.estimate_minutes} min`}</span> : null}
-          {i.refine === "pending" && <span className="pill go" title="Claude is reading this item and will add steps, a priority, an estimate and a due date that doesn't clash">refining…</span>}
+          {i.refine === "pending" && <span className="pill go" title={i.refine_request ? "Claude is reading your comment and will adjust the item" : "Claude is reading this item and will add steps, a priority, an estimate and a due date that doesn't clash"}>{i.refine_request ? "reading your comment…" : "refining…"}</span>}
           {i.refine === "done" && <span className="pill" title={i.refine_note || "Refined by Claude"}>refined by Claude</span>}
           {i.refine === "flagged" && <span className="pill crit" title={i.refine_note}>check: overlaps</span>}
           {i.owner === "claude" && i.status === "doing" && <span className="pill go">go given</span>}
         </div>
-        {i.detail && <><div className={`dt${long && !open ? " collapsed" : ""}`}>{i.detail}</div>{long && <button className="more" onClick={() => setOpen(!open)}>{open ? "Show less" : "Show more"}</button>}</>}
+        {i.detail && <div className={`dt${long && !open ? " collapsed" : ""}`}>{i.detail}</div>}
+        <button className="more" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Show less" : long ? "Show more" : "Comment"}</button>
+        {open && <Comment i={i} run={run} projectId={projectId} />}
         {(s.notes || i.note) && (
           <div className="note">
             <label className="lbl" htmlFor={`note-${i.id}`}>Your answer (Claude reads it)</label>
@@ -127,6 +129,23 @@ function Row({ i, s, today, onCycle, run, projectId }: { i: Item; s: Section; to
         <input type="date" className={`duein due${late ? " late" : soon ? " soon" : ""}`} value={i.due || ""} aria-label={`Due date for ${i.title}`}
           onChange={(e) => run(() => setDue(projectId, i.id, e.target.value || null))} />
       </div>
+    </div>
+  );
+}
+
+/** The comment bar under an opened item: tell Claude what to change, as when you add a new item. */
+function Comment({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
+  const [t, setT] = useState("");
+  const pending = i.refine === "pending" && !!i.refine_request;
+  return (
+    <div className="comment">
+      {pending && <div className="said"><span className="lbl">Your comment</span> {i.refine_request}<span className="due"> · Claude is reading it…</span></div>}
+      {!pending && i.refine_note && <div className="said"><span className="lbl">Claude</span> {i.refine_note}</div>}
+      <form className="addrow" onSubmit={(e) => { e.preventDefault(); const v = t.trim(); if (!v) return; setT(""); run(() => commentItem(projectId, i.id, v)); }}>
+        <input className="input" value={t} onChange={(e) => setT(e.target.value)} maxLength={2000} aria-label={`Comment on ${i.title}`}
+          placeholder="Comment or ask for a change: split it, move it to Friday, it's blocked by…, add a step…" />
+        <button className="btn sm" disabled={!t.trim()}>Send to Claude</button>
+      </form>
     </div>
   );
 }
