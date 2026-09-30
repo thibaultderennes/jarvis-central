@@ -24,7 +24,7 @@ export type Message = {
   meta: Record<string, unknown>; archived: boolean; created_at: string; updated_at: string; replied_at: string | null;
 };
 export type Review = {
-  id: string; type: "project" | "recap" | "coaching" | "jarvis" | "doc"; project_id: string | null;
+  id: string; type: "project" | "recap" | "coaching" | "jarvis" | "doc" | "security"; project_id: string | null;
   week_start: string | null; title: string; verdict: string | null; headline: string; body_md: string;
   meta: Record<string, unknown>; created_at: string;
 };
@@ -36,6 +36,8 @@ const normItem = (r: Record<string, unknown>) => ({ ...r, due: d10(r.due), creat
 const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at) }) as Todo;
 const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at) }) as Message;
 const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at) }) as Review;
+/** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
+export const newestFileFirst = (a: Review, b: Review) => String(b.meta?.date || "").localeCompare(String(a.meta?.date || "")) || b.created_at.localeCompare(a.created_at);
 const normProject = (r: Record<string, unknown>) => ({ ...r, updated_at: ts(r.updated_at) }) as Project;
 
 /* ---------- projects ---------- */
@@ -185,6 +187,18 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
     const rows = await sql()`insert into reviews (type, project_id, week_start, title, verdict, headline, body_md, meta)
       values (${r.type}, ${r.project_id || null}, ${r.week_start}, ${r.title}, ${r.verdict || null}, ${r.headline || ""}, ${r.body_md}, ${meta})
       on conflict (type, coalesce(project_id, ''), week_start) where type <> 'doc'
+      do update set title = excluded.title, verdict = excluded.verdict, headline = excluded.headline,
+        body_md = excluded.body_md, meta = excluded.meta, created_at = now()
+      returning *`;
+    return normReview(rows[0]);
+  }
+  const file = typeof r.meta?.file === "string" && r.meta.file ? r.meta.file : null;
+  if (file && !r.week_start) {
+    // A review mirrored from a file in the project folder (security audits): one row per (type, project, meta.file),
+    // so a re-sync updates it instead of adding another.
+    const rows = await sql()`insert into reviews (type, project_id, week_start, title, verdict, headline, body_md, meta)
+      values (${r.type}, ${r.project_id || null}, null, ${r.title}, ${r.verdict || null}, ${r.headline || ""}, ${r.body_md}, ${meta})
+      on conflict (type, coalesce(project_id, ''), (meta->>'file')) where meta->>'file' is not null
       do update set title = excluded.title, verdict = excluded.verdict, headline = excluded.headline,
         body_md = excluded.body_md, meta = excluded.meta, created_at = now()
       returning *`;

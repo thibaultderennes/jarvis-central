@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Jarvis CLI: lets Claude Code sessions (and the worker) read and edit checklists, todos, inbox and reviews.
 import { api, qs, todayTZ, addDays, TZ } from "./lib.mjs";
+import { AUDITS_DIR, newestFirst } from "./audits.mjs";
 
 const HELP = `jarvis — Jarvis Central Dashboard from the terminal
 
@@ -13,7 +14,8 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   reply <message-id> "text" [--status answered|done|needs_you]
   todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
   todos [--from D] [--to D]                       default: today → +6 days
-  reviews [--type project|recap|coaching|jarvis|doc] [--project P] [--limit N] [--full]
+  reviews [--type project|recap|coaching|jarvis|doc|security] [--project P] [--limit N] [--full]
+  audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
 
   --json on any read command prints raw JSON. Dates are YYYY-MM-DD (${TZ}).
   owner "founder" means you, the person who owns the dashboard.`;
@@ -154,6 +156,17 @@ async function main() {
       for (const r of rs) out(`${r.id}  ${pad(r.type, 8)} ${pad(r.project_id || "—", 10)} ${r.week_start || ""} ${r.verdict ? `[${r.verdict}] ` : ""}${r.title}${r.headline ? ` — ${r.headline}` : ""}`);
       if (flags.full && rs[0]) out(`\n${rs[0].body_md}`);
       if (!rs.length) out("No reviews.");
+      return;
+    }
+    case "audits": {
+      const project = need(rest[0], "<project>");
+      const rs = (await api("GET", "/api/agent/reviews" + qs({ type: "security", project, limit: 100 }))).sort(newestFirst);
+      if (json) return out(JSON.stringify(rs, null, 2));
+      if (!rs.length) return out(`No audit reports synced for ${project}. Reports in ${AUDITS_DIR}/ of the project folder appear after the next sync (node agent/audits.mjs sync).`);
+      for (const r of rs) {
+        out(`${pad(r.meta?.date || String(r.created_at).slice(0, 10), 10)} ${pad(r.verdict || "—", 9)} ${r.title}${r.headline ? ` — ${r.headline}` : ""}`);
+        out(`           ${r.meta?.file || ""}  ${r.id}`);
+      }
       return;
     }
     case undefined: case "help": case "-h":

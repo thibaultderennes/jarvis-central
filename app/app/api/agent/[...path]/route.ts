@@ -72,7 +72,7 @@ async function handle(req: NextRequest, ctx: Ctx) {
       return J(await D.getReviews({ type: sp.get("type") || undefined, project: sp.get("project") || undefined, limit: +(sp.get("limit") || 20), week: sp.get("week") || undefined }));
     case "POST reviews": {
       if (!b.type || !b.title || typeof b.body_md !== "string") return bad("type, title and body_md are required");
-      if (!["project", "recap", "coaching", "jarvis", "doc"].includes(b.type)) return bad("unknown review type");
+      if (!["project", "recap", "coaching", "jarvis", "doc", "security"].includes(b.type)) return bad("unknown review type");
       if (b.week_start && !isDate(b.week_start)) return bad("week_start must be YYYY-MM-DD");
       return J({ review: await D.upsertReview(b as never) }, 201);
     }

@@ -39,6 +39,11 @@
     "timeout_minutes": 25
   },
 
+  "audits": {
+    "dir": "docs/audits",
+    "sync_minutes": 60
+  },
+
   "guard": {
     "deny": []
   },

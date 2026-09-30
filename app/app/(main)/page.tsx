@@ -56,7 +56,8 @@ export default async function Overview() {
   };
   const clocks = active.flatMap((p) => p.deadlines.filter((d) => d.date >= t).map((d) => ({ ...d, p })))
     .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
-  const thisWeekReviews = reviews.filter((r) => r.type !== "doc" && r.week_start === (reviews.find((x) => x.type !== "doc")?.week_start));
+  // Weekly reports carry a week_start; documents and security audits don't and stay out of "this week".
+  const thisWeekReviews = reviews.filter((r) => r.week_start && r.week_start === (reviews.find((x) => x.week_start)?.week_start));
 
   if (!projects.length) return (
     <>

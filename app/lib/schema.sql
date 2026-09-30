@@ -81,7 +81,7 @@ create index if not exists messages_status on messages (status, created_at);
 
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('project','recap','coaching','jarvis','doc')),
+  type text not null check (type in ('project','recap','coaching','jarvis','doc','security')),
   project_id text,
   week_start date,
   title text not null,
@@ -149,3 +149,9 @@ alter table items add column if not exists refine_note text not null default '';
 -- Replies in the inbox: a follow-up points at the first message of its conversation.
 alter table messages add column if not exists thread_id uuid;
 create index if not exists messages_thread on messages (thread_id, created_at);
+-- Security audit reports mirrored from each project's folder (agent/audits.mjs): review type 'security', one row per
+-- file, keyed by meta.file. The type check is widened in place (drop + add is the only way; every run ends in the
+-- same state); the partial unique index turns the re-sync into an upsert.
+alter table reviews drop constraint if exists reviews_type_check;
+alter table reviews add constraint reviews_type_check check (type in ('project','recap','coaching','jarvis','doc','security'));
+create unique index if not exists reviews_file_unique on reviews (type, coalesce(project_id, ''), (meta->>'file')) where meta->>'file' is not null;

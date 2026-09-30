@@ -12,6 +12,7 @@ import { api, qs, makeLog, acquireLock, todayTZ, hostName, JARVIS_ROOT, CLI, CON
 import { runClaude } from "./claude.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
+import { syncAuditsDue } from "./audits.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -114,7 +115,8 @@ ${CLI_CMD} set <project> <id> status=todo|doing|done due=YYYY-MM-DD note="..." t
 ${CLI_CMD} add <project> <section> "title" [--due D] [--owner O] [--detail T] [--critical]
 ${CLI_CMD} todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
 ${CLI_CMD} todos [--from D] [--to D]
-${CLI_CMD} reviews [--type project|recap|coaching|jarvis|doc] [--project P] [--limit N] [--full]
+${CLI_CMD} reviews [--type project|recap|coaching|jarvis|doc|security] [--project P] [--limit N] [--full]
+${CLI_CMD} audits <project>                 security audit reports synced from the project folder (date, verdict, headline)
 Do not use the CLI's inbox or reply commands: the worker posts your final message as the reply.
 
 ## Projects
@@ -204,6 +206,8 @@ async function pass() {
     const projects = await api("GET", "/api/agent/projects");
     // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
     await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
+    // Security audit reports in each project folder → the project's Security tab; at most once an hour.
+    await syncAuditsDue(projects, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
     if (!messages.length) return;
     for (const m of messages) {
       try { await handle(m, projects); }
