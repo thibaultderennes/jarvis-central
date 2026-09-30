@@ -26,6 +26,19 @@ export async function saveNote(project_id: string, id: string, note: string) {
   await D.logActivity("item_note", `/p/${project_id}`, { id });
   done();
 }
+/** A comment on an existing item: Claude reads it on the next worker pass and adjusts the item where it asks. */
+export async function commentItem(project_id: string, id: string, text: string) {
+  await requireSession();
+  const t = text.trim().slice(0, 2000);
+  if (!t) return;
+  // Comments sent before Claude got to the last one are kept together, oldest first.
+  const [it] = await sql()`update items set refine_request = trim(both from concat_ws(e'\n', nullif(refine_request, ''), ${t}::text)), refine = 'pending', updated_at = now()
+    where project_id = ${project_id} and id = ${id} returning id`;
+  if (!it) return;
+  await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${project_id}, ${id}, 'comment', null, ${t}, 'founder')`;
+  await D.logActivity("item_comment", `/p/${project_id}`, { id });
+  done();
+}
 export async function setDue(project_id: string, id: string, due: string | null) {
   await requireSession();
   if (due && !isDate(due)) return;
