@@ -8,14 +8,21 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   projects                                        list projects
   items <project> [--open] [--section S]          checklist items
   item <project> <id>                             one item in full
-  set <project> <id> key=value ...                status|due|title|detail|note|section|owner|critical=true/false
-  add <project> <section> "title" [--due D] [--owner founder|claude|both] [--detail T] [--critical]
-  inbox [--project P] [--all]                     messages (default: new/seen/working)
+  set <project> <id> key=value ...                status(todo|doing|done|cancelled)|due|title|detail|note|section|owner|critical=true/false
+  add <project> <section> "title" [--due D] [--owner founder|claude|both] [--detail T] [--critical] [--force]
+  cancel <project> <id> [--reason T] [--dup ID]   cancel an item (kept under "Show completed"); --dup = the item it duplicates
+  dupes [--project P] [--cancel]                  exact duplicate titles per project; --cancel keeps the oldest, cancels the rest
+  builds [--project P]                            in-progress items Claude is building (build status, PR)
+  inbox [--project P] [--all]                     messages waiting for Claude, then replies you haven't treated (pending)
   reply <message-id> "text" [--status answered|done|needs_you]
   todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
   todos [--from D] [--to D]                       default: today → +6 days
   reviews [--type project|recap|coaching|jarvis|doc|security] [--project P] [--limit N] [--full]
   audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
+  costs [--project P|none] [--all]                recurring costs (finance); "none" = independent of any project
+  cost add "name" --amount N [--period week|month|year] [--currency USD] [--project P] [--renews D] [--notes T]
+  cost set <id> key=value ...                     name|amount|period|currency|project|renews|notes|active=true/false
+  cost rm <id>
 
   --json on any read command prints raw JSON. Dates are YYYY-MM-DD (${TZ}).
   owner "founder" means you, the person who owns the dashboard.`;
@@ -27,7 +34,7 @@ function parse(argv) {
     if (a.startsWith("--")) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full"].includes(k)) { flags[k] = next; i++; }
+      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel"].includes(k)) { flags[k] = next; i++; }
       else flags[k] = true;
     } else pos.push(a);
   }
@@ -39,8 +46,10 @@ const date = (v) => (v === "today" ? todayTZ() : v === "tomorrow" ? addDays(toda
 const need = (v, what) => { if (v === undefined || v === true || v === "") { out(`Missing ${what}.\n\n${HELP}`); process.exit(2); } return v; };
 
 function itemLine(i) {
-  const bits = [`[${i.id}]`, pad(i.status, 5), pad(i.due || "—", 10), pad(i.owner || "—", 7), i.critical ? "CRIT" : "    ", "—", i.title];
+  const bits = [`[${i.id}]`, pad(i.status === "cancelled" ? "cancl" : i.status, 5), pad(i.due || "—", 10), pad(i.owner || "—", 7), i.critical ? "CRIT" : "    ", "—", i.title];
   let s = bits.join(" ");
+  if (i.status === "cancelled") s += `\n      cancelled${i.duplicate_of ? ` (duplicate of ${i.duplicate_of})` : ""}${i.cancel_reason ? `: ${i.cancel_reason}` : ""}`;
+  if (i.build_status) s += `\n      build: ${i.build_status}${i.pr_url ? ` ${i.pr_url}` : ""}${i.build_note ? ` — ${i.build_note.replace(/\n/g, " ").slice(0, 200)}` : ""}`;
   if (i.note) s += `\n      note: ${i.note.replace(/\n/g, " ")}`;
   if (i.refine_request) s += `\n      comment for Claude (pending): ${i.refine_request.replace(/\n/g, " / ")}`;
   return s;
@@ -88,7 +97,8 @@ async function main() {
         const m = kv.match(/^(\w+)=([\s\S]*)$/);
         if (!m) { out(`Bad pair "${kv}", expected key=value`); process.exit(2); }
         let [, k, v] = m;
-        if (!["status", "due", "title", "detail", "note", "section", "owner", "critical"].includes(k)) { out(`Unknown field ${k}`); process.exit(2); }
+        if (!["status", "due", "title", "detail", "note", "section", "owner", "critical", "cancel_reason", "duplicate_of", "priority", "estimate_minutes"].includes(k)) { out(`Unknown field ${k}`); process.exit(2); }
+        if (k === "priority" || k === "estimate_minutes") v = Number(v);
         if (k === "critical") v = v === "true";
         if (k === "due") v = v === "" || v === "none" ? null : date(v);
         body[k] = v;
@@ -104,21 +114,62 @@ async function main() {
       if (flags.detail) body.detail = flags.detail;
       if (flags.critical) body.critical = true;
       if (flags.id) body.id = flags.id;
-      const { item } = await api("POST", "/api/agent/items", body);
-      return out(json ? JSON.stringify(item, null, 2) : "Added " + itemLine(item));
+      if (flags.force) body.allow_duplicate = true;
+      try {
+        const { item } = await api("POST", "/api/agent/items", body);
+        return out(json ? JSON.stringify(item, null, 2) : "Added " + itemLine(item));
+      } catch (e) {
+        if (e.status === 409 && e.body?.duplicate) { out(`Not added: already on the checklist as [${e.body.duplicate.id}] "${e.body.duplicate.title}". Use --force to add it anyway.`); process.exit(1); }
+        throw e;
+      }
+    }
+    case "cancel": {
+      const project = need(rest[0], "<project>"), id = need(rest[1], "<id>");
+      const body = { project_id: project, id, status: "cancelled", cancel_reason: flags.reason || "", duplicate_of: flags.dup || null };
+      const { item } = await api("PATCH", "/api/agent/items", body);
+      return out(json ? JSON.stringify(item, null, 2) : "Cancelled " + itemLine(item));
+    }
+    case "dupes": {
+      const groups = await api("GET", "/api/agent/duplicates" + qs({ project: flags.project }));
+      if (json) return out(JSON.stringify(groups, null, 2));
+      if (!groups.length) return out("No exact duplicates.");
+      for (const g of groups) {
+        out(`\n${g[0].project_id}: "${g[0].title}" × ${g.length}`);
+        for (const [n, i] of g.entries()) {
+          const keep = n === 0;
+          out(`  ${keep ? "keep  " : "cancel"} [${i.id}] ${i.status} due ${i.due || "—"} created ${String(i.created_at).slice(0, 10)}`);
+          if (!keep && flags.cancel) await api("PATCH", "/api/agent/items", { project_id: i.project_id, id: i.id, status: "cancelled", cancel_reason: "Duplicate", duplicate_of: g[0].id });
+        }
+      }
+      out(flags.cancel ? "\nDuplicates cancelled (the oldest of each group kept)." : "\nDry run: add --cancel to cancel every copy but the oldest.");
+      return;
+    }
+    case "builds": {
+      let items = await api("GET", "/api/agent/items" + qs({ project: flags.project, open: 1 }));
+      items = items.filter((i) => i.status === "doing" && ["claude", "both"].includes(i.owner || ""));
+      if (json) return out(JSON.stringify(items, null, 2));
+      if (!items.length) return out("No in-progress items owned by Claude.");
+      for (const i of items) out(`${pad(i.project_id, 12)} [${i.id}] ${pad(i.build_status || "queued", 15)} ${i.pr_url || ""}  ${i.title}`);
+      return;
     }
     case "inbox": {
       let ms = [];
       if (flags.all) ms = await api("GET", "/api/agent/messages" + qs({ since: new Date(Date.now() - 14 * 864e5).toISOString() }));
       else for (const s of ["new", "seen", "working"]) ms.push(...(await api("GET", "/api/agent/messages" + qs({ status: s, limit: 50 }))));
-      if (flags.project) ms = ms.filter((m) => !m.project_id || m.project_id === flags.project);
-      if (json) return out(JSON.stringify(ms, null, 2));
-      if (!ms.length) return out("Inbox empty.");
-      for (const m of ms) {
+      // Replies the owner opened but hasn't marked treated: pending on their side, shown so a session knows what's in the air.
+      const recent = flags.all ? [] : await api("GET", "/api/agent/messages" + qs({ since: new Date(Date.now() - 14 * 864e5).toISOString() })).catch(() => []);
+      let pending = recent.filter((m) => m.opened_at && !m.treated_at && !m.archived && !["new", "seen", "working"].includes(m.status));
+      if (flags.project) { ms = ms.filter((m) => !m.project_id || m.project_id === flags.project); pending = pending.filter((m) => !m.project_id || m.project_id === flags.project); }
+      if (json) return out(JSON.stringify(flags.all ? ms : { waiting: ms, pending }, null, 2));
+      if (!ms.length && !pending.length) return out("Inbox empty.");
+      const show = (m) => {
         out(`${m.id}  ${pad(m.status, 9)} ${m.project_id || "any"}  ${m.created_at}`);
         out(`  ${m.text.replace(/\n/g, "\n  ")}`);
         if (m.reply) out(`  ↳ ${m.reply.slice(0, 400).replace(/\n/g, "\n    ")}`);
-      }
+      };
+      if (ms.length) { if (!flags.all) out(`# Waiting for Claude (${ms.length})`); for (const m of ms) show(m); }
+      else if (!flags.all) out("Nothing waiting for Claude.");
+      if (pending.length) { out(`\n# Pending on the owner's side (${pending.length}: replied, opened, not yet marked treated)`); for (const m of pending) show(m); }
       return;
     }
     case "reply": {
@@ -169,6 +220,47 @@ async function main() {
         out(`           ${r.meta?.file || ""}  ${r.id}`);
       }
       return;
+    }
+    case "costs": {
+      const project = flags.project === "none" ? null : flags.project;
+      let path = "/api/agent/costs" + qs({ all: flags.all ? 1 : "" });
+      if (project !== undefined) path += (path.includes("?") ? "&" : "?") + "project=" + encodeURIComponent(project || "");
+      const cs = await api("GET", path);
+      if (json) return out(JSON.stringify(cs, null, 2));
+      if (!cs.length) return out("No recurring costs yet.");
+      const monthly = (c) => (c.period === "week" ? (c.amount * 52) / 12 : c.period === "year" ? c.amount / 12 : c.amount);
+      const totals = {};
+      for (const c of cs) {
+        if (c.active) totals[c.currency] = (totals[c.currency] || 0) + monthly(c);
+        out(`${c.id}  ${pad(c.project_id || "independent", 14)} ${pad(c.name, 28)} ${pad(`${c.amount} ${c.currency}/${c.period}`, 18)} ${c.next_renewal ? "renews " + c.next_renewal : ""}${c.active ? "" : "  (inactive)"}`);
+      }
+      out(`\nMonthly: ${Object.entries(totals).map(([k, v]) => `${v.toFixed(2)} ${k}`).join(" + ") || "0"}`);
+      return;
+    }
+    case "cost": {
+      const sub = rest[0];
+      if (sub === "add") {
+        const name = need(rest[1], '"name"'), amount = Number(need(flags.amount, "--amount"));
+        const body = { name, amount, period: flags.period || "month", currency: flags.currency || "USD", project_id: flags.project || null, next_renewal: flags.renews ? date(flags.renews) : null, notes: flags.notes || "" };
+        const { cost } = await api("POST", "/api/agent/costs", body);
+        return out(json ? JSON.stringify(cost, null, 2) : `Added ${cost.name}: ${cost.amount} ${cost.currency}/${cost.period}${cost.project_id ? ` (${cost.project_id})` : ""}  ${cost.id}`);
+      }
+      if (sub === "set") {
+        const id = need(rest[1], "<id>"), body = { id };
+        const map = { project: "project_id", renews: "next_renewal" };
+        for (const kv of rest.slice(2)) {
+          const m = kv.match(/^(\w+)=([\s\S]*)$/);
+          if (!m) { out(`Bad pair "${kv}", expected key=value`); process.exit(2); }
+          let [, k, v] = m; k = map[k] || k;
+          if (!["name", "amount", "period", "currency", "project_id", "next_renewal", "notes", "active"].includes(k)) { out(`Unknown field ${k}`); process.exit(2); }
+          if (k === "amount") v = Number(v); if (k === "active") v = v === "true"; if (k === "project_id" && (v === "" || v === "none")) v = null; if (k === "next_renewal") v = v ? date(v) : null;
+          body[k] = v;
+        }
+        const { cost } = await api("PATCH", "/api/agent/costs", body);
+        return out(json ? JSON.stringify(cost, null, 2) : `Updated ${cost.name}: ${cost.amount} ${cost.currency}/${cost.period}`);
+      }
+      if (sub === "rm") { const id = need(rest[1], "<id>"); await api("DELETE", "/api/agent/costs" + qs({ id })); return out(`Removed ${id}`); }
+      out(HELP); process.exit(2);
     }
     case undefined: case "help": case "-h":
       return out(HELP);

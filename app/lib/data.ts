@@ -9,19 +9,30 @@ export type Project = {
   sort: number; archived: boolean; updated_at: string;
   featured_rank: number | null; plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean;
 };
+export type ItemStatus = "todo" | "doing" | "done" | "cancelled";
+export type BuildStatus = "working" | "pr_open" | "merge_requested" | "merged" | "failed" | "sent_back";
 export type Item = {
   project_id: string; id: string; section: string; title: string; detail: string;
-  status: "todo" | "doing" | "done"; due: string | null; owner: string | null; critical: boolean;
+  status: ItemStatus; due: string | null; owner: string | null; critical: boolean;
   sort: number; note: string; created_at: string; updated_at: string; done_at: string | null;
   estimate_minutes: number | null; priority: number | null; refine: string | null; refine_note: string; refine_request: string;
+  cancel_reason: string; duplicate_of: string | null; note_sent_at: string | null;
+  build_status: BuildStatus | null; build_note: string; pr_url: string | null; build_updated_at: string | null;
+};
+/** Open = still to be worked on. Done and cancelled items are closed: out of every count, deadline and load. */
+export const isOpen = (i: { status: string }) => i.status === "todo" || i.status === "doing";
+export const isClosed = (i: { status: string }) => !isOpen(i);
+export type Cost = {
+  id: string; project_id: string | null; name: string; amount: number; currency: string; period: "week" | "month" | "year";
+  next_renewal: string | null; notes: string; active: boolean; created_at: string; updated_at: string;
 };
 export type Todo = {
   id: string; date: string | null; title: string; kind: "life" | "work"; project_id: string | null;
   item_id: string | null; time: string | null; sort: number; done: boolean; done_at: string | null; created_at: string;
 };
 export type Message = {
-  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; mode: "auto" | "discuss" | "build" | "plan"; text: string; status: string; reply: string;
-  meta: Record<string, unknown>; archived: boolean; created_at: string; updated_at: string; replied_at: string | null;
+  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan"; text: string; status: string; reply: string;
+  meta: Record<string, unknown>; archived: boolean; created_at: string; updated_at: string; replied_at: string | null; opened_at: string | null; treated_at: string | null;
 };
 export type Review = {
   id: string; type: "project" | "recap" | "coaching" | "jarvis" | "doc" | "security"; project_id: string | null;
@@ -32,9 +43,10 @@ export type Review = {
 // Postgres `date` comes back as a Date or string depending on driver settings; normalise to YYYY-MM-DD.
 const d10 = (v: unknown): string | null => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
 const ts = (v: unknown): string | null => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
-const normItem = (r: Record<string, unknown>) => ({ ...r, due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at) }) as Item;
+const normItem = (r: Record<string, unknown>) => ({ ...r, due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at), note_sent_at: ts(r.note_sent_at), build_updated_at: ts(r.build_updated_at) }) as Item;
+const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
 const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at) }) as Todo;
-const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at) }) as Message;
+const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at), opened_at: ts(r.opened_at), treated_at: ts(r.treated_at) }) as Message;
 const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at) }) as Review;
 /** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
 export const newestFileFirst = (a: Review, b: Review) => String(b.meta?.date || "").localeCompare(String(a.meta?.date || "")) || b.created_at.localeCompare(a.created_at);
@@ -74,11 +86,14 @@ export function splitFeatured(projects: Project[]): { featured: Project[]; other
 export const displayColor = (p: Project, featuredIds: Set<string>) => (featuredIds.has(p.id) ? p.color : "other");
 
 /* ---------- items ---------- */
-export async function getItems(opts: { project?: string; open?: boolean; refine?: string } = {}): Promise<Item[]> {
+export async function getItems(opts: { project?: string; open?: boolean; refine?: string; build?: string } = {}): Promise<Item[]> {
   const where: string[] = [], params: unknown[] = [];
-  if (opts.refine) { params.push(opts.refine); where.push(`refine = $${params.length}`); }
-  if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
-  if (opts.open) where.push(`status <> 'done'`);
+  if (opts.refine) { params.push(opts.refine); where.push(`refine = ${params.length}`); }
+  if (opts.project) { params.push(opts.project); where.push(`project_id = ${params.length}`); }
+  if (opts.open) where.push(`status in ('todo', 'doing')`);
+  // build=queue: in-progress items owned by Claude that no build run has claimed yet; build=<status>: runs in that state.
+  if (opts.build === "queue") where.push(`status = 'doing' and coalesce(owner, 'founder') in ('claude', 'both') and build_status is null`);
+  else if (opts.build) { params.push(opts.build); where.push(`build_status = ${params.length}`); }
   const rows = await q(`select * from items ${where.length ? "where " + where.join(" and ") : ""} order by project_id, sort, created_at`, params);
   return rows.map(normItem);
 }
@@ -86,7 +101,30 @@ export function slugify(s: string, max = 4): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "").split("-").filter(Boolean).slice(0, max).join("-") || "item";
 }
-export async function addItem(i: { project_id: string; section: string; title: string; id?: string; detail?: string; due?: string | null; owner?: string | null; critical?: boolean; refine?: string | null; estimate_minutes?: number | null; priority?: number | null; refine_note?: string }, actor = "founder"): Promise<Item> {
+/** Title comparison for the duplicate check: lower-case words, punctuation and filler words dropped. */
+const STOP = new Set(["a", "an", "the", "to", "of", "for", "and", "or", "in", "on", "with", "it", "its", "is", "be", "this", "that", "my", "our", "your"]);
+export const normTitle = (t: string) => t.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim().split(" ").filter((w) => w && !STOP.has(w)).join(" ");
+const words = (t: string) => new Set(normTitle(t).split(" ").filter(Boolean));
+/** Items in the project with the same normalised title (exact) or most of the same words (near). Cancelled ones don't count. */
+export async function findDuplicates(project_id: string, title: string, exceptId?: string): Promise<{ exact: Item | null; near: Item | null }> {
+  const mine = (await getItems({ project: project_id })).filter((x) => x.status !== "cancelled" && x.id !== exceptId);
+  const key = normTitle(title), w = words(title);
+  const exact = mine.find((x) => normTitle(x.title) === key) || null;
+  let near: Item | null = null, best = 0;
+  if (w.size >= 3) for (const x of mine) {
+    const xw = words(x.title); if (xw.size < 3) continue;
+    let common = 0; for (const t of w) if (xw.has(t)) common++;
+    const j = common / (w.size + xw.size - common);
+    if (j >= 0.7 && j > best) { best = j; near = x; }
+  }
+  return { exact, near: exact ? null : near };
+}
+export class DuplicateError extends Error { constructor(public item: Item) { super(`Already on the checklist as "${item.id}"`); } }
+export async function addItem(i: { project_id: string; section: string; title: string; id?: string; detail?: string; due?: string | null; owner?: string | null; critical?: boolean; refine?: string | null; estimate_minutes?: number | null; priority?: number | null; refine_note?: string; allow_duplicate?: boolean }, actor = "founder"): Promise<Item> {
+  // Every create path is checked: an exact match is refused, a near match is created but flagged for the owner.
+  const dup = i.allow_duplicate ? { exact: null, near: null } : await findDuplicates(i.project_id, i.title);
+  if (dup.exact) throw new DuplicateError(dup.exact);
+  if (dup.near && i.refine !== "pending") { i.refine = "flagged"; i.refine_note = `Looks like it overlaps \`${dup.near.id}\` ("${dup.near.title}"). Merge them, or cancel one as a duplicate.`; }
   const [m] = await sql()`select coalesce(max(sort), 0) + 1 as s from items where project_id = ${i.project_id} and section = ${i.section}`;
   let id = i.id || slugify(i.title);
   const taken = await sql()`select id from items where project_id = ${i.project_id} and (id = ${id} or id like ${id + "-%"})`;
@@ -99,8 +137,8 @@ export async function addItem(i: { project_id: string; section: string; title: s
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${i.project_id}, ${id}, 'created', null, ${i.section}, ${actor})`;
   return normItem(rows[0]);
 }
-const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note", "refine_request"] as const;
-const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical"]);
+const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note", "refine_request", "cancel_reason", "duplicate_of", "build_status", "build_note", "pr_url"] as const;
+const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical", "build_status", "pr_url"]);
 export async function updateItem(project_id: string, id: string, patch: Partial<Item>, actor = "founder"): Promise<Item | null> {
   const [cur] = (await sql()`select * from items where project_id = ${project_id} and id = ${id}`).map(normItem);
   if (!cur) return null;
@@ -110,6 +148,7 @@ export async function updateItem(project_id: string, id: string, patch: Partial<
   const sets = cols.map((k) => { params.push(k === "due" ? patch.due || null : patch[k]); return `${k} = $${params.length}`; });
   sets.push("updated_at = now()");
   if (patch.status && patch.status !== cur.status) sets.push(patch.status === "done" ? "done_at = now()" : "done_at = null");
+  if (patch.build_status !== undefined && patch.build_status !== cur.build_status) sets.push("build_updated_at = now()");
   const rows = await q(`update items set ${sets.join(", ")} where project_id = $1 and id = $2 returning *`, params);
   for (const k of cols) if (LOGGED.has(k)) {
     await sql()`insert into item_events (project_id, item_id, field, old, new, actor)
@@ -155,17 +194,28 @@ export async function getMessages(opts: { status?: string; limit?: number; since
     : await sql()`select * from messages where not archived order by created_at desc limit ${lim}`;
   return rows.map(normMsg);
 }
-export async function patchMessage(id: string, p: { status?: string; reply?: string; meta?: Record<string, unknown>; archived?: boolean }): Promise<Message | null> {
+export async function patchMessage(id: string, p: { status?: string; reply?: string; meta?: Record<string, unknown>; archived?: boolean; opened?: boolean; treated?: boolean | null }): Promise<Message | null> {
   const rows = await sql()`update messages set
       status = coalesce(${p.status ?? null}, status),
       reply = coalesce(${p.reply ?? null}, reply),
       replied_at = case when ${p.reply ?? null}::text is not null then now() else replied_at end,
+      opened_at = case when ${p.reply ?? null}::text is not null then null when ${!!p.opened} then coalesce(opened_at, now()) else opened_at end,
+      treated_at = case when ${p.treated === undefined ? null : p.treated ? "set" : "clear"}::text = 'set' then now() when ${p.treated === undefined ? null : p.treated ? "set" : "clear"}::text = 'clear' then null else treated_at end,
       meta = meta || ${JSON.stringify(p.meta || {})}::jsonb,
       archived = coalesce(${p.archived ?? null}, archived),
       updated_at = now()
     where id = ${id} returning *`;
   return rows[0] ? normMsg(rows[0]) : null;
 }
+/** A message the agent leaves or queues: already answered (a note), or new work for the worker (a build run of an item). */
+export async function insertMessage(m: { text: string; project_id?: string | null; status?: string; reply?: string; meta?: Record<string, unknown>; mode?: string; item_id?: string | null; thread_id?: string | null }): Promise<{ id: string }> {
+  const status = m.status || "answered", mode = ["discuss", "build", "plan"].includes(m.mode || "") ? m.mode! : "discuss";
+  const [row] = await sql()`insert into messages (text, project_id, status, reply, meta, mode, item_id, thread_id, replied_at)
+    values (${m.text.slice(0, 4000)}, ${m.project_id || null}, ${status}, ${(m.reply || "").slice(0, 8000)}, ${JSON.stringify(m.meta || {})}, ${mode}, ${m.item_id || null}, ${m.thread_id || null}, ${status === "new" ? null : new Date().toISOString()}) returning id`;
+  return { id: row.id as string };
+}
+/** Inbox groups for the owner: new (a reply they haven't opened, or work still with Claude), pending (opened, not treated), treated. */
+export const inboxGroup = (m: Message): "new" | "pending" | "treated" => (m.treated_at || m.archived ? "treated" : m.opened_at && !["new", "seen", "working"].includes(m.status) ? "pending" : "new");
 
 /* ---------- reviews ---------- */
 export async function getReviews(opts: { type?: string; project?: string; limit?: number; week?: string } = {}): Promise<Review[]> {
@@ -242,7 +292,7 @@ export async function doneByWeek(weeks = 8) {
 /** Open items by due week, next `weeks` weeks (overdue folded into the first week). */
 export async function openByDueWeek(weeks = 6) {
   const start = mondayOf(today()), end = addDays(start, 7 * weeks - 1);
-  const rows = await sql()`select project_id, greatest(due, ${start}::date) as d from items where status <> 'done' and due is not null and due <= ${end}`;
+  const rows = await sql()`select project_id, greatest(due, ${start}::date) as d from items where status in ('todo', 'doing') and due is not null and due <= ${end}`;
   return { start, rows: rows.map((r) => ({ project_id: r.project_id as string, week: mondayOf(d10(r.d)!) })) };
 }
 /** Todos per day for the last `days` days: planned vs done, split life/work. */
@@ -261,7 +311,8 @@ export type Insight = {
   deadline: { date: string; label: string } | null; dueByDeadline: number; neededPerWeek: number;
   slips7: number; owners: { you: number; claude: number; both: number };
 };
-export async function insights(): Promise<{ projects: Insight[]; heat: { date: string; done: number; todos: number; msgs: number }[] }> {
+/** Burn-up, pace and owner split per project: the top 3 by default, or one project when `project` is given. */
+export async function insights(project?: string): Promise<{ projects: Insight[]; heat: { date: string; done: number; todos: number; msgs: number }[] }> {
   const { isoInTZ, today: tdy, addDays: add, daysBetween } = await import("./time");
   const t = tdy(), from = add(t, -27);
   const day = (v: string | null) => (v ? isoInTZ(new Date(v)) : null);
@@ -272,22 +323,22 @@ export async function insights(): Promise<{ projects: Insight[]; heat: { date: s
     sql()`select created_at from messages where created_at >= ${from}::date - 1`,
   ]);
   const out: Insight[] = [];
-  for (const p of splitFeatured(projects).featured) {
+  for (const p of project ? projects.filter((x) => x.id === project) : splitFeatured(projects).featured) {
     const its = items.filter((i) => i.project_id === p.id);
     const created = its.map((i) => day(i.created_at)!).sort();
     const start = created[0] && created[0] > from ? created[0] : from;
     const days: string[] = []; for (let d = start; d <= t; d = add(d, 1)) days.push(d);
-    const scope = days.map((d) => its.filter((i) => day(i.created_at)! <= d).length);
+    const scope = days.map((d) => its.filter((i) => i.status !== "cancelled" && day(i.created_at)! <= d).length);
     const done = days.map((d) => its.filter((i) => i.status === "done" && i.done_at && day(i.done_at)! <= d).length);
     const windowDays = Math.max(7, days.length);
     const recent = its.filter((i) => i.status === "done" && i.done_at && day(i.done_at)! > add(t, -windowDays)).length;
-    const ratePerDay = recent / windowDays, openNow = its.filter((i) => i.status !== "done").length;
+    const ratePerDay = recent / windowDays, openNow = its.filter(isOpen).length;
     const projected = ratePerDay > 0 ? add(t, Math.ceil(openNow / ratePerDay)) : null;
     const deadline = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
-    const dueByDeadline = deadline ? its.filter((i) => i.status !== "done" && i.due && i.due <= deadline.date).length : 0;
+    const dueByDeadline = deadline ? its.filter((i) => isOpen(i) && i.due && i.due <= deadline.date).length : 0;
     const neededPerWeek = deadline ? dueByDeadline / Math.max(1, daysBetween(t, deadline.date)) * 7 : 0;
     const slips7 = ev.filter((e) => e.project_id === p.id && e.field === "due" && e.old && e.new && String(e.new) > String(e.old) && day(String(e.at instanceof Date ? e.at.toISOString() : e.at))! > add(t, -7)).length;
-    const open = its.filter((i) => i.status !== "done");
+    const open = its.filter(isOpen);
     const owners = { you: open.filter((i) => !i.owner || i.owner === "founder").length, claude: open.filter((i) => i.owner === "claude").length, both: open.filter((i) => i.owner === "both").length };
     out.push({ id: p.id, name: p.name, color: p.color, days, scope, done, ratePerWeek: ratePerDay * 7, openNow, projected, deadline, dueByDeadline, neededPerWeek, slips7, owners });
   }
@@ -300,3 +351,64 @@ export async function insights(): Promise<{ projects: Insight[]; heat: { date: s
   }));
   return { projects: out, heat };
 }
+
+/* ---------- daily stats ---------- */
+export type DayStat = { date: string; added: number; done: number; done_late: number; cancelled: number };
+/** Per day, last `days` days: items added, finished (of which past their due date when finished) and cancelled; plus the open overdue count today. */
+export async function dailyStats(days = 14, project?: string): Promise<{ from: string; tracking_since: string | null; overdue_open: number; days: DayStat[] }> {
+  const { addDays: add, today: tdy, isoInTZ } = await import("./time");
+  const t = tdy(), from = add(t, -(days - 1));
+  const p = project || null;
+  const [rows, [first], [od]] = await Promise.all([
+    sql()`select created_at, done_at, updated_at, due, status from items where (${p}::text is null or project_id = ${p}) and (created_at >= ${from}::date - 1 or done_at >= ${from}::date - 1 or (status = 'cancelled' and updated_at >= ${from}::date - 1))`,
+    sql()`select min(created_at) as first from items where ${p}::text is null or project_id = ${p}`,
+    sql()`select count(*)::int as n from items where (${p}::text is null or project_id = ${p}) and status in ('todo', 'doing') and due is not null and due < ${t}`,
+  ]);
+  const day = (v: unknown) => (v == null ? null : isoInTZ(v instanceof Date ? v : new Date(String(v))));
+  const out: DayStat[] = Array.from({ length: days }, (_, i) => ({ date: add(from, i), added: 0, done: 0, done_late: 0, cancelled: 0 }));
+  const idx = Object.fromEntries(out.map((d, i) => [d.date, i]));
+  for (const r of rows) {
+    const c = day(r.created_at), d = day(r.done_at), u = day(r.updated_at);
+    if (c && c in idx) out[idx[c]].added++;
+    if (r.status === "done" && d && d in idx) { out[idx[d]].done++; if (r.due && d10(r.due)! < d) out[idx[d]].done_late++; }
+    if (r.status === "cancelled" && u && u in idx) out[idx[u]].cancelled++;
+  }
+  return { from, tracking_since: day(first?.first), overdue_open: Number(od?.n || 0), days: out };
+}
+
+/* ---------- recurring costs (finance) ---------- */
+export async function getCosts(opts: { project?: string | null; all?: boolean } = {}): Promise<Cost[]> {
+  const where: string[] = [], params: unknown[] = [];
+  if (opts.project === null) where.push("project_id is null");
+  else if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
+  if (!opts.all) where.push("active");
+  const rows = await q(`select * from recurring_costs ${where.length ? "where " + where.join(" and ") : ""} order by project_id nulls last, name`, params);
+  return rows.map(normCost);
+}
+const PERIODS = new Set(["week", "month", "year"]);
+export async function addCost(c: { project_id?: string | null; name: string; amount: number; currency?: string; period?: string; next_renewal?: string | null; notes?: string }): Promise<Cost> {
+  const rows = await sql()`insert into recurring_costs (project_id, name, amount, currency, period, next_renewal, notes)
+    values (${c.project_id || null}, ${c.name.trim().slice(0, 120)}, ${Math.max(0, Number(c.amount) || 0)}, ${(c.currency || "USD").toUpperCase().slice(0, 3)}, ${PERIODS.has(c.period || "") ? c.period : "month"}, ${c.next_renewal || null}, ${(c.notes || "").slice(0, 2000)}) returning *`;
+  return normCost(rows[0]);
+}
+export async function updateCost(id: string, p: Partial<Cost>): Promise<Cost | null> {
+  const rows = await sql()`update recurring_costs set
+      project_id = case when ${p.project_id === undefined} then project_id else ${p.project_id || null} end,
+      name = coalesce(${p.name?.trim().slice(0, 120) ?? null}, name),
+      amount = coalesce(${p.amount === undefined ? null : Math.max(0, Number(p.amount) || 0)}, amount),
+      currency = coalesce(${p.currency?.toUpperCase().slice(0, 3) ?? null}, currency),
+      period = coalesce(${PERIODS.has(p.period || "") ? p.period! : null}, period),
+      next_renewal = case when ${p.next_renewal === undefined} then next_renewal else ${p.next_renewal || null} end,
+      notes = coalesce(${p.notes?.slice(0, 2000) ?? null}, notes),
+      active = coalesce(${p.active ?? null}, active),
+      updated_at = now()
+    where id = ${id} returning *`;
+  return rows[0] ? normCost(rows[0]) : null;
+}
+export async function deleteCost(id: string) { await sql()`delete from recurring_costs where id = ${id}`; }
+/** Monthly equivalent of a cost. */
+export const monthly = (c: Cost) => (c.period === "week" ? (c.amount * 52) / 12 : c.period === "year" ? c.amount / 12 : c.amount);
+
+/* ---------- owner preferences (kv "prefs", set on the Admin page) ---------- */
+export type Prefs = { show_done_default?: boolean; finance_currency?: string };
+export async function getPrefs(): Promise<Prefs> { return (await kvGet<Prefs>("prefs"))?.value || {}; }

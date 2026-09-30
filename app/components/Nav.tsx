@@ -26,6 +26,7 @@ export default function Nav({ projects, moreCount = 0, waiting, fresh, workerAt 
           <span className={`worker ${!workerAt || !now ? "" : alive ? "on" : "off"}`} title="The Claude worker on your Mac checks for messages every minute">
             <i />{!workerAt ? "Mac worker not connected yet" : now ? (alive ? "Mac worker online" : `Mac worker last seen ${ago(workerAt)}`) : ""}
           </span>
+          <Link href="/admin" className="ver" style={{ cursor: "pointer", textDecoration: on("/admin") ? "underline" : "none" }} title="Admin: account, projects, subscriptions, preferences">Admin</Link>
           <span className="ver" title="Jarvis Central version (see CHANGELOG.md in the repo)">v{process.env.NEXT_PUBLIC_JARVIS_VERSION || "dev"}</span>
           <form action="/api/auth/logout" method="post"><button className="logout">Sign out</button></form>
         </div>
@@ -40,6 +41,7 @@ export default function Nav({ projects, moreCount = 0, waiting, fresh, workerAt 
           {moreCount > 0 && <Link href="/#projects" title="All your other projects">+{moreCount} more</Link>}
           <span className="sep" aria-hidden="true" />
           <Link href="/reviews" aria-current={on("/reviews")}>Reviews</Link>
+          <Link href="/finance" aria-current={on("/finance")}>Finance</Link>
           <Link href="/inbox" aria-current={on("/inbox")}>Inbox{waiting + fresh > 0 && <span className="badge">{waiting ? `${waiting} waiting` : `${fresh} new`}</span>}</Link>
         </nav>
       </div>

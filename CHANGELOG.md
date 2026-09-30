@@ -3,6 +3,47 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Project page with a left menu**: Dashboard (open / overdue / in progress / latest review / recurring costs, next up,
+  in progress, deadlines, latest reports, the project settings), Checklists, Project (description + strategy documents),
+  Reviews (weekly reviews and security audits), Finances, Statistics (burn-up, added/finished per day; users and
+  visitors wait for an analytics source). Dashboard is the landing view; old `?tab=` links still open the right view.
+- **Checklists**: done and cancelled items are hidden until "Show completed (N)"; filters are three groups combined
+  (Everything / Yours / Claude's · Critical only, Show completed · Any date / Overdue / Next 7 / Next 14 days) with
+  "Reset filters", remembered per project in the browser; a section with only completed items says so.
+- **Cancel an item** ("Comment" → "Cancel this item", with a reason and optionally the item it duplicates): it stays
+  under "Show completed" but leaves every open count, deadline, load and card. Every create path (site, API, CLI, plans)
+  refuses an exact duplicate title in the same project and flags a near match; `jarvis dupes [--cancel]` lists (and
+  cancels, keeping the oldest) the duplicates already there; `jarvis cancel <project> <id> [--reason] [--dup ID]`.
+- **Decide: "Send to Claude"** on the answer box: the note is a draft (kept in the browser) until sent; sending saves it
+  and hands it to Claude as a comment, and the box shows "Sent · Claude has not read it yet" then "Claude read it".
+- **Claude builds in-progress items**: an item owned by Claude (or both) set to in progress is picked up by the Mac
+  worker within a minute, built on its own branch `jarvis/item-<id>`, and comes back on the item as a PR with
+  "Approve & merge" (the worker merges, squash, and marks the item done) and "Send back" (Claude continues on the same
+  branch and PR with your note). Failures stay on the item with the reason and a Retry; one run at a time, sent-back
+  PRs first. `jarvis builds` lists them. Upgrade notes: redeploy (new item columns); `gh` on the Mac must be allowed to
+  merge in those repos.
+- **Refresh this project checklist**: the plan button on a project that already has a checklist reads the folder, the
+  git history and changed files since the checklist last moved and the earlier weekly reviews, then ticks items the
+  folder shows are done (evidence on the item, one click to undo), flags obsolete ones (nothing removed) and adds what's
+  missing. "Plan this project" stays for empty projects.
+- **Daily stats** on the Overview and per project (Statistics): items added and finished per day for the last 14 days,
+  finished-late in red, cancelled, and today's overdue count; days before tracking began are greyed. `GET /api/agent/stats`.
+- **Inbox in three groups**: New (replies you haven't opened, work still with Claude), Pending (opened, not treated),
+  Treated ("Mark treated"). The nav badge counts unopened replies. `jarvis inbox` also lists what is pending on your side.
+- **Finance**: a Finance page (monthly and yearly totals per currency, breakdown per project with an Independent
+  bucket, renewals in the next 30 days, add / edit / delete) and a Finances view on each project. Manual entry only.
+  `jarvis costs`, `jarvis cost add|set|rm`. Upgrade notes: redeploy (new `recurring_costs` table).
+- **Admin page** (top bar): Projects with "Refresh project folders" (queues a scan the Mac worker runs; new folders are
+  registered, nothing is deleted; status and last scan shown) and the registered projects; Account; Subscriptions (the
+  independent recurring costs); Personal info & preferences (instance values read-only with where to change them;
+  "Show completed items by default"; the Finance currency).
+- **Today and Week**: Today opens with a "Decide now" strip (overdue or due today and not on the list: finish, add to
+  today, push to tomorrow), keeps undone above done, flags todos whose item is overdue, and shows the day's load against
+  a day of focus; Week shows the overdue strip above the grid and a load bar per day, orders due items critical-first,
+  and lets you move a todo to any date from its row. Design notes in `docs/today-week.md`. Upgrade notes: re-run
+  `node app/scripts/setup.mjs secrets` to set `JARVIS_FOCUS_MINUTES` (default 6 h until then).
+- Overview: the burn-up charts no longer overlap their labels (deadline label in its own band, value labels move away
+  from the deadline line and the axis, far-off dates drop the crowded tick, long names truncate instead of wrapping).
 - **Security tab**: every project page has a Security tab next to Strategy showing the project's security audit
   reports, newest first, with verdict and a one-line summary (findings by severity, first item of the fix order).
   Reports are markdown files in the project folder (`audits.dir`, default `docs/audits`, e.g.

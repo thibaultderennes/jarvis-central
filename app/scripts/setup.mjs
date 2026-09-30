@@ -76,6 +76,7 @@ if (cmd === "secrets") {
   if (config.owner_name) setEnv("JARVIS_OWNER", config.owner_name, ["production", "development"]);
   setEnv("JARVIS_REVIEW_WHEN", when(config.reviews?.run, "every Monday morning"), ["production", "development"]);
   setEnv("JARVIS_PLAN_WHEN", when(config.planner?.run, "every Sunday afternoon"), ["production", "development"]);
+  setEnv("JARVIS_FOCUS_MINUTES", String(Number(config.planner?.max_focus_minutes_per_day) || 360), ["production", "development"]);
   const dir = join(homedir(), ".config", "jarvis"); mkdirSync(dir, { recursive: true });
   const f = join(dir, "env");
   const keep = existsSync(f) ? readFileSync(f, "utf8").split("\n").filter((l) => l && !/^JARVIS_(URL|AGENT_TOKEN)=/.test(l)) : [];
@@ -146,7 +147,7 @@ if (cmd === "secrets") {
   const have = new Set([...r.stdout.matchAll(/^\s*([A-Z][A-Z0-9_]+)\s/gm)].map((m) => m[1]));
   const want = [
     ["DATABASE_URL", "database (Neon integration)", true], ["JARVIS_SESSION_SECRET", "secrets", true], ["JARVIS_AGENT_TOKEN", "secrets", true],
-    ["JARVIS_TZ", "secrets", true], ["JARVIS_OWNER", "secrets (optional)", false], ["JARVIS_REVIEW_WHEN", "secrets", false], ["JARVIS_PLAN_WHEN", "secrets", false],
+    ["JARVIS_TZ", "secrets", true], ["JARVIS_OWNER", "secrets (optional)", false], ["JARVIS_REVIEW_WHEN", "secrets", false], ["JARVIS_PLAN_WHEN", "secrets", false], ["JARVIS_FOCUS_MINUTES", "secrets", false],
     ["JARVIS_PASSWORD_HASH", "login", true], ["JARVIS_TOTP_SECRET", "login", true],
     ["GOOGLE_ICS_URLS", "google-calendar (optional)", false], ["APPLE_ICS_URLS", "apple-calendar (optional)", false], ["JARVIS_CAL_TOKEN", "apps-script (optional)", false],
   ];

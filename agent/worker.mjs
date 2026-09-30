@@ -13,6 +13,7 @@ import { runClaude } from "./claude.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
 import { syncAuditsDue } from "./audits.mjs";
+import { rescanIfRequested } from "./rescan.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -64,32 +65,46 @@ function linkNodeModules(src, dst) {
   walk("", 0);
 }
 
-function makeWorktree(project, repo, shortId) {
+/** A throwaway worktree on `branch`: new from the base, or continuing a branch already on origin (a PR sent back). */
+function makeWorktree(project, repo, shortId, wanted = null) {
   const wtRoot = path.join(path.dirname(repo.top), ".jarvis-worktrees");
   fs.mkdirSync(wtRoot, { recursive: true });
   const wt = path.join(wtRoot, `${project.id}-${shortId}`);
-  const branch = `jarvis/${shortId}`;
+  const branch = wanted || `jarvis/${shortId}`;
   git(repo.top, "fetch", "origin", repo.base);
-  git(repo.top, "worktree", "add", wt, "-b", branch, `origin/${repo.base}`);
+  const remote = wanted && tryGit(repo.top, "fetch", "origin", `${branch}:refs/remotes/origin/${branch}`) !== null;
+  tryGit(repo.top, "worktree", "remove", "--force", wt);
+  if (remote) { tryGit(repo.top, "branch", "-D", branch); git(repo.top, "worktree", "add", wt, "-b", branch, `origin/${branch}`); }
+  else git(repo.top, "worktree", "add", wt, "-b", branch, `origin/${repo.base}`);
   linkNodeModules(repo.top, wt);
-  return { wt, branch };
+  return { wt, branch, continued: !!remote };
+}
+
+/** The PR already open for a branch, if any. */
+function prFor(repo, branch) {
+  try { return JSON.parse(execFileSync("gh", ["pr", "view", branch, "--json", "url,state"], { cwd: repo.top, encoding: "utf8", timeout: 60_000 })); } catch { return null; }
 }
 
 function finishWorktree(repo, wt, branch, reply) {
   let pr_url = null;
   const ahead = Number(tryGit(wt, "rev-list", "--count", `origin/${repo.base}..HEAD`) || 0);
+  const pushed = Number(tryGit(wt, "rev-list", "--count", `origin/${branch}..HEAD`) ?? ahead) > 0;
   if (ahead > 0) {
-    git(wt, "push", "-u", "origin", branch);
-    const title = tryGit(wt, "log", "--reverse", "--format=%s", `origin/${repo.base}..HEAD`)?.split("\n")[0] || branch;
-    const body = `${reply}\n\n---\nOpened by the Jarvis worker from a message on the dashboard. Not merged.`;
-    pr_url = execFileSync("gh", ["pr", "create", "--head", branch, "--base", repo.base, "--title", title, "--body", body], { cwd: wt, encoding: "utf8", timeout: 120_000 }).trim().split("\n").pop();
+    if (pushed) git(wt, "push", "-u", "origin", branch);
+    const existing = prFor(repo, branch);
+    if (existing?.url && existing.state === "OPEN") pr_url = existing.url;
+    else {
+      const title = tryGit(wt, "log", "--reverse", "--format=%s", `origin/${repo.base}..HEAD`)?.split("\n")[0] || branch;
+      const body = `${reply}\n\n---\nOpened by the Jarvis worker from a message on the dashboard. Not merged.`;
+      pr_url = execFileSync("gh", ["pr", "create", "--head", branch, "--base", repo.base, "--title", title, "--body", body], { cwd: wt, encoding: "utf8", timeout: 120_000 }).trim().split("\n").pop();
+    }
   }
   tryGit(repo.top, "worktree", "remove", "--force", wt);
   if (!ahead) tryGit(repo.top, "branch", "-D", branch);
   return { pr_url, commits: ahead };
 }
 
-export function buildPrompt({ message, project, projects, mode, today, cwd, review = null, history = [], wantedBuild = false }) {
+export function buildPrompt({ message, project, projects, mode, today, cwd, review = null, history = [], wantedBuild = false, item = null }) {
   const where = project ? `${project.name} (${project.id})` : "no specific project";
   const others = projects.map((p) => `- ${p.id}: ${p.name} [${p.kind}${p.state ? ", " + p.state : ""}]${p.dir ? " " + p.dir : ""}`).join("\n");
   return `You are the Jarvis worker: Claude Code running headless on ${OWNER === "the owner" ? "the owner's" : OWNER + "'s"} computer. ${OWNER === "the owner" ? "The owner" : OWNER} ("the founder" in checklist owner fields) left the message below on Jarvis Central, their all-projects dashboard. They are not watching this session. Your final message is shown to them as the reply in the dashboard inbox.
@@ -131,6 +146,13 @@ ${review.headline || ""}
 ${reviewText(review, message.meta?.review_tab)}
 ` : ""}${history.length ? `## Earlier in this discussion (oldest first)
 ${history.map((h) => `Owner: ${h.text}\nYou: ${(h.reply || "(no reply)").slice(0, 1500)}`).join("\n\n")}
+` : ""}${item ? `## The checklist item to build: [${item.id}] ${item.title}
+${item.detail || "(no detail)"}${item.note ? `\nOwner's note: ${item.note}` : ""}
+The owner set this item to in progress: that is the go. Build exactly this item, nothing more. Do not change the item's status with the CLI; the worker records the PR on it.${item.build_note ? `
+
+## The owner sent the pull request back with this note
+${item.build_note}
+The branch already holds your earlier commits: continue from them, address the note, commit.` : ""}
 ` : ""}
 ## The owner's message
 ${message.text}`;
@@ -152,11 +174,13 @@ async function handle(message, projects) {
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : JARVIS_ROOT;
   const repo = project ? repoInfo(dir) : null;
+  // The build run of an in-progress item (queued by queueBuilds): one branch per item, so a PR sent back continues there.
+  const item = message.item_id && project ? (await api("GET", "/api/agent/items" + qs({ project: project.id }))).find((i) => i.id === message.item_id) || null : null;
   // The owner picks: "discuss" (read-only, lighter model) or "build" (branch + PR). Old messages: "auto".
   const wantedBuild = W.allow_build !== false && (message.mode === "build" || (message.mode === "auto" && !!repo));
   let mode = wantedBuild && repo ? "code" : "answer", cwd = dir, wt = null, branch = null;
   if (mode === "code") {
-    try { ({ wt, branch } = makeWorktree(project, repo, shortId)); cwd = wt; }
+    try { ({ wt, branch } = makeWorktree(project, repo, shortId, item ? `jarvis/item-${item.id}` : null)); cwd = wt; }
     catch (e) { log("worktree failed, answer mode", message.id, e.message); mode = "answer"; }
   }
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "working", meta: { mode, branch } });
@@ -171,7 +195,7 @@ async function handle(message, projects) {
     const convo = await api("GET", "/api/agent/messages" + qs({ thread: message.thread_id, limit: 100 }));
     history = [...history, ...convo.filter((m) => m.id !== message.id && m.created_at < message.created_at).slice(-10)];
   }
-  const prompt = buildPrompt({ message, project, projects, mode, today: todayTZ(), cwd, review, history, wantedBuild: wantedBuild && mode !== "code" });
+  const prompt = buildPrompt({ message, project, projects, mode, today: todayTZ(), cwd, review, history, wantedBuild: wantedBuild && mode !== "code", item });
   log("run", message.id, { project: project?.id, mode, cwd });
   let res;
   try {
@@ -194,7 +218,63 @@ async function handle(message, projects) {
   const needsYou = /^\s*NEEDS YOU:/i.test(reply);
   const status = needsYou ? "needs_you" : pr_url ? "done" : "answered";
   await api("PATCH", "/api/agent/messages", { id: message.id, status, reply, meta: { mode, branch: commits ? branch : null, pr_url, cost_usd: res.cost_usd, duration_s: res.duration_s } });
+  if (item) {
+    // The item shows the outcome: a PR awaiting the owner, or why the run stopped. It never stays "working".
+    const ok = !!pr_url && !needsYou;
+    const why = needsYou ? reply.replace(/^\s*NEEDS YOU:\s*/i, "").split("\n")[0].slice(0, 300) : !repo ? "This project has no git repository with a remote, so nothing could be built." : !commits ? "Claude finished without committing anything." : !pr_url ? "The branch has commits but the pull request could not be opened." : "";
+    await api("PATCH", "/api/agent/items", { project_id: project.id, id: item.id, build_status: ok ? "pr_open" : "failed", pr_url: pr_url || item.pr_url || null, build_note: ok ? "" : why.slice(0, 500) }).catch((e) => log("item build update failed", item.id, e.message));
+  }
   log("done", message.id, { status, pr_url, cost_usd: res.cost_usd, duration_s: res.duration_s });
+}
+
+/**
+ * In-progress items owned by Claude: each becomes one build message (the item's own branch and PR). One new run per
+ * pass, and none while another item's run is in flight, so a long build never doubles up. A PR the owner sent back
+ * is re-queued with their note.
+ */
+async function queueBuilds(projects, log) {
+  if (W.allow_build === false) return;
+  const inflight = await api("GET", "/api/agent/items" + qs({ build: "working" }));
+  if (inflight.length) {
+    // A run that vanished (worker killed mid-build) must not stay "working" forever.
+    const stale = inflight.filter((i) => i.build_updated_at && Date.now() - +new Date(i.build_updated_at) > ((W.timeout_minutes || 25) + 10) * 60_000);
+    for (const i of stale) await api("PATCH", "/api/agent/items", { project_id: i.project_id, id: i.id, build_status: "failed", build_note: "The build run stopped without finishing (the worker was interrupted). Retry to start it again." }).catch(() => {});
+    if (stale.length < inflight.length) return;
+  }
+  const [queued, back] = await Promise.all([api("GET", "/api/agent/items" + qs({ build: "queue" })), api("GET", "/api/agent/items" + qs({ build: "sent_back" }))]);
+  const next = [...back, ...queued].sort((a, b) => Number(b.critical) - Number(a.critical) || (a.due || "9").localeCompare(b.due || "9"))[0];
+  if (!next) return;
+  const project = projects.find((p) => p.id === next.project_id);
+  const repo = project?.dir && fs.existsSync(project.dir) ? repoInfo(project.dir) : null;
+  if (!repo) {
+    await api("PATCH", "/api/agent/items", { project_id: next.project_id, id: next.id, build_status: "failed", build_note: "This project has no git repository with a remote on this Mac, so Claude can't build it from the dashboard." });
+    return log("build skipped, no repo", next.project_id, next.id);
+  }
+  const text = `Build checklist item [${next.id}]: ${next.title}${next.build_status === "sent_back" ? " (sent back)" : ""}`;
+  const { message } = await api("POST", "/api/agent/messages", { text, project_id: next.project_id, status: "new", mode: "build", item_id: next.id, meta: { kind: "build-item" } });
+  await api("PATCH", "/api/agent/items", { project_id: next.project_id, id: next.id, build_status: "working" });
+  log("build queued", next.project_id, next.id, message?.id);
+}
+
+/** Approved PRs: merge them (squash, branch deleted), mark the item done, leave a note in the inbox. Only the owner's click gets here. */
+async function mergeApproved(projects, log) {
+  const items = await api("GET", "/api/agent/items" + qs({ build: "merge_requested" }));
+  for (const it of items) {
+    const project = projects.find((p) => p.id === it.project_id);
+    const repo = project?.dir && fs.existsSync(project.dir) ? repoInfo(project.dir) : null;
+    try {
+      if (!repo || !it.pr_url) throw new Error("no repository or PR to merge");
+      execFileSync("gh", ["pr", "merge", it.pr_url, "--squash", "--delete-branch"], { cwd: repo.top, encoding: "utf8", timeout: 120_000 });
+      tryGit(repo.top, "fetch", "origin", repo.base);
+      await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, status: "done", build_status: "merged", build_note: "" });
+      await api("POST", "/api/agent/messages", { project_id: it.project_id, text: `Merged: ${it.title}`, reply: `${it.pr_url} was merged into ${repo.base} on your approval and the item [${it.id}] is done. Pull ${repo.base} in your working copy to get it.`, meta: { kind: "merged" }, item_id: it.id });
+      log("merged", it.project_id, it.id, it.pr_url);
+    } catch (e) {
+      const why = e.message.split("\n").find((l) => l.trim()) || e.message;
+      await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, build_status: "pr_open", build_note: `Merge failed: ${why.slice(0, 300)}. Fix it on GitHub or send the PR back.` }).catch(() => {});
+      log("merge failed", it.project_id, it.id, e.message);
+    }
+  }
 }
 
 async function pass() {
@@ -202,12 +282,17 @@ async function pass() {
   if (!release) return log("previous pass still running, skipping");
   try {
     await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName() } }).catch((e) => log("heartbeat failed", e.message));
-    const messages = await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }));
     const projects = await api("GET", "/api/agent/projects");
     // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
     await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
     // Security audit reports in each project folder → the project's Security tab; at most once an hour.
     await syncAuditsDue(projects, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
+    // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
+    await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
+    // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
+    await mergeApproved(projects, log).catch((e) => log("merge pass failed", e.message));
+    await queueBuilds(projects, log).catch((e) => log("build queue failed", e.message));
+    const messages = await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }));
     if (!messages.length) return;
     for (const m of messages) {
       try { await handle(m, projects); }

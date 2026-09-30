@@ -165,7 +165,7 @@ export function pack({ candidates, weekStart, settings, busy }) {
 /** Offline fixture: a JSON file shaped like the API ({projects, items, events?, todos?, settings?}). */
 function loadFixture(file) {
   const d = JSON.parse(fs.readFileSync(file, "utf8"));
-  return { projects: d.projects || [], items: (d.items || []).filter((i) => i.status !== "done"), events: d.events || [], todos: d.todos || [], settings: d.settings || {} };
+  return { projects: d.projects || [], items: (d.items || []).filter((i) => i.status === "todo" || i.status === "doing"), events: d.events || [], todos: d.todos || [], settings: d.settings || {} };
 }
 
 async function loadLive(weekStart) {
@@ -185,7 +185,7 @@ async function loadLive(weekStart) {
 export function selectCandidates(items, weekStart, todos = []) {
   const sunday = addDays(weekStart, 6), nextSunday = addDays(weekStart, 13);
   const planned = new Set(todos.filter((t) => t.item_id).map((t) => `${t.project_id}/${t.item_id}`));
-  const wanted = (i) => i.status !== "done" && ((i.due && i.due <= sunday) || i.status === "doing" || (i.critical && i.due && i.due <= nextSunday));
+  const wanted = (i) => (i.status === "todo" || i.status === "doing") && ((i.due && i.due <= sunday) || i.status === "doing" || (i.critical && i.due && i.due <= nextSunday));
   const mine = [], claude = [];
   for (const i of items) {
     if (!wanted(i)) continue;

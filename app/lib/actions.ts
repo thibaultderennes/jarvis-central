@@ -7,7 +7,8 @@ import * as D from "./data";
 import { isDate } from "./time";
 
 const done = () => revalidatePath("/", "layout");
-const NEXT = { todo: "doing", doing: "done", done: "todo" } as const;
+const NEXT = { todo: "doing", doing: "done", done: "todo", cancelled: "todo" } as const;
+const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
 
 /* ---------- checklist ---------- */
 export async function cycleItem(project_id: string, id: string) {
@@ -15,6 +16,15 @@ export async function cycleItem(project_id: string, id: string) {
   const [it] = await sql()`select status from items where project_id = ${project_id} and id = ${id}`;
   if (!it) return;
   const status = NEXT[it.status as keyof typeof NEXT];
+  await D.updateItem(project_id, id, { status });
+  await sql()`update todos set done = ${status === "done"}, done_at = ${status === "done" ? new Date().toISOString() : null} where project_id = ${project_id} and item_id = ${id}`;
+  await D.logActivity("item_status", `/p/${project_id}`, { id, status });
+  done();
+}
+/** Set a status directly (Today/Week one-click done, reopen). Todos linked to the item follow. */
+export async function setItemStatus(project_id: string, id: string, status: "todo" | "doing" | "done") {
+  await requireSession();
+  if (!["todo", "doing", "done"].includes(status)) return;
   await D.updateItem(project_id, id, { status });
   await sql()`update todos set done = ${status === "done"}, done_at = ${status === "done" ? new Date().toISOString() : null} where project_id = ${project_id} and item_id = ${id}`;
   await D.logActivity("item_status", `/p/${project_id}`, { id, status });
@@ -46,15 +56,69 @@ export async function setDue(project_id: string, id: string, due: string | null)
   await D.logActivity("item_due", `/p/${project_id}`, { id, due });
   done();
 }
-export async function newItem(project_id: string, section: string, title: string, due: string | null) {
+export async function newItem(project_id: string, section: string, title: string, due: string | null): Promise<{ error?: string; duplicate?: string }> {
   await requireSession();
   const t = title.trim().slice(0, 300);
-  if (!t) return;
+  if (!t) return {};
   const p = await D.getProject(project_id);
   const sec = p?.sections.find((s) => s.id === section);
-  // Claude refines items you add by hand (steps, section, priority, estimate, a due date that doesn't clash).
-  await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder", refine: process.env.JARVIS_REFINE_ITEMS === "off" ? null : "pending" });
+  try {
+    // Claude refines items you add by hand (steps, section, priority, estimate, a due date that doesn't clash).
+    await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder", refine: process.env.JARVIS_REFINE_ITEMS === "off" ? null : "pending" });
+  } catch (e) {
+    if (e instanceof D.DuplicateError) return { error: `Already on the checklist: "${e.item.title}" (${e.item.id}).`, duplicate: e.item.id };
+    throw e;
+  }
   await D.logActivity("item_add", `/p/${project_id}`, { section });
+  done();
+  return {};
+}
+/** Cancel an item: it stays on the list (under "Show completed") but leaves every open count. `duplicateOf` points at the survivor. */
+export async function cancelItem(project_id: string, id: string, reason: string, duplicateOf: string | null = null) {
+  await requireSession();
+  await D.updateItem(project_id, id, { status: "cancelled", cancel_reason: reason.trim().slice(0, 500), duplicate_of: ID_OK(duplicateOf) ? duplicateOf : null });
+  await sql()`update todos set done = true, done_at = coalesce(done_at, now()) where project_id = ${project_id} and item_id = ${id} and not done`;
+  await D.logActivity("item_cancel", `/p/${project_id}`, { id, duplicate: !!duplicateOf });
+  done();
+}
+/** The note box on a decision: saving is explicit. The answer goes to Claude as a comment, so it reads it and replies. */
+export async function sendNote(project_id: string, id: string, note: string): Promise<{ error?: string }> {
+  await requireSession();
+  const n = note.trim().slice(0, 5000);
+  if (!n) return { error: "Nothing to send." };
+  const [it] = await sql()`update items set note = ${n}, note_sent_at = now(),
+      refine_request = trim(both from concat_ws(e'\n', nullif(refine_request, ''), ${"Decision from the owner (the note box): " + n}::text)), refine = 'pending', updated_at = now()
+    where project_id = ${project_id} and id = ${id} returning id`;
+  if (!it) return { error: "That item is gone." };
+  await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${project_id}, ${id}, 'note', null, ${n}, 'founder')`;
+  await D.logActivity("item_note_sent", `/p/${project_id}`, { id });
+  done();
+  return {};
+}
+/* ---------- Claude builds in-progress items ---------- */
+/** Approve: the Mac worker merges the PR within a minute (`gh pr merge`), then marks the item done. */
+export async function approveBuild(project_id: string, id: string) {
+  await requireSession();
+  const [it] = await sql()`select build_status, pr_url from items where project_id = ${project_id} and id = ${id}`;
+  if (!it || it.build_status !== "pr_open" || !it.pr_url) return;
+  await D.updateItem(project_id, id, { build_status: "merge_requested" });
+  await D.logActivity("build_approve", `/p/${project_id}`, { id });
+  done();
+}
+/** Send back: Claude continues on the same branch and PR with this note; the item stays in progress. */
+export async function sendBackBuild(project_id: string, id: string, note: string) {
+  await requireSession();
+  const n = note.trim().slice(0, 2000);
+  const [it] = await sql()`select build_status from items where project_id = ${project_id} and id = ${id}`;
+  if (!it || !["pr_open", "failed"].includes(it.build_status)) return;
+  await D.updateItem(project_id, id, { build_status: "sent_back", build_note: n });
+  await D.logActivity("build_send_back", `/p/${project_id}`, { id });
+  done();
+}
+/** Retry a failed run, or stop tracking a run (the item stays in progress, unclaimed). */
+export async function resetBuild(project_id: string, id: string) {
+  await requireSession();
+  await D.updateItem(project_id, id, { build_status: null, build_note: "" });
   done();
 }
 
@@ -120,6 +184,19 @@ export async function archiveMessage(id: string) {
   await D.patchMessage(id, { archived: true });
   done();
 }
+/** Replies you have on screen move from New to Pending (called by the inbox once the page has rendered). */
+export async function markOpened(ids: string[]) {
+  await requireSession();
+  const list = ids.filter((x) => /^[0-9a-f-]{36}$/.test(x)).slice(0, 200);
+  if (!list.length) return;
+  await sql()`update messages set opened_at = now() where id = any(${list}::uuid[]) and opened_at is null and status not in ('new', 'seen', 'working')`;
+}
+export async function markTreated(id: string, treated = true) {
+  await requireSession();
+  await D.patchMessage(id, { treated });
+  await D.logActivity("message_treated", "/inbox", { treated });
+  done();
+}
 
 /* ---------- telemetry (feeds the weekly Jarvis review) ---------- */
 export async function track(kind: string, page: string, detail: Record<string, unknown> = {}) {
@@ -171,5 +248,46 @@ export async function requestPlanning(project_id: string) {
   if (busy.length) return;
   await sql()`insert into messages (text, project_id, mode) values (${"Plan this project: go through the folder, tell me where it stands, and add what needs to happen next to the checklist."}, ${project_id}, 'plan')`;
   await D.logActivity("project_plan", `/p/${project_id}`, { project_id });
+  done();
+}
+
+/* ---------- finance: recurring costs ---------- */
+export async function createCost(c: { project_id?: string | null; name: string; amount: number; currency?: string; period?: string; next_renewal?: string | null; notes?: string }) {
+  await requireSession();
+  if (!c.name.trim()) return;
+  await D.addCost({ ...c, next_renewal: c.next_renewal && isDate(c.next_renewal) ? c.next_renewal : null });
+  await D.logActivity("cost_add", "/finance", { project: c.project_id || null });
+  done();
+}
+export async function editCost(id: string, p: Partial<D.Cost>) {
+  await requireSession();
+  if (p.next_renewal && !isDate(p.next_renewal)) p.next_renewal = null;
+  await D.updateCost(id, p);
+  done();
+}
+export async function removeCost(id: string) {
+  await requireSession();
+  await D.deleteCost(id);
+  done();
+}
+
+/* ---------- admin ---------- */
+/** "Refresh project folders": queues a scan; the Mac worker runs it (the folders are on the Mac) and reports back in kv. */
+export async function requestRescan() {
+  await requireSession();
+  const cur = await D.kvGet<{ status?: string; requested_at?: string }>("projects.rescan");
+  if (cur?.value?.status === "queued" || cur?.value?.status === "running") return;
+  await D.kvSet("projects.rescan", { status: "queued", requested_at: new Date().toISOString() });
+  await D.logActivity("projects_rescan", "/admin");
+  done();
+}
+export type Prefs = { show_done_default?: boolean; finance_currency?: string };
+export async function savePrefs(p: Prefs) {
+  await requireSession();
+  const cur = (await D.kvGet<Prefs>("prefs"))?.value || {};
+  const next: Prefs = { ...cur };
+  if (p.show_done_default !== undefined) next.show_done_default = !!p.show_done_default;
+  if (p.finance_currency !== undefined) next.finance_currency = String(p.finance_currency).toUpperCase().slice(0, 3);
+  await D.kvSet("prefs", next);
   done();
 }

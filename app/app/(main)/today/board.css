@@ -1,0 +1,34 @@
+/* Today + Week board: decide-now / overdue strips, load bars, overdue todos (uses globals.css tokens) */
+.decide { border-bottom: 1px solid var(--line-2); background: var(--surface-2); }
+.decide .bgroup { flex-wrap: wrap; }
+.decide .bgroup .hint { font-size: 12px; color: var(--ink-3); }
+.srow { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: 8px; align-items: center; padding: 6px 12px; border-top: 1px solid var(--line-2); font-size: 13px; }
+.srow.crit { box-shadow: inset 3px 0 0 var(--bad); }
+.srow .tt { min-width: 0; display: flex; flex-direction: column; }
+.srow .tt a { text-decoration: none; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .tt a:hover { text-decoration: underline; }
+.srow .tt small { font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.srow .sacts { display: flex; gap: 4px; flex-wrap: wrap; justify-content: flex-end; }
+.srow .sacts .btn { padding: 2px 7px; font-size: 11.5px; white-space: nowrap; }
+@media (max-width: 560px) { .srow { grid-template-columns: auto minmax(0, 1fr) auto; } .srow .sacts { grid-column: 2 / -1; justify-content: flex-start; } }
+.loadline { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.loadline .hint { white-space: nowrap; }
+.loadbar { display: inline-block; width: 72px; height: 6px; border-radius: 3px; background: var(--line-2); overflow: hidden; flex: 0 0 auto; }
+.loadbar i { display: block; height: 100%; background: var(--done); border-radius: 3px; }
+.loadline.over .hint { color: var(--bad); font-weight: 600; }
+.loadline.over .loadbar i, .wload.over .loadbar i { background: var(--bad); }
+.wload { display: flex; align-items: center; gap: 6px; padding: 0 10px 6px; min-height: 12px; }
+.wload .loadbar { flex: 1 1 auto; width: auto; }
+.wload.over .due { color: var(--bad); font-weight: 600; }
+.wdue.crit { box-shadow: inset 2px 0 0 var(--bad); padding-left: 6px; }
+.wdue { grid-template-columns: auto minmax(0, 1fr) auto; align-items: start; }
+.wdue .wdone { border: 1px solid transparent; background: none; color: var(--ink-3); cursor: pointer; font-size: 11px; line-height: 1; padding: 1px 4px; border-radius: 4px; opacity: 0; }
+.wdue:hover .wdone, .wdue .wdone:focus-visible { opacity: 1; }
+.wdue .wdone:hover { color: var(--done); border-color: var(--done); }
+@media (hover: none) { .wdue .wdone { opacity: 1; } }
+.todo.late { border-left-color: var(--bad); }
+.todo .latetag { color: var(--bad); font-weight: 600; }
+.todo .acts .movedate { width: 22px; height: 20px; padding: 0; border: 0; background: none; color: var(--ink-3); cursor: pointer; font-size: 12px; opacity: .8; }
+.todo .acts .movedate::-webkit-calendar-picker-indicator { cursor: pointer; margin: 0; padding: 0; }
+.todo .acts .movedate:hover { color: var(--ink); }
+.legend .loadkey { width: 14px; height: 6px; border-radius: 3px; background: var(--done); display: inline-block; }

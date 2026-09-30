@@ -29,7 +29,7 @@ export async function refinePending(projects, log) {
 export function dailyLoad(items, events, skipKey) {
   const load = {};
   for (const i of items) {
-    if (!i.due || i.status === "done" || `${i.project_id}/${i.id}` === skipKey) continue;
+    if (!i.due || (i.status !== "todo" && i.status !== "doing") || `${i.project_id}/${i.id}` === skipKey) continue;
     load[i.due] = (load[i.due] || 0) + (i.estimate_minutes || DEFAULT_EST);
   }
   for (const e of events) {
