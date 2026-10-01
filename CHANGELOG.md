@@ -3,6 +3,8 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+
+## 0.5.0 — 2026-09-30
 - **Project page with a left menu**: Dashboard (open / overdue / in progress / latest review / recurring costs, next up,
   in progress, deadlines, latest reports, the project settings), Checklists, Project (description + strategy documents),
   Reviews (weekly reviews and security audits), Finances, Statistics (burn-up, added/finished per day; users and
