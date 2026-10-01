@@ -88,12 +88,12 @@ export const displayColor = (p: Project, featuredIds: Set<string>) => (featuredI
 /* ---------- items ---------- */
 export async function getItems(opts: { project?: string; open?: boolean; refine?: string; build?: string } = {}): Promise<Item[]> {
   const where: string[] = [], params: unknown[] = [];
-  if (opts.refine) { params.push(opts.refine); where.push(`refine = ${params.length}`); }
-  if (opts.project) { params.push(opts.project); where.push(`project_id = ${params.length}`); }
+  if (opts.refine) { params.push(opts.refine); where.push(`refine = $${params.length}`); }
+  if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
   if (opts.open) where.push(`status in ('todo', 'doing')`);
   // build=queue: in-progress items owned by Claude that no build run has claimed yet; build=<status>: runs in that state.
   if (opts.build === "queue") where.push(`status = 'doing' and coalesce(owner, 'founder') in ('claude', 'both') and build_status is null`);
-  else if (opts.build) { params.push(opts.build); where.push(`build_status = ${params.length}`); }
+  else if (opts.build) { params.push(opts.build); where.push(`build_status = $${params.length}`); }
   const rows = await q(`select * from items ${where.length ? "where " + where.join(" and ") : ""} order by project_id, sort, created_at`, params);
   return rows.map(normItem);
 }
