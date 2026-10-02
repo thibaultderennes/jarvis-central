@@ -56,22 +56,23 @@ export async function setDue(project_id: string, id: string, due: string | null)
   await D.logActivity("item_due", `/p/${project_id}`, { id, due });
   done();
 }
-export async function newItem(project_id: string, section: string, title: string, due: string | null): Promise<{ error?: string; duplicate?: string }> {
+export async function newItem(project_id: string, section: string, title: string, due: string | null): Promise<{ error?: string; duplicate?: string; id?: string }> {
   await requireSession();
   const t = title.trim().slice(0, 300);
-  if (!t) return {};
+  if (!t) return { error: "Type a title first." };
   const p = await D.getProject(project_id);
   const sec = p?.sections.find((s) => s.id === section);
+  let id: string;
   try {
     // Claude refines items you add by hand (steps, section, priority, estimate, a due date that doesn't clash).
-    await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder", refine: process.env.JARVIS_REFINE_ITEMS === "off" ? null : "pending" });
+    ({ id } = await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder", refine: process.env.JARVIS_REFINE_ITEMS === "off" ? null : "pending" }));
   } catch (e) {
     if (e instanceof D.DuplicateError) return { error: `Already on the checklist: "${e.item.title}" (${e.item.id}).`, duplicate: e.item.id };
     throw e;
   }
   await D.logActivity("item_add", `/p/${project_id}`, { section });
   done();
-  return {};
+  return { id };
 }
 /** Cancel an item: it stays on the list (under "Show completed") but leaves every open count. `duplicateOf` points at the survivor. */
 export async function cancelItem(project_id: string, id: string, reason: string, duplicateOf: string | null = null) {
