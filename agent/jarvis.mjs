@@ -19,7 +19,8 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   todos [--from D] [--to D]                       default: today → +6 days
   reviews [--type project|recap|coaching|jarvis|doc|security] [--project P] [--limit N] [--full]
   audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
-  costs [--project P|none] [--all]                recurring costs (finance); "none" = independent of any project
+  stats [--bucket day|week|month] [--n N] [--project P] [--items]   added / finished / cancelled per bucket (14 days, 12 weeks, 12 months)
+  costs [--project P|none] [--all]              recurring costs (finance); "none" = independent of any project
   cost add "name" --amount N [--period week|month|year] [--currency USD] [--project P] [--renews D] [--notes T]
   cost set <id> key=value ...                     name|amount|period|currency|project|renews|notes|active=true/false
   cost rm <id>
@@ -34,7 +35,7 @@ function parse(argv) {
     if (a.startsWith("--")) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel"].includes(k)) { flags[k] = next; i++; }
+      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel", "items"].includes(k)) { flags[k] = next; i++; }
       else flags[k] = true;
     } else pos.push(a);
   }
@@ -218,6 +219,17 @@ async function main() {
       for (const r of rs) {
         out(`${pad(r.meta?.date || String(r.created_at).slice(0, 10), 10)} ${pad(r.verdict || "—", 9)} ${r.title}${r.headline ? ` — ${r.headline}` : ""}`);
         out(`           ${r.meta?.file || ""}  ${r.id}`);
+      }
+      return;
+    }
+    case "stats": {
+      const s = await api("GET", "/api/agent/stats" + qs({ bucket: flags.bucket, n: flags.n, project: flags.project, items: flags.items ? 1 : "" }));
+      if (json) return out(JSON.stringify(s, null, 2));
+      out(`${s.bucket} buckets from ${s.from}${flags.project ? ` · ${flags.project}` : ""} · tracking since ${s.tracking_since?.slice(0, 10) || "—"} · ${s.overdue_open} open overdue today`);
+      for (const d of s.days) {
+        out(`${d.date}  +${pad(d.added, 4)} done ${pad(d.done, 4)}${d.done_late ? `(${d.done_late} late) ` : ""}${d.cancelled ? `cancelled ${d.cancelled}` : ""}`);
+        for (const i of d.items?.added || []) out(`      + [${i.project_id}/${i.id}] ${i.title}`);
+        for (const i of d.items?.done || []) out(`      ✓ [${i.project_id}/${i.id}] ${i.title}${i.late ? "  (late)" : ""}`);
       }
       return;
     }

@@ -81,7 +81,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/messages` | `?status=new&limit=5` (oldest first) or `?since=ISO` | `[{message}]` |
 | POST | `/api/agent/messages` | `{text, project_id?, status? 'answered'|'new'|…, reply?, meta?, mode?, item_id?, thread_id?}` a note already answered, or (`status: 'new'`) work queued for the worker | `{message: {id}}` |
 | PATCH | `/api/agent/messages` | `{id, status?, reply?, meta?, opened?, treated?}` (meta merged; reply sets replied_at and clears opened_at) | `{message}` |
-| GET | `/api/agent/stats` | `?days=14` | `{from, tracking_since, overdue_open, days: [{date, added, done, done_late, cancelled}]}` |
+| GET | `/api/agent/stats` | `?bucket=day\|week\|month` (default `day`) `&n=` buckets (default 14 days / 12 weeks from Monday / 12 months, owner's timezone; `days=` still works) `&project=ID` `&items=1` | `{bucket, from, to, tracking_since, overdue_open, days: [{date (bucket start), added, done, done_late, cancelled, items?: {added: [{id, project_id, title}], done: [{id, project_id, title, late}]}}]}` |
 | GET | `/api/agent/costs` | `?project=ID` (`project=` empty = independent only; absent = all) `&all=1` (inactive too) | `[{cost}]` |
 | POST | `/api/agent/costs` | `{name, amount, currency?, period?, project_id?, next_renewal?, notes?}` | `{cost}` |
 | PATCH | `/api/agent/costs` | `{id, ...fields}` | `{cost}` |
