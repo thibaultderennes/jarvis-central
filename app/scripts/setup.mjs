@@ -10,6 +10,7 @@
 //   node scripts/setup.mjs apple-calendar   paste your iCloud public calendar link(s)          ← run in your own terminal
 //   node scripts/setup.mjs apps-script      token + filled-in Apps Script (writes the plan into Google Calendar)
 //   node scripts/setup.mjs apple-feed       copies the private subscription link for Apple Calendar
+//   node scripts/setup.mjs usage            only re-sends usage.track_clicks (page-view/click tracking on or off)
 //   node scripts/setup.mjs status           which env vars are set on Vercel (names only)
 //
 // Env vars only take effect on the next deploy: `vercel deploy --prod` after changing them.
@@ -63,6 +64,8 @@ function hash(pw) {
   const salt = randomBytes(16), N = 16384, r = 8, p = 1;
   return `scrypt$${N}$${r}$${p}$${salt.toString("base64url")}$${scryptSync(pw, salt, 32, { N, r, p }).toString("base64url")}`;
 }
+/** usage.track_clicks (default on) → JARVIS_TRACK_CLICKS, read by the site's usage tracker and /api/usage. */
+const trackClicks = () => setEnv("JARVIS_TRACK_CLICKS", config?.usage?.track_clicks === false ? "off" : "on", ["production", "development"]);
 const copy = (text) => spawnSync("pbcopy", { input: text }).status === 0;
 
 if (cmd === "secrets") {
@@ -77,6 +80,7 @@ if (cmd === "secrets") {
   setEnv("JARVIS_REVIEW_WHEN", when(config.reviews?.run, "every Monday morning"), ["production", "development"]);
   setEnv("JARVIS_PLAN_WHEN", when(config.planner?.run, "every Sunday afternoon"), ["production", "development"]);
   setEnv("JARVIS_FOCUS_MINUTES", String(Number(config.planner?.max_focus_minutes_per_day) || 360), ["production", "development"]);
+  trackClicks();
   const dir = join(homedir(), ".config", "jarvis"); mkdirSync(dir, { recursive: true });
   const f = join(dir, "env");
   const keep = existsSync(f) ? readFileSync(f, "utf8").split("\n").filter((l) => l && !/^JARVIS_(URL|AGENT_TOKEN)=/.test(l)) : [];
@@ -85,6 +89,10 @@ if (cmd === "secrets") {
   console.log(`✓ Mac agent config written to ${f} (only you can read it)`);
   console.log("  Redeploy (`vercel deploy --prod`) so the site picks these up. Re-running this rotates both secrets:");
   console.log("  everyone is signed out and the Mac agent uses the new token automatically.");
+} else if (cmd === "usage") {
+  need(config, "Create jarvis.config.json first (copy jarvis.config.example.json and fill it in).");
+  trackClicks();
+  console.log("  Redeploy (`vercel deploy --prod`) so the site picks it up. Nothing else is rotated.");
 } else if (cmd === "login") {
   const pw = await ask("Choose a password (12+ characters): ", { hidden: true });
   need(pw.length >= 12, "Use at least 12 characters.");
@@ -147,7 +155,7 @@ if (cmd === "secrets") {
   const have = new Set([...r.stdout.matchAll(/^\s*([A-Z][A-Z0-9_]+)\s/gm)].map((m) => m[1]));
   const want = [
     ["DATABASE_URL", "database (Neon integration)", true], ["JARVIS_SESSION_SECRET", "secrets", true], ["JARVIS_AGENT_TOKEN", "secrets", true],
-    ["JARVIS_TZ", "secrets", true], ["JARVIS_OWNER", "secrets (optional)", false], ["JARVIS_REVIEW_WHEN", "secrets", false], ["JARVIS_PLAN_WHEN", "secrets", false], ["JARVIS_FOCUS_MINUTES", "secrets", false],
+    ["JARVIS_TZ", "secrets", true], ["JARVIS_OWNER", "secrets (optional)", false], ["JARVIS_REVIEW_WHEN", "secrets", false], ["JARVIS_PLAN_WHEN", "secrets", false], ["JARVIS_FOCUS_MINUTES", "secrets", false], ["JARVIS_TRACK_CLICKS", "usage (optional, default on)", false],
     ["JARVIS_PASSWORD_HASH", "login", true], ["JARVIS_TOTP_SECRET", "login", true],
     ["GOOGLE_ICS_URLS", "google-calendar (optional)", false], ["APPLE_ICS_URLS", "apple-calendar (optional)", false], ["JARVIS_CAL_TOKEN", "apps-script (optional)", false],
   ];
@@ -155,5 +163,5 @@ if (cmd === "secrets") {
   const env = join(homedir(), ".config", "jarvis", "env");
   console.log(`${existsSync(env) ? "✓" : "✗"} ${"~/.config/jarvis/env".padEnd(22)} ${existsSync(env) ? "" : "missing → setup step: secrets"}`);
 } else {
-  console.log("Usage: node scripts/setup.mjs secrets | login | google-calendar | apple-calendar | apps-script | apple-feed | status");
+  console.log("Usage: node scripts/setup.mjs secrets | usage | login | google-calendar | apple-calendar | apps-script | apple-feed | status");
 }

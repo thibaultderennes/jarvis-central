@@ -48,6 +48,11 @@
     "deny": []
   },
 
+  "usage": {
+    "track_clicks": true,
+    "retention_days": 90
+  },
+
   "calendars": {
     "read_google": true,
     "read_apple": false,

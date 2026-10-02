@@ -190,3 +190,19 @@ create table if not exists recurring_costs (
   updated_at timestamptz not null default now()
 );
 create index if not exists recurring_costs_project on recurring_costs (project_id);
+-- 0.6.0. First-party page views and clicks for the Monday Jarvis review (components/UsageTracker.tsx → POST /api/usage).
+-- Only the label the code gives an element and paths are stored, never what you type. session_id = a random id per
+-- browser tab (new after 30 idle minutes), not the login cookie. The weekly run prunes rows older than
+-- usage.retention_days (default 90); usage.track_clicks: false (env JARVIS_TRACK_CLICKS=off) stops recording.
+create table if not exists click_events (
+  id bigserial primary key,
+  at timestamptz not null default now(),
+  session_id text not null default '',
+  kind text not null default 'click',
+  page text not null,
+  label text not null default '',
+  target text not null default '',
+  section text not null default '',
+  href text
+);
+create index if not exists click_events_at on click_events (at);

@@ -7,7 +7,8 @@
 2. **Mac agent** `agent/` — Node scripts run by launchd (or cron) on the owner's machine:
    - `worker.mjs` every minute: picks up inbox messages, runs `claude -p` in the project, replies.
    - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar.
-   - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review.
+   - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
+     (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.
    - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
      to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
@@ -62,6 +63,14 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, added?, archived?, total?, error?}`).
 - `login_attempts(ip, at, ok)`.
+- `click_events(id bigserial, at, session_id /* random per browser tab, new after 30 idle min */, kind 'click'|'view', page /* path + ?v=/?k=/?tab= */, label, target /* link, button, tab, checkbox… */, section /* the region's aria-label or heading */, href null /* a link's destination path */)` —
+  first-party usage tracking for the Monday Jarvis review. `components/UsageTracker.tsx` (mounted once in the `(main)`
+  layout, one delegated click listener) batches events to `POST /api/usage` (owner session cookie, same origin;
+  sendBeacon, at most every 15 s or 25 events, and when the tab is hidden). Labels come from `data-track`, else
+  aria-label/title/short button text with the row's own text (item and todo titles) replaced by `…` and numbers by `#`;
+  content links are stored by path only; inputs are never read. `data-track-section="…"` names a region, `data-track-off`
+  excludes one. Off when `JARVIS_TRACK_CLICKS=off` (`usage.track_clicks: false`); rows older than
+  `usage.retention_days` (90) are deleted by the Monday run. `activity` keeps the server-side action log.
 
 ## Agent API
 All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JSON in, JSON out. Errors: `{error}` + 4xx/5xx.
@@ -91,6 +100,14 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | POST | `/api/agent/heartbeat` | `{worker: 'worker'|'weekly', info?}` | `{ok}` |
 | POST | `/api/agent/import` | `{projects?:[], items?:[], reviews?:[]}` bulk upsert (migration) | `{counts}` |
 | GET | `/api/agent/calendar` | `?from=DATE&to=DATE` | `[{start, end, allDay, title, location}]` |
+| GET | `/api/agent/activity` | `?since=ISO` | `[{at, kind, page, detail}]` server-side action log |
+| GET | `/api/agent/usage` | `?since=ISO&until=ISO` (default: the last 7 days) | `{totals: {events, clicks, views, sessions, active_days}, top_clicks: [{page, label, target, section, n}], pages: [{page, views, clicks, dead_ends, exits}], dead_end_pages, sequences: [{from, to, n}], paths: [{path, n}], backtracks: [{page, via, n}], rarely_used: [{page, label, before, now}], truncated}` aggregate of `click_events`; 503 when the table is missing |
+| DELETE | `/api/agent/usage` | `?days=90` | `{deleted}` raw click events older than that (retention) |
+
+Site endpoint (owner session cookie, not the agent token): `POST /api/usage` — body (text/plain JSON)
+`{sid, events: [{t /* ms */, k 'click'|'view', p /* page */, l /* label */, g /* element kind */, s /* section */, h /* href */}]}`,
+≤ 100 events and 64 KB; always `204` once signed in (dropped silently when tracking is off or the table is missing),
+`401` logged out, `403` from another origin.
 
 ## Worker rules
 - Answers questions, researches, edits checklists/todos through the API, plans days.
@@ -126,4 +143,5 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
   `/inbox` (New / Pending / Treated) · `/admin` (projects + "Refresh project folders", account, subscriptions, preferences).
 - Env vars the site reads beyond the secrets: `JARVIS_TZ`, `JARVIS_OWNER`, `JARVIS_REVIEW_WHEN`, `JARVIS_PLAN_WHEN`,
   `JARVIS_FOCUS_MINUTES` (a day of focus for the Today/Week load bars; written from `planner.max_focus_minutes_per_day`
-  by `node app/scripts/setup.mjs secrets`).
+  by `node app/scripts/setup.mjs secrets`), `JARVIS_TRACK_CLICKS` (`on`/`off`, from `usage.track_clicks`; missing = on;
+  `setup.mjs secrets` or `setup.mjs usage`).

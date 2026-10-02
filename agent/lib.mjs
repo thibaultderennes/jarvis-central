@@ -32,6 +32,8 @@ function defaults() {
   ex.timezone = "UTC";
   if (ex.projects) ex.projects = { ...ex.projects, overrides: {} };
   if (ex.planner) ex.planner = { ...ex.planner, project_caps: {} };
+  // Page-view/click tracking for the Monday Jarvis review: on unless the owner's config says false.
+  ex.usage = { track_clicks: true, retention_days: 90, ...(ex.usage || {}) };
   return ex;
 }
 

@@ -2,7 +2,6 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
-import { track } from "@/lib/actions";
 
 type Tab = { id: string; name: string; color: string };
 function ago(t: string) {
@@ -14,7 +13,6 @@ export default function Nav({ projects, moreCount = 0, waiting, fresh, workerAt 
   const path = usePathname();
   const [now, setNow] = useState(0);
   useEffect(() => { setNow(Date.now()); const t = setInterval(() => setNow(Date.now()), 60000); return () => clearInterval(t); }, []);
-  useEffect(() => { track("page_view", path).catch(() => {}); }, [path]);
   const on = (href: string) => (href === "/" ? path === "/" : path.startsWith(href)) ? "page" : undefined;
   const alive = workerAt && now && now - +new Date(workerAt) < 5 * 60_000;
   return (
