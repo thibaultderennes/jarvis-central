@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState, useTransition } from "react";
 import { createCost, editCost, removeCost } from "@/lib/actions";
 import type { Cost } from "@/lib/data";
+import { Ack, imeGuard, useSubmit } from "./Submit";
 
 type P = { id: string; name: string; color: string };
 type Props = { costs: Cost[]; projects: P[]; project?: string | null; currency: string; today: string };
@@ -147,7 +148,7 @@ export default function Costs({ costs, projects, project, currency, today }: Pro
           {!shown.length && <div className="empty">{scoped.length ? "Every cost here is inactive." : "No recurring costs yet."}</div>}
           {shown.map((c) => (
             editing === c.id
-              ? <EditRow key={c.id} c={c} projects={projects} lockProject={typeof project === "string"} onSave={(p) => { patch(c, p); setEditing(null); }} onCancel={() => setEditing(null)}
+              ? <EditRow key={c.id} c={c} projects={projects} lockProject={typeof project === "string"} onSave={(p) => editCost(c.id, p)} onSaved={(p) => { setList((l) => l.map((x) => (x.id === c.id ? { ...x, ...p } : x))); setEditing(null); }} onCancel={() => setEditing(null)}
                   onDelete={() => (confirm === c.id ? remove(c) : setConfirm(c.id))} confirming={confirm === c.id} onToggleActive={() => patch(c, { active: !c.active })} />
               : (
                 <button key={c.id} type="button" className={`crow-c${c.active ? "" : " inactive"}`} role="row" data-c={c.project_id ? pmap[c.project_id]?.color || "other" : "other"} onClick={() => { setEditing(c.id); setConfirm(null); }}>
@@ -161,23 +162,26 @@ export default function Costs({ costs, projects, project, currency, today }: Pro
               )
           ))}
         </div>
-        <AddRow projects={projects} project={project} currency={tot[0]?.[0] || currency} run={run} />
+        <AddRow projects={projects} project={project} currency={tot[0]?.[0] || currency} />
       </section>
     </div>
   );
 }
 
-function EditRow({ c, projects, lockProject, onSave, onCancel, onDelete, confirming, onToggleActive }: {
-  c: Cost; projects: P[]; lockProject: boolean; onSave: (p: Partial<Cost>) => void; onCancel: () => void; onDelete: () => void; confirming: boolean; onToggleActive: () => void;
+function EditRow({ c, projects, lockProject, onSave, onSaved, onCancel, onDelete, confirming, onToggleActive }: {
+  c: Cost; projects: P[]; lockProject: boolean; onSave: (p: Partial<Cost>) => Promise<unknown>; onSaved: (p: Partial<Cost>) => void; onCancel: () => void; onDelete: () => void; confirming: boolean; onToggleActive: () => void;
 }) {
   const [f, setF] = useState({ name: c.name, amount: String(c.amount), currency: c.currency, period: c.period as Period, project_id: c.project_id || "", next_renewal: c.next_renewal || "", notes: c.notes });
+  const s = useSubmit();
   const save = () => {
     const amount = Number(f.amount);
-    if (!f.name.trim() || !Number.isFinite(amount) || amount < 0) return;
-    onSave({ name: f.name.trim(), amount, currency: f.currency.toUpperCase().slice(0, 3) || c.currency, period: f.period, project_id: f.project_id || null, next_renewal: f.next_renewal || null, notes: f.notes });
+    if (s.pending) return;
+    if (!f.name.trim() || f.amount === "" || !Number.isFinite(amount) || amount < 0) { s.submit(async () => ({ error: "A name and an amount (0 or more) are needed." })); return; }
+    const p = { name: f.name.trim(), amount, currency: f.currency.toUpperCase().slice(0, 3) || c.currency, period: f.period, project_id: f.project_id || null, next_renewal: f.next_renewal || null, notes: f.notes };
+    s.submit(() => onSave(p), { onOk: () => onSaved(p) });
   };
   return (
-    <form className="crow-e" role="row" onSubmit={(e) => { e.preventDefault(); save(); }} onKeyDown={(e) => { if (e.key === "Escape") onCancel(); }}>
+    <form className="crow-e" role="row" onSubmit={(e) => { e.preventDefault(); save(); }} onKeyDown={(e) => { imeGuard(e); if (e.key === "Escape") onCancel(); }}>
       <input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} aria-label="Name" autoFocus />
       <select className="select" value={f.project_id} disabled={lockProject} onChange={(e) => setF({ ...f, project_id: e.target.value })} aria-label="Project">
         <option value="">Independent</option>
@@ -193,27 +197,29 @@ function EditRow({ c, projects, lockProject, onSave, onCancel, onDelete, confirm
       <input className="input" type="date" value={f.next_renewal} onChange={(e) => setF({ ...f, next_renewal: e.target.value })} aria-label="Next renewal" />
       <input className="input notes" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Notes (optional)" aria-label="Notes" />
       <span className="acts">
-        <button className="btn sm" type="submit">Save</button>
+        <button className="btn sm" type="submit" disabled={s.pending}>{s.pending ? "Saving…" : "Save"}</button>
         <button className="btn ghost sm" type="button" onClick={onCancel}>Cancel</button>
         <button className="btn ghost sm" type="button" onClick={onToggleActive} title={c.active ? "Keep it on the list, out of the totals" : "Count it again"}>{c.active ? "Set inactive" : "Set active"}</button>
         <button className={`btn ghost sm${confirming ? " danger" : ""}`} type="button" onClick={onDelete} aria-label={confirming ? `Confirm delete ${c.name}` : `Delete ${c.name}`}>{confirming ? "Delete for good?" : "×"}</button>
+        <Ack s={s} />
       </span>
     </form>
   );
 }
 
-function AddRow({ projects, project, currency, run }: { projects: P[]; project?: string | null; currency: string; run: (fn: () => Promise<unknown>) => void }) {
+function AddRow({ projects, project, currency }: { projects: P[]; project?: string | null; currency: string }) {
   const blank = { name: "", amount: "", currency, period: "month" as Period, project_id: typeof project === "string" ? project : "", next_renewal: "", notes: "" };
   const [f, setF] = useState(blank);
+  const s = useSubmit();
   useEffect(() => setF((x) => ({ ...x, currency })), [currency]);
   return (
-    <form className="addrow cost-add" onSubmit={(e) => {
+    <form className="addrow cost-add" onKeyDown={imeGuard} onSubmit={(e) => {
       e.preventDefault();
       const amount = Number(f.amount);
-      if (!f.name.trim() || !Number.isFinite(amount) || amount < 0) return;
+      if (s.pending || !f.name.trim()) return;
+      if (f.amount === "" || !Number.isFinite(amount) || amount < 0) { s.submit(async () => ({ error: "Add an amount (0 or more)." })); return; }
       const body = { name: f.name.trim(), amount, currency: f.currency.toUpperCase().slice(0, 3) || currency, period: f.period, project_id: f.project_id || null, next_renewal: f.next_renewal || null, notes: f.notes };
-      setF({ ...blank, currency: body.currency });
-      run(() => createCost(body));
+      s.submit(() => createCost(body), { ok: "Added", onOk: () => setF({ ...blank, currency: body.currency }) });
     }}>
       <input className="input" value={f.name} onChange={(e) => setF({ ...f, name: e.target.value })} placeholder="Add a cost: hosting, a domain, an API plan…" aria-label="Cost name" />
       <input className="input" type="number" min={0} step="0.01" inputMode="decimal" value={f.amount} onChange={(e) => setF({ ...f, amount: e.target.value })} placeholder="Amount" aria-label="Amount" style={{ width: 96 }} />
@@ -229,7 +235,8 @@ function AddRow({ projects, project, currency, run }: { projects: P[]; project?:
       )}
       <input className="input" type="date" value={f.next_renewal} onChange={(e) => setF({ ...f, next_renewal: e.target.value })} aria-label="Next renewal (optional)" title="Next renewal (optional)" />
       <input className="input notes" value={f.notes} onChange={(e) => setF({ ...f, notes: e.target.value })} placeholder="Notes" aria-label="Notes (optional)" />
-      <button className="btn sm" disabled={!f.name.trim() || f.amount === ""}>Add</button>
+      <button className="btn sm" disabled={!f.name.trim() || s.pending}>{s.pending ? "Adding…" : "Add"}</button>
+      <Ack s={s} busy="Adding…" />
     </form>
   );
 }

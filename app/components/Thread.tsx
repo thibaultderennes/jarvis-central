@@ -1,8 +1,9 @@
 "use client";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { sendMessage } from "@/lib/actions";
 import type { Message } from "@/lib/data";
+import { Ack, enterSends, useSubmit } from "./Submit";
 
 const ST: Record<string, [string, string]> = {
   new: ["Waiting for the Mac worker", "wait"], seen: ["Picked up", "wait"], working: ["Working…", "wait"],
@@ -12,13 +13,13 @@ const ST: Record<string, [string, string]> = {
 /** Discussion under a review or strategy document: discuss ideas, or ask Claude to build one (branch + PR). */
 export default function Thread({ reviewId, projectId, tab, messages, canBuild }: { reviewId: string; projectId: string | null; tab?: string | null; messages: Message[]; canBuild: boolean }) {
   const router = useRouter();
-  const [text, setText] = useState(""), [err, setErr] = useState("");
-  const [pending, start] = useTransition();
+  const [text, setText] = useState("");
+  const s = useSubmit(), pending = s.pending;
   const busy = messages.some((m) => ["new", "seen", "working"].includes(m.status));
   useEffect(() => { if (!busy) return; const t = setInterval(() => router.refresh(), 10000); return () => clearInterval(t); }, [busy, router]);
   const send = (mode: "discuss" | "build") => {
-    const v = text.trim(); if (!v) return;
-    start(async () => { try { await sendMessage(v, projectId, { mode, review_id: reviewId, review_tab: tab || null }); setText(""); setErr(""); } catch { setErr("Couldn't send. Try again."); } });
+    const v = text.trim(); if (!v || s.pending) return;
+    s.submit(() => sendMessage(v, projectId, { mode, review_id: reviewId, review_tab: tab || null }), { ok: "Sent", onOk: () => setText("") });
   };
   return (
     <section className="thread" aria-label="Discuss this review with Claude">
@@ -37,16 +38,16 @@ export default function Thread({ reviewId, projectId, tab, messages, canBuild }:
       <form className="composer" style={{ padding: 0, border: 0, marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); send("discuss"); }}>
         <textarea id={`thread-${reviewId}`} className="textarea" rows={3} value={text} onChange={(e) => setText(e.target.value)}
           placeholder="Push back, propose an idea, ask why… Claude reads this review and the discussion so far."
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send("discuss"); } }} />
+          onKeyDown={enterSends} title="Enter sends · Shift+Enter for a new line" />
         <div className="crow">
           <span className="explain" style={{ fontSize: 12, color: "var(--ink-3)" }}>
             <b>Discuss</b> answers and can add checklist items. <b>Build it</b> works on a new branch and opens a PR{canBuild ? " (in projects that are a git repo; otherwise it plans the change)" : ""}.
           </span>
           <span className="sp" />
+          <Ack s={s} busy="Sending…" />
           <button type="button" className="btn ghost" disabled={pending || !text.trim()} onClick={() => send("build")}>Build it (PR)</button>
           <button className="btn" disabled={pending || !text.trim()}>{pending ? "Sending…" : "Discuss"}</button>
         </div>
-        {err && <div className="due late" role="alert">{err}</div>}
       </form>
     </section>
   );

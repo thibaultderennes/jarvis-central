@@ -3,6 +3,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { archiveMessage, markOpened, markTreated, sendMessage } from "@/lib/actions";
 import { inboxGroup, type Message } from "@/lib/data";
+import { Ack, enterSends, useSubmit } from "./Submit";
 
 type P = { id: string; name: string; color: string };
 const ST: Record<string, [string, string]> = {
@@ -19,8 +20,9 @@ const GROUPS: [Group, string, string][] = [["new", "New", "Replies you haven't o
  */
 export default function Inbox({ messages, projects, defaultProject, workerAt }: { messages: Message[]; projects: P[]; defaultProject: string; workerAt: string | null }) {
   const router = useRouter();
-  const [text, setText] = useState(""), [proj, setProj] = useState(defaultProject), [err, setErr] = useState("");
-  const [pending, start] = useTransition();
+  const [text, setText] = useState(""), [proj, setProj] = useState(defaultProject);
+  const [, start] = useTransition();
+  const s = useSubmit(), pending = s.pending;
   const [mounted, setMounted] = useState(false);
   const [tab, setTab] = useState<Group>("new");
   const pmap = Object.fromEntries(projects.map((p) => [p.id, p]));
@@ -49,8 +51,8 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
   }, [unopened, tab]);
   const offline = mounted && (!workerAt || Date.now() - +new Date(workerAt) > 5 * 60_000);
   const send = (mode: "discuss" | "build") => {
-    const v = text.trim(); if (!v) return;
-    start(async () => { try { await sendMessage(v, proj || null, { mode }); setText(""); setErr(""); setTab("new"); } catch { setErr("Couldn't send. Try again."); } });
+    const v = text.trim(); if (!v || s.pending) return;
+    s.submit(() => sendMessage(v, proj || null, { mode }), { ok: "Sent", onOk: () => { setText(""); setTab("new"); } });
   };
   const shown = threads.filter((t) => t.group === tab);
   return (
@@ -59,7 +61,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
         <label className="lbl" htmlFor="msg">Message</label>
         <textarea id="msg" className="textarea" rows={4} value={text} onChange={(e) => setText(e.target.value)}
           placeholder={"Plan my Tuesday around the 2 pm appointment · What should I cut this week? · Why is item r05 blocked? · Move the launch items one week"}
-          onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) (e.currentTarget.form as HTMLFormElement).requestSubmit(); }} />
+          onKeyDown={enterSends} title="Enter sends · Shift+Enter for a new line" />
         <div className="crow">
           <label className="lbl" htmlFor="msg-proj">About</label>
           <select id="msg-proj" className="select" value={proj} onChange={(e) => setProj(e.target.value)}>
@@ -67,11 +69,11 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
           <span className="sp" />
+          <Ack s={s} busy="Sending…" />
           {offline && <span className="due late">{workerAt ? "The Mac worker is offline: it answers when your Mac wakes." : "The Mac worker isn't installed yet."}</span>}
           <button type="button" className="btn ghost" disabled={pending || !text.trim()} onClick={() => send("build")} title="Works on a new git branch and opens a pull request">Build it (PR)</button>
           <button className="btn" disabled={pending || !text.trim()}>{pending ? "Sending…" : "Ask / discuss"}</button>
         </div>
-        {err && <div className="due late" role="alert">{err}</div>}
       </form>
       <div className="chips" role="tablist" aria-label="Inbox groups" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line-2)" }}>
         {GROUPS.map(([g, label, hint]) => <button key={g} role="tab" className="chip" aria-pressed={tab === g} aria-selected={tab === g} title={hint} onClick={() => setTab(g)}>{label} ({counts[g]})</button>)}
@@ -118,24 +120,24 @@ function Turn({ m, mounted }: { m: Message; mounted: boolean }) {
 
 /** Reply inside a conversation: Claude gets the whole thread before answering. */
 function Reply({ rootId, projectId }: { rootId: string; projectId: string | null }) {
-  const [open, setOpen] = useState(false), [text, setText] = useState(""), [err, setErr] = useState("");
-  const [pending, start] = useTransition();
-  if (!open) return <button className="more" style={{ alignSelf: "flex-start" }} onClick={() => setOpen(true)}>Reply</button>;
+  const [open, setOpen] = useState(false), [text, setText] = useState("");
+  const s = useSubmit(), pending = s.pending;
+  if (!open) return <span className="crow"><button className="more" style={{ alignSelf: "flex-start" }} onClick={() => { s.clear(); setOpen(true); }}>Reply</button>{s.ok && <Ack s={s} />}</span>;
   const send = (mode: "discuss" | "build") => {
-    const v = text.trim(); if (!v) return;
-    start(async () => { try { await sendMessage(v, projectId, { mode, thread_id: rootId }); setText(""); setOpen(false); setErr(""); } catch { setErr("Couldn't send. Try again."); } });
+    const v = text.trim(); if (!v || s.pending) return;
+    s.submit(() => sendMessage(v, projectId, { mode, thread_id: rootId }), { ok: "Sent", onOk: () => { setText(""); setOpen(false); } });
   };
   return (
     <form className="composer" style={{ padding: 0, border: 0 }} onSubmit={(e) => { e.preventDefault(); send("discuss"); }}>
       <textarea id={`reply-${rootId}`} className="textarea" rows={2} autoFocus value={text} onChange={(e) => setText(e.target.value)} placeholder="Answer, push back, or ask for the next step…"
-        onKeyDown={(e) => { if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) { e.preventDefault(); send("discuss"); } if (e.key === "Escape") setOpen(false); }} />
+        onKeyDown={(e) => { if (e.key === "Escape") setOpen(false); else enterSends(e); }} title="Enter sends · Shift+Enter for a new line" />
       <div className="crow">
         <button type="button" className="more" onClick={() => setOpen(false)}>Cancel</button>
         <span className="sp" />
+        <Ack s={s} busy="Sending…" />
         <button type="button" className="btn ghost sm" disabled={pending || !text.trim()} onClick={() => send("build")}>Build it (PR)</button>
         <button className="btn sm" disabled={pending || !text.trim()}>{pending ? "Sending…" : "Reply"}</button>
       </div>
-      {err && <div className="due late" role="alert">{err}</div>}
     </form>
   );
 }

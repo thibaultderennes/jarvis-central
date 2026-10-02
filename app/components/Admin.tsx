@@ -2,6 +2,7 @@
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { requestRescan, savePrefs } from "@/lib/actions";
+import { Ack, enterCommits, useSubmit } from "./Submit";
 
 export type Rescan = { status: "queued" | "running" | "done" | "failed"; requested_at?: string; started_at?: string; finished_at?: string; added?: string[]; archived?: string[]; total?: number; error?: string };
 
@@ -35,10 +36,8 @@ export function RescanButton({ state, workerAt }: { state: Rescan | null; worker
 /** Preferences kept on the site (kv "prefs"). Instance settings live in jarvis.config.json, not here. */
 export function PrefsForm({ showDone, currency }: { showDone: boolean; currency: string }) {
   const [sd, setSd] = useState(showDone), [cur, setCur] = useState(currency);
-  const [msg, setMsg] = useState(""), [, start] = useTransition();
-  const save = (p: Parameters<typeof savePrefs>[0]) => start(async () => {
-    try { await savePrefs(p); setMsg("Saved"); setTimeout(() => setMsg(""), 1500); } catch { setMsg("Couldn't save. Try again."); }
-  });
+  const sub = useSubmit();
+  const save = (p: Parameters<typeof savePrefs>[0]) => sub.submit(() => savePrefs(p));
   return (
     <div className="psettings">
       <label className="toggle" title="Checklists open with finished and cancelled items visible instead of hidden behind “Show completed”">
@@ -48,10 +47,10 @@ export function PrefsForm({ showDone, currency }: { showDone: boolean; currency:
       <label className="hrs" title="Currency proposed when you add a recurring cost in Finance">
         <span>Default currency</span>
         <input className="input" value={cur} maxLength={3} placeholder="USD" style={{ width: 64, textTransform: "uppercase" }}
-          onChange={(e) => setCur(e.target.value.toUpperCase())}
-          onBlur={() => { const v = cur.trim().toUpperCase(); if (v.length === 3 && v !== currency) save({ finance_currency: v }); }} />
+          onChange={(e) => setCur(e.target.value.toUpperCase())} onKeyDown={enterCommits}
+          onBlur={() => { const v = cur.trim().toUpperCase(); if (v === currency) return; if (v.length === 3) save({ finance_currency: v }); else sub.submit(async () => ({ error: "Use a 3-letter currency code, like USD." })); }} />
       </label>
-      <span className="saved" role="status">{msg}</span>
+      <Ack s={sub} />
     </div>
   );
 }

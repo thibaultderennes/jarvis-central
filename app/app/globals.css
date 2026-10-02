@@ -365,7 +365,13 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 .psettings .hrs { display: flex; gap: 6px; align-items: center; font-size: 13.5px; }
 .psettings .hrs input { width: 96px; }
 .psettings .saved { font-family: var(--mono); font-size: 11px; color: var(--ink-3); }
-/* checklist filters (three groups, ANDed), cancelled rows, build runs */
+/* save feedback next to any input (components/Submit.tsx): pending, "✓ Added", or the error with the text kept */
+.ack { font-family: var(--mono); font-size: 11px; color: var(--done); align-self: center; min-height: 1em; }
+.ack:empty { display: none; }
+.ack.err { color: var(--bad); font-weight: 600; white-space: normal; flex-basis: 100%; }
+.row.fresh { background: var(--doing-soft); }
+@media (prefers-reduced-motion: no-preference) { .row.fresh { animation: fresh 2.5s ease-out; } @keyframes fresh { from { box-shadow: inset 3px 0 0 var(--doing); } } }
+/* checklist filters (AND across groups, OR within one), cancelled rows, build runs */
 .filters { display: flex; gap: 8px 14px; flex-wrap: wrap; align-items: center; }
 .fgroup { display: flex; gap: 6px; align-items: center; flex-wrap: wrap; padding: 4px 6px; border: 1px solid var(--line-2); border-radius: 999px; }
 .fgroup .lbl { margin: 0 4px 0 6px; }
