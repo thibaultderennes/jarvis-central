@@ -11,12 +11,14 @@ import PlanButton from "@/components/PlanButton";
 import Costs from "@/components/Costs";
 import { BurnUp } from "@/components/Insights";
 import DailyStats from "@/components/DailyStats";
+import Timeline, { MilestoneList } from "@/components/Timeline";
+import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
 import "./project.css";
 import "../../finance/finance.css";
 
 type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; bucket?: string };
-const VIEWS = ["dashboard", "checklist", "project", "reviews", "finance", "stats"] as const;
+const VIEWS = ["dashboard", "checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
 type View = (typeof VIEWS)[number];
 // Links from before the left menu (?tab=…) keep working.
 const LEGACY: Record<string, { v: View; k?: string }> = { checklist: { v: "checklist" }, reviews: { v: "reviews" }, strategy: { v: "project" }, security: { v: "reviews", k: "security" } };
@@ -43,6 +45,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const menu: { v: View; label: string; count?: number }[] = [
     { v: "dashboard", label: "Dashboard" },
     { v: "checklist", label: "Checklists", count: open.length },
+    { v: "timeline", label: "Timeline" },
     { v: "project", label: "Project", count: docs.length || undefined },
     { v: "reviews", label: "Reviews", count: weekly.length + audits.length || undefined },
     { v: "finance", label: "Finances", count: costs.filter((c) => c.active).length || undefined },
@@ -74,6 +77,8 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           {view === "dashboard" && <Dashboard p={p} items={items} weekly={weekly} docs={docs} audits={audits} costs={costs} today={t} href={href} rank={rank} prefs={prefs} />}
 
           {view === "checklist" && <Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} />}
+
+          {view === "timeline" && <ProjectTimeline id={id} />}
 
           {view === "project" && (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -180,6 +185,22 @@ function Dashboard({ p, items, weekly, docs, audits, costs, today: t, href, rank
         </section>
       </div>
       {prefs.show_done_default ? null : null}
+    </div>
+  );
+}
+
+async function ProjectTimeline({ id }: { id: string }) {
+  const data = await timelineData({ project: id });
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <section className="panel">
+        <div className="ph"><h2 className="ph-t">Timeline</h2><span className="sp" /><span className="hint">{fmtDate(data.from)} – {fmtDate(data.to)} · one lane per section · dashed lines are milestones</span></div>
+        <Timeline data={data} />
+      </section>
+      <section className="panel">
+        <div className="ph"><h2 className="ph-t">Upcoming milestones</h2><span className="sp" /><span className="hint">From PRD.md&apos;s milestones table</span></div>
+        <MilestoneList data={data} showProject={false} />
+      </section>
     </div>
   );
 }

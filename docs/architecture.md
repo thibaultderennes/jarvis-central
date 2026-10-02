@@ -121,8 +121,10 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 - `GET /api/cal/jarvis.ics?key=` (calendar token in the URL): iCalendar feed of planned weeks for Apple Calendar.
 
 ## Site pages
-- `/` Overview · `/today` · `/week` · `/p/<id>` (left menu: Dashboard, Checklists, Project, Reviews, Finances, Statistics;
-  `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
+- `/` Overview · `/today` · `/week` · `/timeline` (last week → 8 weeks out, one lane per project: PRD milestones,
+  open items' due dates per day, this and next week's Sunday-plan blocks, calendar events; built in `app/lib/timeline.ts`
+  from existing data, no table of its own) · `/p/<id>` (left menu: Dashboard, Checklists, Timeline (one lane per section),
+  Project, Reviews, Finances, Statistics; `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
   `/inbox` (New / Pending / Treated) · `/admin` (projects + "Refresh project folders", account, subscriptions, preferences).
 - Env vars the site reads beyond the secrets: `JARVIS_TZ`, `JARVIS_OWNER`, `JARVIS_REVIEW_WHEN`, `JARVIS_PLAN_WHEN`,
   `JARVIS_FOCUS_MINUTES` (a day of focus for the Today/Week load bars; written from `planner.max_focus_minutes_per_day`

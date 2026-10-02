@@ -34,6 +34,7 @@ export default function Nav({ projects, moreCount = 0, waiting, fresh, workerAt 
           <Link href="/" aria-current={on("/")}>Overview</Link>
           <Link href="/today" aria-current={on("/today")}>Today</Link>
           <Link href="/week" aria-current={on("/week")}>Week</Link>
+          <Link href="/timeline" aria-current={on("/timeline")}>Timeline</Link>
           {projects.length > 0 && <span className="sep" aria-hidden="true" />}
           {projects.map((p) => (
             <Link key={p.id} href={`/p/${p.id}`} aria-current={on(`/p/${p.id}`)} data-c={p.color}><i className="dot" />{p.name}</Link>
