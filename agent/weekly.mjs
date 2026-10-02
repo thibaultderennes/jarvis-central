@@ -104,7 +104,7 @@ Be direct and specific, kind but not flattering. Quote sparingly.
 ${JSON_RULES(false)}`;
 
 const jarvisPrompt = (W, file) => `You are the product owner of Jarvis Central Dashboard (JCD), an open-source tool (repo: ${JARVIS_ROOT}) that ${OWNER} runs as their own instance: website + worker + Sunday planner + Monday reviews. Review how ${OWNER} actually used it during ${W.startDate}..${W.lastDate}. ${SCEPTIC}
-Read the bundle at ${file}: aggregated usage events (by kind, page, day, hour), features never used, todo and message stats (worker turnaround, cost), the feature list, the repo's VERSION and the head of CHANGELOG.md (what already shipped — don't propose it again), the headlines of this week's recap and coaching reports, and last week's Jarvis review. You may read the code in ${path.join(JARVIS_ROOT, "app")} and ${path.join(JARVIS_ROOT, "agent")} to judge effort and check whether something already exists.
+Read the bundle at ${file}: aggregated usage events (by kind, page, day, hour), features never used, page views and clicks on the site (top clicks, dead-end pages, page-to-page sequences and backtracks, features used before but rarely this week — when tracking is on), todo and message stats (worker turnaround, cost), the feature list, the repo's VERSION and the head of CHANGELOG.md (what already shipped — don't propose it again), the headlines of this week's recap and coaching reports, and last week's Jarvis review. You may read the code in ${path.join(JARVIS_ROOT, "app")} and ${path.join(JARVIS_ROOT, "agent")} to judge effort and check whether something already exists.
 
 JCD is a shared tool, so every recommendation must be labelled with exactly one of:
 - **Your settings** — applies to this instance only: a change to jarvis.config.json (planner hours, caps, schedules, advisors, stance), to checklists or projects, or to ${OWNER}'s habits. Say exactly which setting or item, and the new value.
@@ -116,8 +116,30 @@ JCD is a shared tool, so every recommendation must be labelled with exactly one 
   - **Effort** S/M/L · **Breaking change?** yes/no · **Needs a database migration?** yes/no (migrations must be additive and idempotent)
 Never propose committing personal settings, project names, calendar links, tokens or data to the repo: those stay in jarvis.config.json, the environment and the database. If an idea only makes sense for ${OWNER}, it is **Your settings**, not a tool change.
 
-body_md sections ("## " headings): ## How it was used ## Your settings (adjustments for this instance) ## Tool changes (issues to file upstream; 0-3, best first) ## Cut (features nobody used or that add friction — say whether to hide them in settings or remove them from the tool).
+Flow: base every suggestion about navigation, layout or extra clicks on the click data (quote the numbers: "opened /week 14 times, clicked nothing on 9"; "went Overview → Today → Overview 6 times"); no click data means no flow claims. File each flow suggestion like any other: **Your settings** when it is this instance's setup (a project in or out of the top 3, a preference, a habit), **Tool change** when the page or the navigation itself should change for every user.
+
+body_md sections ("## " headings): ## How it was used (include the flow: where ${OWNER} goes, where they stop, what they never touch) ## Your settings (adjustments for this instance) ## Tool changes (issues to file upstream; 0-3, best first) ## Cut (features nobody used or that add friction — say whether to hide them in settings or remove them from the tool).
 ${JSON_RULES(false)}`;
+
+// ---------- click data for the Jarvis review ----------
+/** Markdown lines for GET /api/agent/usage (aggregate only; raw events never leave the site). */
+function usageLines(u) {
+  if (!u) return ["## Clicks and page views", "unavailable this week (the site has no click_events table yet, or the request failed)", ""];
+  if (u.error) return ["## Clicks and page views", `unavailable: ${u.error}`, ""];
+  const t = u.totals || {};
+  const L = ["## Clicks and page views (first-party tracking on the site)",
+    `${t.views || 0} page views and ${t.clicks || 0} clicks in ${t.sessions || 0} browser sessions on ${t.active_days || 0} days${u.truncated ? " (truncated at 50,000 events)" : ""}.`,
+    "Labels are the tool's own button/link/tab names; … stands for text the owner wrote (an item or todo title); # for a number.", ""];
+  if (!t.events) return [...L, ""];
+  L.push("### Top clicks (page · label · element · region · count)", ...(u.top_clicks || []).map((c) => `- ${c.page} · ${c.label || "(no label)"} · ${c.target || "—"} · ${c.section || "—"} · ${c.n}`), "");
+  L.push("### Pages (views · clicks · dead ends = views with no click before leaving · exits = last page of a session)", ...(u.pages || []).map((p) => `- ${p.page}: ${p.views} views, ${p.clicks} clicks, ${p.dead_ends} dead ends, ${p.exits} exits`), "");
+  if ((u.dead_end_pages || []).length) L.push("### Dead-end pages (half or more of the views had no click)", ...u.dead_end_pages.map((p) => `- ${p.page}: ${p.dead_ends} of ${p.views} views`), "");
+  L.push("### Most common page-to-page moves", ...(u.sequences || []).map((m) => `- ${m.from} → ${m.to}: ${m.n}`), "");
+  if ((u.paths || []).length) L.push("### Most common three-page paths", ...u.paths.map((x) => `- ${x.path.join(" → ")}: ${x.n}`), "");
+  if ((u.backtracks || []).length) L.push("### Backtracks (went to a page and straight back)", ...u.backtracks.map((b) => `- ${b.page} → ${b.via} → ${b.page}: ${b.n}`), "");
+  if ((u.rarely_used || []).length) L.push("### Rarely used this week (clicked before, at most once this week)", ...u.rarely_used.map((r) => `- ${r.page} · ${r.label}: ${r.before} before, ${r.now} this week`), "");
+  return L;
+}
 
 // ---------- run one report ----------
 async function report({ kind, prompt, cwd, dir, post, file }) {
@@ -291,6 +313,8 @@ async function main() {
     const byKind = count((a) => a.kind);
     const readme = ["app/README.md", "README.md"].map((f) => path.join(JARVIS_ROOT, f)).find((f) => fs.existsSync(f));
     const prev = (await get("/api/agent/reviews" + qs({ type: "jarvis", limit: 2 }), [])).find((r) => r.week_start !== W.startDate);
+    const tracking = CONFIG.usage?.track_clicks !== false;
+    const clicks = tracking ? await get("/api/agent/usage" + qs({ since: W.start.toISOString(), until: W.end.toISOString() }), null) : null;
     const L = [`# Jarvis usage — ${W.startDate}..${W.lastDate}`, "",
       `## Events: ${act.length}`, `by kind: ${JSON.stringify(byKind)}`, `by page: ${JSON.stringify(count((a) => a.page || "—"))}`,
       `by day: ${JSON.stringify(count((a) => a.at && new Date(a.at).toLocaleDateString("en-CA", { timeZone: TZ })))}`,
@@ -298,6 +322,7 @@ async function main() {
       `## Todos: ${todos.length} planned this week, ${todos.filter((t) => t.done).length} done, ${todos.filter((t) => t.kind === "life").length} life / ${todos.filter((t) => t.kind !== "life").length} work, ${todos.filter((t) => t.item_id).length} linked to checklist items`, "",
       `## Messages: ${msgs.length}; statuses ${JSON.stringify(msgs.reduce((m, x) => ((m[x.status] = (m[x.status] || 0) + 1), m), {}))}`,
       `worker turnaround minutes: ${turn.length ? `median ${turn[Math.floor(turn.length / 2)].toFixed(1)}, max ${turn[turn.length - 1].toFixed(1)}` : "n/a"}; cost $${msgs.reduce((s, m) => s + (m.meta?.cost_usd || 0), 0).toFixed(2)}; PRs opened ${msgs.filter((m) => m.meta?.pr_url).length}`, "",
+      ...(tracking ? usageLines(clicks) : ["## Clicks and page views", "tracking is off (usage.track_clicks: false): no flow data", ""]),
       `## This week's recap: ${recap?.headline || "n/a"}`, `## This week's coaching: ${coaching?.headline || "n/a"}`, ""];
     if (readme) L.push("## Feature list (README)", fs.readFileSync(readme, "utf8").slice(0, 20_000), "");
     const version = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "unknown"; } })();
@@ -306,8 +331,14 @@ async function main() {
     if (prev) L.push(`## Last week's Jarvis review (${prev.week_start})`, prev.body_md);
     const file = path.join(dir, "_jarvis.md"); fs.writeFileSync(file, L.join("\n"));
     await report({ kind: "jarvis", prompt: jarvisPrompt(W, file), cwd: JARVIS_ROOT, dir, file,
-      post: (j) => ({ type: "jarvis", project_id: null, week_start: W.startDate, title: `Jarvis · week of ${fmtDay(W.startDate)}`, headline: j.headline, body_md: j.body_md, meta: { events: act.length, messages: msgs.length, cost_usd: j.cost_usd } }) });
+      post: (j) => ({ type: "jarvis", project_id: null, week_start: W.startDate, title: `Jarvis · week of ${fmtDay(W.startDate)}`, headline: j.headline, body_md: j.body_md, meta: { events: act.length, messages: msgs.length, clicks: clicks?.totals?.clicks ?? null, page_views: clicks?.totals?.views ?? null, cost_usd: j.cost_usd } }) });
   } catch (e) { log("jarvis review failed", e.message); }
+
+  // Retention: raw click events older than usage.retention_days (default 90) are deleted, tracking on or off.
+  if (!DRY) {
+    const days = Math.max(1, Number(CONFIG.usage?.retention_days) || 90);
+    await api("DELETE", "/api/agent/usage" + qs({ days })).then((r) => log("click events pruned", { days, deleted: r?.deleted ?? 0 })).catch((e) => log("click prune failed", e.message));
+  }
 
   if (!DRY) await api("POST", "/api/agent/heartbeat", { worker: "weekly", info: { week: startDate, phase: "done", failed: results.filter((r) => r && r.error).map((r) => r.p.id) } }).catch(() => {});
   log("weekly done", W.startDate);

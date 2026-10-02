@@ -40,4 +40,6 @@ re-run it and redeploy after changing those.
 | `economics.timeout_seconds` | `30` | Time limit for evaluating one model (each runs in its own Node process). |
 | `calendars.read_google` / `read_apple` | `true` / `false` | Show those appointments and plan around them. |
 | `calendars.write_google` / `write_apple_feed` | `true` / `false` | Put the week plan in those calendars. |
+| `usage.track_clicks` | `true` | Records your page views and clicks on the site (first-party, in your own database; only the labels the tool gives its buttons, links and tabs, never what you type) so the Monday Jarvis review can base its flow advice on how you actually move around. `false` stops it: the site gets it as `JARVIS_TRACK_CLICKS` from `setup.mjs secrets` (or just `setup.mjs usage`), then redeploy. |
+| `usage.retention_days` | `90` | Raw click events older than this are deleted by the Monday run. |
 | `guard.deny` | `[]` | Extra words the privacy guard must never let into a commit (client names, product names…). Your name, project folders and names, site address and home path are always blocked. |

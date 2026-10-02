@@ -5,6 +5,7 @@ import { getEvents as getCalendar } from "@/lib/calendar";
 import { isDate } from "@/lib/time";
 import { getPlan, savePlan } from "@/lib/plan";
 import { VERSION } from "@/lib/instance";
+import { pruneClickEvents, usageSummary } from "@/lib/usage";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -129,6 +130,17 @@ async function handle(req: NextRequest, ctx: Ctx) {
       return J({ ok: true, version: VERSION });
     }
     case "GET activity": return J(await D.getActivity(sp.get("since") || new Date(Date.now() - 7 * 864e5).toISOString()));
+    case "GET usage": {
+      // Weekly aggregate of page views and clicks (top clicks, dead ends, sequences, rarely used). No raw events.
+      const since = sp.get("since") || new Date(Date.now() - 7 * 864e5).toISOString(), until = sp.get("until") || new Date().toISOString();
+      if (isNaN(Date.parse(since)) || isNaN(Date.parse(until))) return bad("since and until must be ISO dates");
+      try { return J(await usageSummary(since, until)); } catch (e) { return J({ error: `usage unavailable: ${(e as Error).message}` }, 503); }
+    }
+    case "DELETE usage": {
+      const days = Number(sp.get("days"));
+      if (!Number.isFinite(days) || days < 1) return bad("days (>= 1) required");
+      try { return J({ deleted: await pruneClickEvents(days) }); } catch (e) { return J({ error: `prune failed: ${(e as Error).message}` }, 503); }
+    }
     case "GET calendar": {
       const from = sp.get("from"), to = sp.get("to");
       if (!isDate(from) || !isDate(to)) return bad("from and to (YYYY-MM-DD) are required");

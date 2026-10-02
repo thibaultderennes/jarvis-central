@@ -1,6 +1,9 @@
 import { requireSession } from "@/lib/auth";
 import { getMessages, getProjects, kvGet, splitFeatured } from "@/lib/data";
+import { Suspense } from "react";
 import Nav from "@/components/Nav";
+import UsageTracker from "@/components/UsageTracker";
+import { trackingEnabled } from "@/lib/usage";
 
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   await requireSession();
@@ -15,6 +18,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
     <>
       <Nav projects={tabs} moreCount={others.length} waiting={waiting} fresh={fresh} workerAt={last} />
       <main className="shell">{children}</main>
+      {/* Page views and clicks for the Monday Jarvis review (first-party, labels only); usage.track_clicks: false turns it off. */}
+      {trackingEnabled() && <Suspense fallback={null}><UsageTracker /></Suspense>}
     </>
   );
 }

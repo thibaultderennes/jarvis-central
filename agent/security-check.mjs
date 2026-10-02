@@ -47,6 +47,10 @@ if (URL_) {
     x.status === 401 ? pass("the calendar token can't read the agent API") : fail(`the calendar token opened /api/agent/projects (${x.status})`, "JARVIS_CAL_TOKEN and JARVIS_AGENT_TOKEN must be different values");
   } else warn("no google/Code.gs: skipped the calendar-token scope check", "run it again after `node app/scripts/setup.mjs apps-script`");
 
+  // usage tracking endpoint: writes only with the owner's session (an empty batch, so nothing is stored either way)
+  const u = await fetch(URL_ + "/api/usage", { method: "POST", body: '{"events":[]}', redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch((e) => ({ status: 0, error: e.message }));
+  [401, 302, 303, 307, 308].includes(u.status) ? pass("usage tracking endpoint refuses logged-out writes") : fail(`POST /api/usage while logged out returned ${u.status}`, "app/app/api/usage/route.ts must check the session cookie");
+
   const dev = await get("/api/auth/dev?key=probe");
   dev.status === 404 ? pass("the local-only dev login is off in production") : fail(`/api/auth/dev returned ${dev.status} in production`, "it must return 404 unless NODE_ENV is development");
 
