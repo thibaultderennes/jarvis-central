@@ -75,7 +75,11 @@ async function handle(req: NextRequest, ctx: Ctx) {
       const msg = await D.patchMessage(b.id, b);
       return msg ? J({ message: msg }) : bad("No such message", 404);
     }
-    case "GET stats": return J(await D.dailyStats(Math.min(90, Math.max(1, +(sp.get("days") || 14)))));
+    case "GET stats": {
+      const bucket = sp.get("bucket") || "day";
+      if (!(bucket in D.STAT_BUCKETS)) return bad("bucket must be day, week or month");
+      return J(await D.dailyStats(+(sp.get("n") || sp.get("days") || 0) || undefined, sp.get("project") || undefined, { bucket: bucket as D.StatBucket, items: sp.get("items") === "1" }));
+    }
 
     case "GET costs": return J(await D.getCosts({ project: sp.has("project") ? sp.get("project") || null : undefined, all: sp.get("all") === "1" }));
     case "POST costs": {

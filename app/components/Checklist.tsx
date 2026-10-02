@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { approveBuild, cancelItem, commentItem, cycleItem, newItem, resetBuild, sendBackBuild, sendNote, setDue } from "@/lib/actions";
 import { isOpen, type Item, type Section } from "@/lib/data";
@@ -37,6 +37,14 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   const storeKey = `jarvis.filters.${projectId}`;
   useEffect(() => { try { const v = localStorage.getItem(storeKey); if (v) setF({ ...defaults(showDoneDefault), ...JSON.parse(v) }); } catch { /* private mode: keep the defaults */ } }, [storeKey, showDoneDefault]);
   const setFilters = (next: Filters) => { setF(next); try { localStorage.setItem(storeKey, JSON.stringify(next)); } catch { /* ignore */ } };
+  // A link to #item-<id> (from the stats panel) opens the list with everything shown, then scrolls to that item.
+  const [target, setTarget] = useState(""), jumped = useRef(false);
+  useEffect(() => {
+    const id = location.hash.startsWith("#item-") ? decodeURIComponent(location.hash.slice(6)) : "";
+    if (jumped.current || !id || !items.some((i) => i.id === id)) return;
+    jumped.current = true; setF(defaults(true)); setTarget(id);
+  }, [items]);
+  useEffect(() => { if (target) { document.getElementById(`item-${target}`)?.scrollIntoView({ block: "center" }); setTarget(""); } }, [target]);
   const run = (fn: () => Promise<unknown>) => start(async () => { try { setErr(""); await fn(); } catch { setErr("Couldn't save that. Try again."); } });
   const win = useMemo(() => {
     switch (f.when) {
@@ -127,7 +135,7 @@ function Row({ i, s, today, onCycle, run, projectId }: { i: Item; s: Section; to
   const late = i.due && isOpen(i) && i.due < today, soon = i.due && isOpen(i) && !late && i.due <= addDays(today, 2);
   const claudeOwned = i.owner === "claude" || i.owner === "both";
   return (
-    <div className={`row${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}`}>
+    <div id={`item-${i.id}`} className={`row${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}`}>
       <button className="st" data-s={i.status} onClick={onCycle} aria-label={`${i.title}: ${i.status}. Change status`}>{i.status === "done" ? "✓" : i.status === "doing" ? "◐" : i.status === "cancelled" ? "–" : ""}</button>
       <div style={{ minWidth: 0 }}>
         <div className="t">

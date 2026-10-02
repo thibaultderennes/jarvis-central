@@ -15,7 +15,7 @@ import { REVIEW_WHEN } from "@/lib/instance";
 import "./project.css";
 import "../../finance/finance.css";
 
-type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string };
+type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; bucket?: string };
 const VIEWS = ["dashboard", "checklist", "project", "reviews", "finance", "stats"] as const;
 type View = (typeof VIEWS)[number];
 // Links from before the left menu (?tab=…) keep working.
@@ -112,7 +112,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
 
           {view === "finance" && <Costs costs={costs} projects={all.map((x) => ({ id: x.id, name: x.name, color: x.color }))} project={id} currency={prefs.finance_currency || "USD"} today={t} />}
 
-          {view === "stats" && <Stats projectId={id} today={t} />}
+          {view === "stats" && <Stats project={p} bucket={sp.bucket} today={t} />}
         </div>
       </div>
     </div>
@@ -184,15 +184,15 @@ function Dashboard({ p, items, weekly, docs, audits, costs, today: t, href, rank
   );
 }
 
-async function Stats({ projectId, today: t }: { projectId: string; today: string }) {
-  const [ins, stats] = await Promise.all([D.insights(projectId), D.dailyStats(14, projectId)]);
+async function Stats({ project, bucket, today: t }: { project: D.Project; bucket?: string; today: string }) {
+  const projectId = project.id;
+  const [ins, stats] = await Promise.all([D.insights(projectId), D.dailyStats(undefined, projectId, { bucket: bucket === "week" || bucket === "month" ? bucket : "day", items: true })]);
   const p = ins.projects[0];
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       {p ? <div className="burns" style={{ gridTemplateColumns: "1fr" }}><BurnUp p={p} today={t} /></div> : <div className="panel empty">No checklist data yet.</div>}
       <section className="panel">
-        <div className="ph"><h2 className="ph-t">Added and finished per day</h2><span className="sp" /><span className="hint">Last 14 days · this project</span></div>
-        <DailyStats stats={stats} today={t} />
+        <DailyStats stats={stats} projects={[{ id: project.id, name: project.name, color: project.color }]} />
       </section>
       <section className="panel">
         <div className="ph"><h2 className="ph-t">Users and visitors</h2></div>

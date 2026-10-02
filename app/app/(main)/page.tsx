@@ -9,12 +9,13 @@ import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
 import ProjectsBoard, { type Card } from "@/components/ProjectsBoard";
 import DailyStats from "@/components/DailyStats";
 
-export default async function Overview() {
+export default async function Overview({ searchParams }: { searchParams: Promise<{ bucket?: string; proj?: string }> }) {
   await requireSession();
-  const t = today(), wk = mondayOf(t);
+  const t = today(), wk = mondayOf(t), sq = await searchParams;
+  const bucket = sq.bucket === "week" || sq.bucket === "month" ? sq.bucket : "day", proj = typeof sq.proj === "string" && sq.proj ? sq.proj : undefined;
   const [projects, items, done8, ahead6, ins, todos, cal, reviews, msgs, stats] = await Promise.all([
     D.getProjects(), D.getItems(), D.doneByWeek(4), D.openByDueWeek(4), D.insights(),
-    D.getTodos(t, t), getEvents(t, t), D.getReviews({ limit: 40 }), D.getMessages({ limit: 100 }), D.dailyStats(14),
+    D.getTodos(t, t), getEvents(t, t), D.getReviews({ limit: 40 }), D.getMessages({ limit: 100 }), D.dailyStats(undefined, proj, { bucket, items: true }),
   ]);
   // The top 3 get their own colour in every chart; everything else is grouped as "Other projects".
   const { featured: active, others } = D.splitFeatured(projects);
@@ -161,8 +162,7 @@ export default async function Overview() {
           </div>
         </section>
         <section className="panel">
-          <div className="ph"><h2 className="ph-t">Added and finished per day</h2><span className="sp" /><span className="hint">Last 14 days, all projects · finished after their due date in red</span></div>
-          <DailyStats stats={stats} today={t} />
+          <DailyStats stats={stats} projects={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))} filter project={proj} />
         </section>
         <section className="panel">
           <div className="ph"><h2 className="ph-t">Your rhythm</h2><span className="sp" /><span className="hint">Last 4 weeks · items finished, todos ticked, messages sent</span></div>
