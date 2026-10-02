@@ -9,6 +9,7 @@ import Thread from "@/components/Thread";
 import ProjectSettings from "@/components/ProjectSettings";
 import PlanButton from "@/components/PlanButton";
 import Costs from "@/components/Costs";
+import UnitEconomics from "@/components/UnitEconomics";
 import { BurnUp } from "@/components/Insights";
 import DailyStats from "@/components/DailyStats";
 import Timeline, { MilestoneList } from "@/components/Timeline";
@@ -32,10 +33,11 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const view: View = (VIEWS as readonly string[]).includes(sp.v || "") ? (sp.v as View) : legacy?.v || "dashboard";
   const kind = sp.k || legacy?.k || "weekly";
   const t = today();
-  const [items, weekly, docs, audits, msgs, all, prefs, costs] = await Promise.all([
+  const [items, weekly, docs, audits, msgs, all, prefs, costs, economics] = await Promise.all([
     D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 }),
     D.getReviews({ type: "security", project: id, limit: 100 }).then((l) => l.sort(D.newestFileFirst)),
     D.getMessages({ limit: 50 }), D.getProjects(), D.getPrefs(), D.getCosts({ project: id, all: true }),
+    view === "finance" ? D.getEconomics(id) : null, // the model grid is large: only the Finances view needs it
   ]);
   const open = items.filter(D.isOpen), dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
@@ -115,7 +117,13 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
             </div>
           )}
 
-          {view === "finance" && <Costs costs={costs} projects={all.map((x) => ({ id: x.id, name: x.name, color: x.color }))} project={id} currency={prefs.finance_currency || "USD"} today={t} />}
+          {view === "finance" && (
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+              {economics && <UnitEconomics economics={economics} />}
+              <Costs costs={costs} projects={all.map((x) => ({ id: x.id, name: x.name, color: x.color }))} project={id} currency={prefs.finance_currency || "USD"} today={t} />
+              {!economics && <div className="panel empty">No unit-economics model for {p.name}. Add a <code>jarvis.economics.mjs</code> (or <code>.cjs</code>) file to the project folder that prices one point of a users × usage × plan grid; the Mac agent evaluates it hourly and shows profit by users, a profit grid, margins per plan and cost lines here. See docs/unit-economics.md.</div>}
+            </div>
+          )}
 
           {view === "stats" && <Stats project={p} bucket={sp.bucket} today={t} />}
         </div>

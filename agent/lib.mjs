@@ -31,6 +31,8 @@ function defaults() {
   ex.site_url = "";
   ex.timezone = "UTC";
   if (ex.projects) ex.projects = { ...ex.projects, overrides: {} };
+  // Unit-economics models: a project opts in with a model file; `models` maps a project id to a non-default path.
+  ex.economics = { files: ["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"], sync_minutes: 60, timeout_seconds: 30, ...(ex.economics || {}), models: {} };
   if (ex.planner) ex.planner = { ...ex.planner, project_caps: {} };
   return ex;
 }

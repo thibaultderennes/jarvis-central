@@ -12,6 +12,9 @@
    - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
      to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
      (`audits.sync_minutes`); `node agent/audits.mjs sync [--project id] [--dry-run]` runs it by hand.
+   - `economics.mjs`: evaluates each opted-in project's unit-economics model file (`economics.files`, default
+     `jarvis.economics.mjs|cjs|js`, or `economics.models.<id>`) over its grid in a child process and uploads changed
+     results for the project's **Finances** tab; hourly (`economics.sync_minutes`). Contract: [`unit-economics.md`](unit-economics.md).
    - `rescan.mjs`: runs a project-folder scan when "Refresh project folders" was pressed on the Admin page (kv
      `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
@@ -60,6 +63,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     off-track (critical > 0), at-risk (high > 0), on-track, or null when the counts can't be read.
 - `recurring_costs(id uuid, project_id null /* null = independent */, name, amount numeric, currency, period 'week'|'month'|'year', next_renewal date null, notes, active bool, created_at, updated_at)` — the Finance page and each project's Finances view; manual entry only.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
+  `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, added?, archived?, total?, error?}`).
 - `login_attempts(ip, at, ok)`.
 
@@ -88,6 +92,8 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | DELETE | `/api/agent/costs` | `?id=UUID` | `{ok}` |
 | GET | `/api/agent/reviews` | `?type=&project=&limit=` newest first | `[{review}]` |
 | POST | `/api/agent/reviews` | `{type, project_id?, week_start?, title, verdict?, headline?, body_md, meta?}` upsert (key: `week_start` for weekly types, else `meta.file` when set, else `id`, else insert) | `{review}` |
+| GET | `/api/agent/economics` | `?project=ID` (`&full=1` includes `data`) | `{project_id, file, sha, synced_at, error, error_at}`; 404 when none synced |
+| PUT | `/api/agent/economics` | `{project_id, file, sha, data}` (an evaluated model, `data.v = 1`, ≤ 2 MB) or `{project_id, file, error}` (keeps the last good data) | `{economics}` without `data` |
 | POST | `/api/agent/heartbeat` | `{worker: 'worker'|'weekly', info?}` | `{ok}` |
 | POST | `/api/agent/import` | `{projects?:[], items?:[], reviews?:[]}` bulk upsert (migration) | `{counts}` |
 | GET | `/api/agent/calendar` | `?from=DATE&to=DATE` | `[{start, end, allDay, title, location}]` |
@@ -98,7 +104,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
   item's build run); the worker script (not Claude) pushes and opens the PR. Claude never merges, deploys, pays, emails,
   texts, or touches production data or secrets. The only merge the worker script does is `gh pr merge` of a PR the
   owner approved on the item ("Approve & merge"); the item is then done.
-- Every pass, before the inbox: refine new items, sync audits, run a requested folder rescan, merge approved PRs, then
+- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), run a requested folder rescan, merge approved PRs, then
   queue at most one build run (in-progress items owned by Claude, sent-back PRs first, critical first).
 - Anything outside that → status `needs_you` with a clear explanation.
 
