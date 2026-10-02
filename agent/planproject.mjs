@@ -53,7 +53,7 @@ export async function gather(project) {
   // The PRD's milestones table is the source of deadlines; the dashboard's are the fallback for projects without one.
   const milestones = (st.milestones.length ? st.milestones : project.deadlines || []).slice().sort((a, b) => a.date.localeCompare(b.date));
   const existingIds = new Set(mine.map((i) => i.id));
-  const setup = setupItems(st, { project, roles, jarvisRoot: JARVIS_ROOT, existingIds });
+  const setup = setupItems(st, { project, roles, jarvisRoot: JARVIS_ROOT, existingIds, existingItems: mine });
   const refresh = mine.length > 0;
   const recent = refresh ? await recentContext(project, dir, mine) : null;
   return { dir, today, mine, open, events: Array.isArray(events) ? events : [], st, roles, milestones, existingIds, setup, refresh, recent };
@@ -272,6 +272,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       console.log(`dashboard deadlines: ${(project.deadlines || []).map((m) => `${m.date} ${m.label}`).join("; ") || "none"}`);
       const placed = placeItems(setup.map((i) => ({ ...i, milestone: null })), g);
       console.log(`setup items: ${placed.map((i) => `${i.id} → ${i.section} due ${i.due || "—"}`).join("; ") || "none (structure complete)"}`);
+      const covered = setupItems(st, { project, roles, jarvisRoot: JARVIS_ROOT, existingIds: g.existingIds }).filter((i) => !setup.some((s) => s.id === i.id));
+      if (covered.length) console.log(`already covered by an item you added: ${covered.map((i) => i.id).join(", ")}`);
       if (process.argv.includes("--prompt")) console.log("\n--- prompt ---\n" + buildPlanPrompt(project, g));
     })().catch((e) => { console.error(e.message); process.exitCode = 1; });
   }

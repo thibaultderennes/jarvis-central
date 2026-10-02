@@ -52,11 +52,29 @@ export function sectionRoles(sections) {
   return { ids: new Set(list.map((s) => s.id)), list, decide: decide.id, build: build.id, other: other.id };
 }
 
+/** Lower-case words only, accents and punctuation dropped: "Write PRD.md" → "write prd md". */
+export const normTitle = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+// What an item the owner wrote by hand looks like when it already covers a setup item (matched on the normalised title).
+// Anchored at the start so an item that only mentions the file ("Plan: don't add the PRD item when …") doesn't count.
+const PRD = /^(write|draft|create|add|start|finish)( \w+){0,2} prd\b|^prd\b/;
+const SETUP_MATCH = {
+  prd: PRD,
+  "prd-milestones": new RegExp(`${PRD.source}|^(date|add|write|set|fill)\\b.*\\bmilestones?\\b.*\\bprd\\b`),
+  "how-we-work": /^(add|write|create|draft|fill)?\b.*\bhow we work\b/,
+  "audit-prompts": /^(add|write|create|draft|set up|copy)\b.*\baudits?\b.*\bprompts?\b|^audits? prompts?\b/,
+};
+
+/** Does an existing item (open or done; cancelled ones don't count) already cover this setup item by its title? */
+export const coveredByTitle = (id, items = []) =>
+  !!SETUP_MATCH[id] && items.some((i) => i && i.status !== "cancelled" && SETUP_MATCH[id].test(normTitle(i.title)));
+
 /**
  * Checklist items that create the missing pieces instead of planning without them. Fixed ids, so a second plan run
- * never adds them twice (an item with the same id, done or not, counts as already there).
+ * never adds them twice (an item with the same id, done or not, counts as already there). An item the owner added by
+ * hand with a matching title (e.g. "Write PRD.md") counts too, so the plan doesn't add a second one next to it.
  */
-export function setupItems(st, { project, roles, jarvisRoot, existingIds }) {
+export function setupItems(st, { project, roles, jarvisRoot, existingIds, existingItems = [] }) {
   const tpl = (f) => path.join(jarvisRoot, "templates", f);
   const scaffold = `node ${path.join(jarvisRoot, "agent", "projects.mjs")} scaffold --only ${project.id}`;
   const out = [];
@@ -92,5 +110,5 @@ export function setupItems(st, { project, roles, jarvisRoot, existingIds }) {
 2. List what is known and intentional here (so the audit doesn't flag it), citing files.
 3. Open a PR; the owner merges, then schedules the audit every 3 days (a Claude Code routine) or runs it by hand.`,
   });
-  return out.filter((i) => !existingIds.has(i.id));
+  return out.filter((i) => !existingIds.has(i.id) && !coveredByTitle(i.id, existingItems));
 }
