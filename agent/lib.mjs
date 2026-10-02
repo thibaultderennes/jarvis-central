@@ -120,6 +120,23 @@ export function makeLog(name) {
   };
 }
 
+/**
+ * Wrap a log so a line keyed `key` is written only when `state` changed since the last pass (each pass is a new
+ * process, so the last state lives in <cache>/<name>-logstate.json). Returns logChanged(key, state, ...parts).
+ */
+export function makeLogOnce(name, log) {
+  const file = path.join(CACHE_DIR, `${name}-logstate.json`);
+  let seen = {};
+  try { seen = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
+  return (key, state, ...parts) => {
+    const s = JSON.stringify(state);
+    if (seen[key] === s) return;
+    seen[key] = s;
+    try { fs.mkdirSync(CACHE_DIR, { recursive: true }); fs.writeFileSync(file, JSON.stringify(seen)); } catch {}
+    log(...parts);
+  };
+}
+
 /** Exclusive lock so launchd runs never overlap. Returns release() or null if held. Stale after 20 min. */
 export function acquireLock(name, staleMs = 20 * 60_000) {
   fs.mkdirSync(CACHE_DIR, { recursive: true });

@@ -4,6 +4,7 @@ import * as D from "@/lib/data";
 import { getEvents as getCalendar } from "@/lib/calendar";
 import { isDate } from "@/lib/time";
 import { getPlan, savePlan } from "@/lib/plan";
+import { VERSION } from "@/lib/instance";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -103,7 +104,8 @@ async function handle(req: NextRequest, ctx: Ctx) {
     case "POST heartbeat": {
       const w = b.worker === "weekly" ? "weekly" : "worker";
       await D.kvSet(`${w}.heartbeat`, { at: new Date().toISOString(), info: b.info || {} });
-      return J({ ok: true });
+      // The worker compares major.minor with its own VERSION and pauses its build/merge passes on a mismatch.
+      return J({ ok: true, version: VERSION });
     }
     case "GET activity": return J(await D.getActivity(sp.get("since") || new Date(Date.now() - 7 * 864e5).toISOString()));
     case "GET calendar": {
