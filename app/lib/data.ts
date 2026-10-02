@@ -412,3 +412,35 @@ export const monthly = (c: Cost) => (c.period === "week" ? (c.amount * 52) / 12 
 /* ---------- owner preferences (kv "prefs", set on the Admin page) ---------- */
 export type Prefs = { show_done_default?: boolean; finance_currency?: string };
 export async function getPrefs(): Promise<Prefs> { return (await kvGet<Prefs>("prefs"))?.value || {}; }
+
+/* ---------- unit economics (kv "economics.<project>", evaluated on the Mac by agent/economics.mjs) ---------- */
+/** One evaluated model; the shape is documented in docs/unit-economics.md. Grid keys are "option.mix.usage.driver" indexes. */
+export type EconomicsData = {
+  v: 1; title: string; currency: string; note: string;
+  options: { id: string; label: string }[]; mixes: { id: string; label: string }[];
+  plans: { id: string; label: string; price: number; yearly: number | null }[];
+  users: number[]; usage: number[];
+  driver: { id: string; label: string; unit: string; values: number[] } | null;
+  thresholds: { users: number; label: string }[];
+  defaults: { option: string; mix: string; usage: number; driver: number | null; plan: string | null; users: number };
+  lines: { id: string; label: string; fixed: boolean }[];
+  /** Per users value: [revenue, total cost, ...one value per line]. */
+  grid: Record<string, number[][]>;
+  /** Key "option.usage.driver"; per plan: [monthly revenue, monthly cost, yearly revenue / 12, yearly cost / 12]. */
+  planGrid: Record<string, (number | null)[][]>;
+};
+export type Economics = { project_id: string; file: string; sha: string | null; synced_at: string | null; error: string | null; error_at: string | null; data: EconomicsData | null };
+export const ECONOMICS_MAX_BYTES = 2_000_000;
+export async function getEconomics(project: string): Promise<Economics | null> {
+  return (await kvGet<Economics>(`economics.${project}`))?.value || null;
+}
+/** A successful run replaces the data; a failed one keeps the last good data and records the error beside it. */
+export async function putEconomics(project: string, b: { file: string; sha?: string; data?: EconomicsData; error?: string }) {
+  const prev = await getEconomics(project);
+  const now = new Date().toISOString();
+  const next: Economics = b.error
+    ? { project_id: project, file: b.file, sha: prev?.sha || null, synced_at: prev?.synced_at || null, data: prev?.data || null, error: b.error.slice(0, 500), error_at: now }
+    : { project_id: project, file: b.file, sha: b.sha || null, synced_at: now, data: b.data || null, error: null, error_at: null };
+  await kvSet(`economics.${project}`, next);
+  return next;
+}

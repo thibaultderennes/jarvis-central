@@ -33,6 +33,10 @@ re-run it and redeploy after changing those.
 | `worker.timeout_minutes` | `25` | Hard limit per message. |
 | `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Security tab. |
 | `audits.sync_minutes` | `60` | How often the worker mirrors those reports to the site (`0` = every worker pass). `node agent/audits.mjs sync` does it now. |
+| `economics.files` | `["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"]` | File names, relative to each project folder, that opt a project into unit economics: the first that exists is its model. See [`unit-economics.md`](unit-economics.md). |
+| `economics.models` | `{}` | A model path per project id that replaces `economics.files` for that project, e.g. `{"my-app": "docs/finance/jarvis.economics.cjs"}`. Must stay inside the project folder. |
+| `economics.sync_minutes` | `60` | How often the worker evaluates the models and uploads changed results to the project's Finances tab (`0` = every worker pass). `node agent/economics.mjs sync` does it now. |
+| `economics.timeout_seconds` | `30` | Time limit for evaluating one model (each runs in its own Node process). |
 | `calendars.read_google` / `read_apple` | `true` / `false` | Show those appointments and plan around them. |
 | `calendars.write_google` / `write_apple_feed` | `true` / `false` | Put the week plan in those calendars. |
 | `guard.deny` | `[]` | Extra words the privacy guard must never let into a commit (client names, product names…). Your name, project folders and names, site address and home path are always blocked. |

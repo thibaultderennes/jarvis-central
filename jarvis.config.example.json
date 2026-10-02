@@ -44,6 +44,13 @@
     "sync_minutes": 60
   },
 
+  "economics": {
+    "files": ["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"],
+    "models": { "example-project": "docs/finance/jarvis.economics.cjs" },
+    "sync_minutes": 60,
+    "timeout_seconds": 30
+  },
+
   "guard": {
     "deny": []
   },

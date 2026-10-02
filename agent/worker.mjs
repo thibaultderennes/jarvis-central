@@ -13,6 +13,7 @@ import { runClaude } from "./claude.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
 import { syncAuditsDue } from "./audits.mjs";
+import { syncEconomicsDue } from "./economics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
@@ -287,6 +288,8 @@ async function pass() {
     await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
     // Security audit reports in each project folder → the project's Security tab; at most once an hour.
     await syncAuditsDue(projects, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
+    // Unit-economics model files in project folders → evaluated here, results on the project's Finances tab; hourly.
+    await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.

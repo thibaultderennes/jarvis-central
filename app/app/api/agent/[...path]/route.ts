@@ -91,6 +91,23 @@ async function handle(req: NextRequest, ctx: Ctx) {
     }
     case "DELETE costs": { const id = sp.get("id"); if (!id) return bad("id required"); await D.deleteCost(id); return J({ ok: true }); }
 
+    case "GET economics": {
+      const p = sp.get("project"); if (!p) return bad("project required");
+      const e = await D.getEconomics(p);
+      if (!e) return bad("No model synced for that project", 404);
+      return J(sp.get("full") === "1" ? e : { ...e, data: undefined });
+    }
+    case "PUT economics": {
+      // Written by agent/economics.mjs: the evaluated unit-economics model of one project (or why it failed).
+      if (!b.project_id || typeof b.file !== "string") return bad("project_id and file are required");
+      if (!(await D.getProject(b.project_id))) return bad("No such project", 404);
+      if (b.error) return J({ economics: { ...(await D.putEconomics(b.project_id, { file: b.file, error: String(b.error) })), data: undefined } });
+      const d = b.data;
+      if (!d || d.v !== 1 || !Array.isArray(d.options) || !Array.isArray(d.users) || !Array.isArray(d.usage) || !Array.isArray(d.lines) || typeof d.grid !== "object" || !d.grid) return bad("data must be a version 1 model result");
+      if (JSON.stringify(d).length > D.ECONOMICS_MAX_BYTES) return bad("data is too large; use a smaller grid", 413);
+      return J({ economics: { ...(await D.putEconomics(b.project_id, { file: b.file, sha: typeof b.sha === "string" ? b.sha : undefined, data: d })), data: undefined } });
+    }
+
     case "GET reviews": if (sp.get("id")) { const r = await D.getReview(sp.get("id")!); return r ? J([r]) : J([]); }
       return J(await D.getReviews({ type: sp.get("type") || undefined, project: sp.get("project") || undefined, limit: +(sp.get("limit") || 20), week: sp.get("week") || undefined }));
     case "POST reviews": {
