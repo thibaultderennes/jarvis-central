@@ -28,6 +28,7 @@ re-run it and redeploy after changing those.
 | `worker.interval_seconds` | `60` | How often the inbox is checked. |
 | `worker.allow_build` | `true` | `false` = the worker only discusses, never edits code. |
 | `worker.refine_new_items` | `true` | Items you add on the site get steps, a section, priority, an estimate and a due date on a day with room. `false` = leave them as typed. |
+| `worker.refine_inbox_notes` | `false` | `true` = also post an Inbox note each time a new item is refined (the result is always on the item itself). Replies to your comments on an item always go to the Inbox. |
 | `worker.discuss_model` | `"sonnet"` | Model for discussion messages (lighter on your plan). |
 | `worker.build_model` | `null` | Model for build messages (`null` = Claude Code's default). |
 | `worker.timeout_minutes` | `25` | Hard limit per message. |
