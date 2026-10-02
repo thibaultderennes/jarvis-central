@@ -4,6 +4,57 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.6.0 — 2026-10-02
+- **Build runs can commit again**: headless build runs were denied `git -C <dir> add/commit` (the allow list only
+  matched `git add …`). The worktree's own `git -C` path is now allowed (push stays denied), the prompt asks for plain
+  `git add`/`git commit`, permission denials are logged and named on a failed item, and edits a run leaves uncommitted
+  are committed by the worker as the last commit on the PR.
+- **Worker guards**: the merge pass only touches items that are `merge_requested` with a PR (it no longer trusts the
+  API filter); the build queue filters client-side too; `POST /api/agent/heartbeat` returns the site version and the
+  worker pauses its build and merge passes when the agent and site differ in major.minor; repeated identical log lines
+  are written once per state change.
+- **Timeline** (new top-level page and a "Timeline" view in each project's left menu): last week to 8 weeks out, one
+  lane per project (per section on a project page). PRD milestones are diamonds, open items are due-date ticks per day
+  (red overdue, amber critical, taller when more), this and next week's Sunday-plan blocks are bars, calendar events
+  have their own lane, plus a line for today. "Upcoming milestones" lists days left and the open, critical and overdue
+  work due before each. Built from existing data.
+- **"Added and finished" chart**: switch between days (14), weeks (12, Monday start) and months (12); filter by
+  project on the home page; tap or keyboard-select a bar to list the items added and completed in that period, each
+  linking to the item on its project's checklist. `GET /api/agent/stats` takes `bucket=day|week|month`, `n`,
+  `project` and `items=1` (defaults unchanged); new `jarvis stats` CLI command.
+- **Checklist filters combine**: several sections, owners and due ranges (OR within a group, AND across groups);
+  Overdue and Next 7 days can be on together; undated items match neither. Filters live in the URL, with a visible
+  "Clear filters", an item count and an empty state. The project dashboard's Overdue card opens the checklist filtered.
+- **Inputs**: Enter does what the button does everywhere (in the chat-like boxes Enter sends and Shift+Enter is a new
+  line, IME-safe). Text is cleared only after a successful save; a failure keeps it and says why. Each save shows a
+  pending state and a brief "Added" / "Saved" / "Sent", and a newly added checklist item is highlighted.
+- **Project Finances: unit economics**. A project that keeps a model file (`jarvis.economics.mjs|cjs|js`, or
+  `economics.models.<id>`) gets profit by users per vendor option with decision thresholds, a users × usage profit
+  grid, margin per subscriber per plan (monthly/yearly), fixed vs per-user cost lines, and controls for plan, mix,
+  usage and a project-specific driver. The Mac agent evaluates the model hourly (`agent/economics.mjs`) and uploads it
+  (`GET/PUT /api/agent/economics`, kv `economics.<id>`). Contract: `docs/unit-economics.md`. New config keys
+  `economics.files`, `economics.models`, `economics.sync_minutes`, `economics.timeout_seconds`.
+- **Usage tracking for the Monday Jarvis review**: the site records your page views and clicks (first-party, in your
+  own database; only the labels the tool gives its links, buttons and tabs, never what you type) in a new
+  `click_events` table via `POST /api/usage`. The Jarvis review gets a weekly aggregate (top clicks, dead-end pages,
+  page-to-page sequences and backtracks, rarely used features; `GET /api/agent/usage`) and files its flow suggestions
+  under "Your settings" or "Tool changes". Raw events are pruned after `usage.retention_days` (default 90). Turn it off
+  with `usage.track_clicks: false` (new `setup.mjs usage` command). Page views no longer go to the `activity` log.
+- **Silent refine**: adding a checklist item no longer posts a "New checklist item" note to the Inbox; Claude's refine
+  stays on the item. Replies to your comments on an item still go to the Inbox. New config key
+  `worker.refine_inbox_notes` (default `false`) brings the old note back.
+- **Plan this project / refresh**: the PRD, PRD milestones, "How we work" and audit-prompts setup items are skipped when
+  you already have an open or done item with a matching title; `planproject.mjs <id> --dry-run` lists the ones skipped.
+- This repo has a `PRD.md` draft, a "How we work" section in `CLAUDE.md`, and `docs/audits/PROMPTS.md` (the 3-day audit).
+
+**Upgrade notes**
+- Redeploy: the migration adds the `click_events` table (additive; tracking is silently skipped until it exists).
+- `git pull` on the Mac: the worker pauses building and merging until the agent and the site run the same release.
+- Refining a new item is now silent. To keep the Inbox note, set `"worker": { "refine_inbox_notes": true }`.
+- Click tracking is on by default; to turn it off set `"usage": {"track_clicks": false}`, run
+  `node app/scripts/setup.mjs usage` and redeploy.
+- Unit economics: add a model file to a project's folder (see `docs/unit-economics.md`); nothing to do otherwise.
+
 ## 0.5.0 — 2026-09-30
 - **Project page with a left menu**: Dashboard (open / overdue / in progress / latest review / recurring costs, next up,
   in progress, deadlines, latest reports, the project settings), Checklists, Project (description + strategy documents),
