@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { approveBuild, cancelItem, commentItem, cycleItem, newItem, resetBuild, sendBackBuild, sendNote, setDue } from "@/lib/actions";
+import { approveBuild, cancelItem, commentItem, newItem, resetBuild, sendBackBuild, sendNote, setDue, setItemStatus } from "@/lib/actions";
 import { isOpen, type Item, type Section } from "@/lib/data";
 import { Ack, enterSends, imeGuard, useSubmit } from "./Submit";
 
@@ -93,10 +93,10 @@ export default function Checklist({ projectId, sections: given, items, today, sh
     if (f.due.length && !dated(i)) return false;
     return true;
   };
-  const cycle = (i: Item) => {
-    const next = ({ todo: "doing", doing: "done", done: "todo", cancelled: "todo" } as const)[i.status];
-    setList((l) => l.map((x) => (x.id === i.id ? { ...x, status: next } : x)));
-    run(() => cycleItem(projectId, i.id));
+  // One explicit status per click: the checkbox is done <-> todo, Start is doing (the go signal for Claude's items), Stop is todo.
+  const setStatus = (i: Item, status: "todo" | "doing" | "done") => {
+    setList((l) => l.map((x) => (x.id === i.id ? { ...x, status } : x)));
+    run(() => setItemStatus(projectId, i.id, status));
   };
   const closed = list.filter((i) => !isOpen(i)).length;
   const shown = list.filter(keep).length;
@@ -155,7 +155,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
                   {!all.length ? "Nothing here yet." : hiddenClosed === all.length ? <>All {all.length} done or cancelled. <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></> : "Nothing here with these filters."}
                 </div>
               )}
-              {its.map((i) => <Row key={i.id} i={i} s={s} today={today} fresh={i.id === fresh} onCycle={() => cycle(i)} run={run} projectId={projectId} />)}
+              {its.map((i) => <Row key={i.id} i={i} s={s} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
               {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "8px 14px" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
               <AddRow projectId={projectId} section={s} today={today} onAdded={setFresh} />
             </div>
@@ -166,14 +166,18 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   );
 }
 
-function Row({ i, s, today, fresh, onCycle, run, projectId }: { i: Item; s: Section; today: string; fresh: boolean; onCycle: () => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
+const ACTIVE_BUILD = ["working", "merge_requested", "sent_back"];
+function Row({ i, s, today, fresh, onStatus, run, projectId }: { i: Item; s: Section; today: string; fresh: boolean; onStatus: (s: "todo" | "doing" | "done") => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
   const [open, setOpen] = useState(false);
   const long = i.detail.length > 170 || i.detail.includes("\n");
   const late = i.due && isOpen(i) && i.due < today, soon = i.due && isOpen(i) && !late && i.due <= addDays(today, 2);
   const claudeOwned = i.owner === "claude" || i.owner === "both";
   return (
     <div id={`item-${i.id}`} className={`row${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}${fresh ? " fresh" : ""}`}>
-      <button className="st" data-s={i.status} onClick={onCycle} aria-label={`${i.title}: ${i.status}. Change status`}>{i.status === "done" ? "✓" : i.status === "doing" ? "◐" : i.status === "cancelled" ? "–" : ""}</button>
+      {i.status === "cancelled"
+        ? <span className="st" data-s="cancelled" role="img" aria-label={`${i.title}: cancelled`}>–</span>
+        : <button className="st" data-s={i.status} role="checkbox" aria-checked={i.status === "done"} onClick={() => onStatus(i.status === "done" ? "todo" : "done")}
+            aria-label={`Done: ${i.title}`} title={i.status === "done" ? "Done · click to reopen" : "Mark done"}>{i.status === "done" ? "✓" : ""}</button>}
       <div style={{ minWidth: 0 }}>
         <div className="t">
           <span>{i.title}</span>
@@ -206,6 +210,18 @@ function Row({ i, s, today, fresh, onCycle, run, projectId }: { i: Item; s: Sect
       <div className="rowside">
         <input type="date" className={`duein due${late ? " late" : soon ? " soon" : ""}`} value={i.due || ""} aria-label={`Due date for ${i.title}`}
           onChange={(e) => run(() => setDue(projectId, i.id, e.target.value || null))} />
+        {i.status === "todo" && !ACTIVE_BUILD.includes(i.build_status || "") && (
+          <button className="btn sm ghost startbtn" onClick={() => onStatus("doing")} aria-label={`${claudeOwned ? "Start build" : "Start"}: ${i.title}`}
+            title={claudeOwned ? "Claude builds this on a branch and opens a pull request for you to review (the Mac worker picks it up within a minute)" : "Mark it in progress"}>{claudeOwned ? "Start build ▸" : "Start ▸"}</button>
+        )}
+        {i.status === "doing" && (
+          <span className="inprog">
+            <span>◐ In progress</span>
+            {!ACTIVE_BUILD.includes(i.build_status || "") && (
+              <button className="more" onClick={() => onStatus("todo")} aria-label={`Stop: ${i.title}`} title={claudeOwned && !i.build_status ? "Back to to do: the queued build won't start" : "Back to to do"}>Stop</button>
+            )}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -255,7 +271,7 @@ function Comment({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unkno
     <div className="comment">
       {pending && <div className="said"><span className="lbl">Your comment</span> {i.refine_request}<span className="due"> · Claude is reading it…</span></div>}
       {!pending && i.refine_note && <div className="said"><span className="lbl">Claude</span> {i.refine_note}</div>}
-      {i.status === "cancelled" && <div className="said"><span className="lbl">Cancelled</span> {i.cancel_reason || "No reason given."}{i.duplicate_of ? ` Duplicate of ${i.duplicate_of}.` : ""} <button className="more" onClick={() => run(() => cycleItem(projectId, i.id))}>Reopen</button></div>}
+      {i.status === "cancelled" && <div className="said"><span className="lbl">Cancelled</span> {i.cancel_reason || "No reason given."}{i.duplicate_of ? ` Duplicate of ${i.duplicate_of}.` : ""} <button className="more" onClick={() => run(() => setItemStatus(projectId, i.id, "todo"))}>Reopen</button></div>}
       <form className="addrow" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); const v = t.trim(); if (!v || s.pending) return; s.submit(() => commentItem(projectId, i.id, v), { ok: "Sent to Claude", onOk: () => setT("") }); }}>
         <input className="input" value={t} onChange={(e) => setT(e.target.value)} maxLength={2000} aria-label={`Comment on ${i.title}`}
           placeholder="Comment or ask for a change: split it, move it to Friday, it's blocked by…, add a step…" />

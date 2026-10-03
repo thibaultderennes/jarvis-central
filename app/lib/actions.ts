@@ -7,21 +7,10 @@ import * as D from "./data";
 import { isDate } from "./time";
 
 const done = () => revalidatePath("/", "layout");
-const NEXT = { todo: "doing", doing: "done", done: "todo", cancelled: "todo" } as const;
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
 
 /* ---------- checklist ---------- */
-export async function cycleItem(project_id: string, id: string) {
-  await requireSession();
-  const [it] = await sql()`select status from items where project_id = ${project_id} and id = ${id}`;
-  if (!it) return;
-  const status = NEXT[it.status as keyof typeof NEXT];
-  await D.updateItem(project_id, id, { status });
-  await sql()`update todos set done = ${status === "done"}, done_at = ${status === "done" ? new Date().toISOString() : null} where project_id = ${project_id} and item_id = ${id}`;
-  await D.logActivity("item_status", `/p/${project_id}`, { id, status });
-  done();
-}
-/** Set a status directly (Today/Week one-click done, reopen). Todos linked to the item follow. */
+/** Set a status directly (checklist checkbox / Start / Stop, Today/Week one-click done, reopen). Todos linked to the item follow. */
 export async function setItemStatus(project_id: string, id: string, status: "todo" | "doing" | "done") {
   await requireSession();
   if (!["todo", "doing", "done"].includes(status)) return;
@@ -146,7 +135,8 @@ export async function placeTodo(id: string, date: string | null, order: string[]
 export async function toggleTodo(id: string) {
   await requireSession();
   const [t] = await sql()`update todos set done = not done, done_at = case when done then null else now() end where id = ${id} returning done, project_id, item_id`;
-  if (t?.project_id && t.item_id) await D.updateItem(t.project_id, t.item_id, { status: t.done ? "done" : "doing" });
+  // Unticking goes back to todo, never doing: doing is the go signal that queues a build on Claude's items.
+  if (t?.project_id && t.item_id) await D.updateItem(t.project_id, t.item_id, { status: t.done ? "done" : "todo" });
   await D.logActivity("todo_done", "/today", { done: t?.done });
   done();
 }
