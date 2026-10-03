@@ -2,72 +2,71 @@ import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import * as D from "@/lib/data";
 import { getEvents, calendarConfigured } from "@/lib/calendar";
-import { addDays, daysBetween, fmtDate, mondayOf, today, TZ, WD, weekday } from "@/lib/time";
+import { computeNeeds, type Need } from "@/lib/needs";
+import { addDays, daysBetween, fmtDate, isoInTZ, today, TZ, WD, weekday } from "@/lib/time";
 import { cap, OWNER, REVIEW_WHEN } from "@/lib/instance";
-import { HBars, StackedColumns, type Series } from "@/components/Charts";
-import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
 import ProjectsBoard, { type Card } from "@/components/ProjectsBoard";
-import DailyStats from "@/components/DailyStats";
+import "./home.css";
 
-export default async function Overview({ searchParams }: { searchParams: Promise<{ bucket?: string; proj?: string }> }) {
+const KIND: Record<Need["kind"], [string, string]> = { decide: ["Decide", "you"], merge: ["PR ready", "go"], reply: ["Reply", ""] };
+const SHOWN = 10;
+
+export default async function Home() {
   await requireSession();
-  const t = today(), wk = mondayOf(t), sq = await searchParams;
-  const bucket = sq.bucket === "week" || sq.bucket === "month" ? sq.bucket : "day", proj = typeof sq.proj === "string" && sq.proj ? sq.proj : undefined;
-  const [projects, items, done8, ahead6, ins, todos, cal, reviews, msgs, stats] = await Promise.all([
-    D.getProjects(), D.getItems(), D.doneByWeek(4), D.openByDueWeek(4), D.insights(),
-    D.getTodos(t, t), getEvents(t, t), D.getReviews({ limit: 40 }), D.getMessages({ limit: 100 }), D.dailyStats(undefined, proj, { bucket, items: true }),
+  const t = today();
+  const [projects, items, todos, cal, reviews, msgs] = await Promise.all([
+    D.getProjects(), D.getItems(), D.getTodos(t, t), getEvents(t, t), D.getReviews({ limit: 40 }), D.getMessages({ limit: 200 }),
   ]);
-  // The top 3 get their own colour in every chart; everything else is grouped as "Other projects".
   const { featured: active, others } = D.splitFeatured(projects);
   const topIds = new Set(active.map((p) => p.id));
-  const series: Series[] = [...active.map((p) => ({ key: p.id, label: p.name, color: p.color })), ...(others.length ? [{ key: "__others", label: "Other projects", color: "other" }] : [])];
-  const inSeries = (pid: string, key: string) => (key === "__others" ? !topIds.has(pid) : pid === key);
   const byId = Object.fromEntries(projects.map((p) => [p.id, p]));
+  const live = items.filter((i) => byId[i.project_id]);
 
-  // chart 1: done per week
-  const weeks8 = Array.from({ length: 4 }, (_, i) => addDays(done8.start, 7 * i));
-  const doneVals = weeks8.map((w) => series.map((s) => done8.rows.filter((r) => r.week === w && inSeries(r.project_id, s.key)).reduce((a, r) => a + r.n, 0)));
-  // chart 2: open work by due week
-  const weeks6 = Array.from({ length: 4 }, (_, i) => addDays(ahead6.start, 7 * i));
-  const aheadVals = weeks6.map((w) => series.map((s) => ahead6.rows.filter((r) => r.week === w && inSeries(r.project_id, s.key)).length));
-  // chart 4: time per project, from the latest weekly reviews
-  const lastWeek = reviews.find((r) => r.type === "project")?.week_start;
-  const timeRows = reviews.filter((r) => r.type === "project" && r.week_start === lastWeek)
-    .map((r) => ({ key: r.project_id || r.id, label: byId[r.project_id || ""]?.name || r.title, color: topIds.has(r.project_id || "") ? byId[r.project_id || ""]?.color : "other", v: Number(r.meta?.active_minutes) || 0 }))
-    .filter((r) => r.v > 0).sort((a, b) => b.v - a.v);
-
-  const open = items.filter(D.isOpen);
+  const open = live.filter(D.isOpen);
   const overdue = open.filter((i) => i.due && i.due < t);
+  const overdueProjects = new Set(overdue.map((i) => i.project_id)).size;
   const dueToday = open.filter((i) => i.due === t);
   const nextEv = cal.events.filter((e) => !e.allDay && (e.endTime || "99") >= new Date().toLocaleTimeString("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" }));
   const waiting = msgs.filter((m) => ["new", "seen", "working"].includes(m.status)).length;
-  const needs = msgs.filter((m) => m.status === "needs_you" && !m.archived && !m.treated_at).length;
   const pending = msgs.filter((m) => D.inboxGroup(m) === "pending").length;
+  const needs = computeNeeds(projects, live, msgs);
+  const deadlines = projects.flatMap((p) => p.deadlines.filter((d) => d.date >= t).map((d) => ({ ...d, p })))
+    .sort((a, b) => a.date.localeCompare(b.date));
+  const [nd, nd2] = deadlines;
+  const recentFrom = addDays(t, -28);
 
   const card = (p: D.Project): Card => {
-    const its = items.filter((i) => i.project_id === p.id && i.status !== "cancelled");
-    const nd = p.deadlines.filter((d) => d.date >= t).sort((x, y) => x.date.localeCompare(y.date))[0];
+    const its = live.filter((i) => i.project_id === p.id && i.status !== "cancelled");
+    const nx = p.deadlines.filter((d) => d.date >= t).sort((x, y) => x.date.localeCompare(y.date))[0];
+    const late = its.filter((i) => D.isOpen(i) && i.due && i.due < t).length;
+    let pace: Card["pace"] = null;
+    if (nx && topIds.has(p.id)) {
+      // Same idea as the burn-ups on /stats: items finished per week (last 4 weeks) against what the milestone needs.
+      const days = Math.max(1, daysBetween(t, nx.date)), dueBy = its.filter((i) => D.isOpen(i) && i.due && i.due <= nx.date).length;
+      const rate = its.filter((i) => i.status === "done" && i.done_at && isoInTZ(new Date(i.done_at)) > recentFrom).length / 4, need = (dueBy / days) * 7;
+      const r = (n: number) => (n >= 10 ? Math.round(n) : Math.round(n * 10) / 10);
+      pace = !dueBy ? { text: `${nx.label}, ${fmtDate(nx.date)}: nothing open is due by then`, risk: false }
+        : { text: `${nx.label}, ${fmtDate(nx.date)}: ${dueBy} open due by then · ${r(need)}/wk needed, ${r(rate)}/wk lately`, risk: (late > 0 && need > rate) || need > rate * 1.1 };
+    }
     return {
       id: p.id, name: p.name, color: topIds.has(p.id) ? p.color : "other", tagline: p.tagline, kind: p.kind, state: p.state, status: p.status,
-      done: its.filter((i) => i.status === "done").length, doing: its.filter((i) => i.status === "doing").length,
-      late: its.filter((i) => D.isOpen(i) && i.due && i.due < t).length, total: its.length,
+      done: its.filter((i) => i.status === "done").length, doing: its.filter((i) => i.status === "doing").length, late, total: its.length,
       next: its.filter((i) => D.isOpen(i) && i.due).sort((x, y) => Number(y.status === "doing") - Number(x.status === "doing") || x.due!.localeCompare(y.due!)).slice(0, 3).map((i) => ({ id: i.id, title: i.title, due: i.due! })),
       verdict: reviews.find((r) => r.type === "project" && r.project_id === p.id)?.verdict || null,
-      deadline: nd ? { ...nd, days: daysBetween(t, nd.date) } : null,
-      plan_enabled: p.plan_enabled !== false, weekly_minutes: p.weekly_minutes ?? null, reviews_enabled: p.reviews_enabled !== false,
+      deadline: nx ? { ...nx, days: daysBetween(t, nx.date) } : null,
+      plan_enabled: p.plan_enabled !== false, weekly_minutes: p.weekly_minutes ?? null, reviews_enabled: p.reviews_enabled !== false, pace,
     };
   };
-  const clocks = active.flatMap((p) => p.deadlines.filter((d) => d.date >= t).map((d) => ({ ...d, p })))
-    .sort((a, b) => a.date.localeCompare(b.date)).slice(0, 5);
   // Weekly reports carry a week_start; documents and security audits don't and stay out of "this week".
   const thisWeekReviews = reviews.filter((r) => r.week_start && r.week_start === (reviews.find((x) => x.week_start)?.week_start));
+  const when = new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: TZ });
 
   if (!projects.length) return (
     <>
       <div className="hello">
         <div>
           <h1 className="page">{OWNER ? `Welcome, ${OWNER}` : "Welcome to Jarvis Central"}</h1>
-          <div className="when">{new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: TZ })}</div>
+          <div className="when">{when}</div>
         </div>
       </div>
       <section className="panel pb" style={{ padding: "18px 22px", display: "flex", flexDirection: "column", gap: 10, maxWidth: "72ch" }}>
@@ -85,107 +84,89 @@ export default async function Overview({ searchParams }: { searchParams: Promise
     </>
   );
 
+  const ago = (at: string) => { const n = daysBetween(isoInTZ(new Date(at)), t); return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} d ago`; };
+  const row = (n: Need) => {
+    const p = n.project_id ? byId[n.project_id] : null, [label, cls] = KIND[n.kind], age = daysBetween(isoInTZ(new Date(n.at)), t);
+    return (
+      <li key={n.key} className="need" data-c={p ? D.displayColor(p, topIds) : "other"}>
+        <span className={`pill${cls ? " " + cls : ""}`}>{label}</span>
+        <span className="np"><i className="dot" />{p?.name || "General"}</span>
+        <Link className="nt" href={n.href} title={n.title}>{n.title}</Link>
+        <span className={`due${age > 7 ? " soon" : ""}`} title={new Date(n.at).toLocaleString("en-CA", { timeZone: TZ })}>{ago(n.at)}</span>
+        <Link className={`btn sm${n.kind === "reply" ? " ghost" : ""}`} href={n.href}>{n.action}</Link>
+      </li>
+    );
+  };
+
   return (
     <>
       <div className="hello">
         <div>
-          <h1 className="page">{new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: TZ })}</h1>
+          <h1 className="page">{when}</h1>
           <div className="when">Week {isoWeek(t)} · {WD[weekday(t)]} · {open.length} open items across {projects.length} projects</div>
         </div>
-        <div className="clocks" aria-label="Upcoming deadlines">
-          {clocks.map((c) => {
-            const n = daysBetween(t, c.date);
-            return (
-              <Link key={c.p.id + c.date} href={`/p/${c.p.id}`} className={`clk${n <= 14 ? " hot" : ""}`} data-c={c.p.color}>
-                <span className="p"><i className="dot" />{c.p.name}</span>
-                <span className="d">{n === 0 ? "today" : n}{n > 0 && <small>{n === 1 ? " day" : " days"}</small>}</span>
-                <span className="n">{c.label} · {fmtDate(c.date)}</span>
-              </Link>
-            );
-          })}
-        </div>
+        <Link href="/stats" className="home-charts">All charts →</Link>
       </div>
 
-      <div className="glance">
+      <div className="glance home-tiles">
         <Link className="gl" href="/today">
           <span className="lbl">Next on your calendar</span>
           <span className="v" style={{ fontSize: 17, paddingTop: 3 }}>{nextEv[0] ? nextEv[0].startTime : calendarConfigured() ? "Free" : "—"}</span>
           <span className="s">{nextEv[0] ? nextEv[0].title : calendarConfigured() ? (cal.error ? "Calendar unavailable right now" : "Nothing else today") : "Connect Google Calendar"}</span>
         </Link>
         <Link className="gl" href="/today">
-          <span className="lbl">Today's list</span>
+          <span className="lbl">Today&apos;s list</span>
           <span className="v">{todos.filter((x) => x.done).length}<span style={{ color: "var(--ink-3)", fontSize: 15 }}>/{todos.length}</span></span>
+          {todos.length > 0 && <span className="bar" role="img" aria-label={`${todos.filter((x) => x.done).length} of ${todos.length} done`}><i style={{ width: `${(todos.filter((x) => x.done).length / todos.length) * 100}%` }} /></span>}
           <span className="s">{todos.length ? `${todos.filter((x) => x.kind === "life").length} personal · ${todos.filter((x) => x.kind === "work").length} work` : "Nothing planned yet"}</span>
         </Link>
         <Link className="gl" href="/today">
           <span className="lbl">Overdue</span>
           <span className={`v${overdue.length ? " bad" : ""}`}>{overdue.length}</span>
-          <span className="s">{dueToday.length} due today</span>
+          <span className="s">{overdue.length ? `across ${overdueProjects} project${overdueProjects === 1 ? "" : "s"}` : "Nothing late"}{dueToday.length ? ` · ${dueToday.length} due today` : ""}</span>
         </Link>
-        <Link className="gl" href="/inbox">
-          <span className="lbl">Messages</span>
-          <span className="v">{waiting}</span>
-          <span className="s">{needs ? `${needs} need you` : pending ? `${pending} pending on you` : waiting ? "with Claude" : "Nothing waiting"}</span>
-        </Link>
-        <Link className="gl" href="/reviews">
-          <span className="lbl">Latest review</span>
-          <span className="v" style={{ fontSize: 17, paddingTop: 3 }}>{thisWeekReviews.length ? fmtDate(thisWeekReviews[0].week_start!) : "Monday"}</span>
-          <span className="s">{thisWeekReviews.length ? `${thisWeekReviews.length} reports` : `First reports arrive ${REVIEW_WHEN}`}</span>
+        <Link className={`gl${nd && daysBetween(t, nd.date) <= 14 ? " hot" : ""}`} href="/timeline" data-c={nd ? D.displayColor(nd.p, topIds) : undefined}>
+          <span className="lbl">Next deadline</span>
+          {nd ? <>
+            <span className="v">{daysBetween(t, nd.date) === 0 ? "Today" : <>{daysBetween(t, nd.date)}<small> {daysBetween(t, nd.date) === 1 ? "day" : "days"}</small></>}</span>
+            <span className="s"><i className="dot" /> {nd.p.name} · {nd.label} · {fmtDate(nd.date)}</span>
+            {nd2 && <span className="s then">then {nd2.label} ({nd2.p.name}) in {daysBetween(t, nd2.date)} d</span>}
+          </> : <>
+            <span className="v" style={{ fontSize: 17, paddingTop: 3 }}>None set</span>
+            <span className="s">Milestones from each PRD show here</span>
+          </>}
         </Link>
       </div>
+
+      <section className="panel needs" aria-labelledby="needs-h">
+        <div className="ph">
+          <h2 className="ph-t" id="needs-h">Needs you</h2>{needs.count > 0 && <span className="ct">{needs.count}</span>}
+          <span className="sp" />
+          <span className="hint">Oldest first{waiting ? ` · ${waiting} with Claude` : ""}{pending ? <> · <Link href="/inbox">{pending} opened, not treated</Link></> : ""}</span>
+        </div>
+        {needs.count ? (
+          <>
+            <ul className="needlist">{needs.rows.slice(0, SHOWN).map(row)}</ul>
+            {needs.count > SHOWN && (
+              <details className="needmore">
+                <summary>Show {needs.count - SHOWN} more</summary>
+                <ul className="needlist">{needs.rows.slice(SHOWN).map(row)}</ul>
+              </details>
+            )}
+          </>
+        ) : <div className="empty">Nothing needs you right now. Calls only you can make (the Decide section of each checklist), pull requests waiting for &ldquo;Approve &amp; merge&rdquo; and new replies from Claude land here.</div>}
+      </section>
 
       <section id="projects" style={{ display: "flex", flexDirection: "column", gap: 10, scrollMarginTop: 110 }}>
         <h2 className="lbl">Your top 3</h2>
         <ProjectsBoard featured={active.map(card)} others={others.map(card)} today={t} />
       </section>
 
-      {ins.projects.length > 0 && (
-        <section style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          <h2 className="lbl">Will each project make its next deadline?</h2>
-          <div className="burns">{ins.projects.map((p) => <BurnUp key={p.id} p={p} today={t} />)}</div>
-        </section>
-      )}
-
-      <div className="grid2">
-        {ins.projects.length > 0 && <section className="panel">
-          <div className="ph"><h2 className="ph-t">Pace vs needed</h2><span className="sp" /><span className="hint">Items finished per week, against what the next deadline needs</span></div>
-          <PaceBullets rows={ins.projects} />
-        </section>}
-        {ins.projects.length > 0 && <section className="panel">
-          <div className="ph"><h2 className="ph-t">Who it&apos;s waiting on</h2><span className="sp" /><span className="hint">Open checklist items by owner</span></div>
-          <OwnerBars rows={ins.projects} />
-        </section>}
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">Finished per week</h2><span className="sp" /><span className="hint">Checklist items done, last 4 weeks</span></div>
-          <div className="pb" style={{ paddingBottom: 4 }}>
-            <StackedColumns xs={weeks8} xLabels={weeks8.map((w) => fmtDate(w))} series={series} values={doneVals} unit="Items done" highlight={3} />
-          </div>
-        </section>
-        <section className="panel">
-          <DailyStats stats={stats} projects={projects.map((p) => ({ id: p.id, name: p.name, color: p.color }))} filter project={proj} />
-        </section>
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">Your rhythm</h2><span className="sp" /><span className="hint">Last 4 weeks · items finished, todos ticked, messages sent</span></div>
-          <Heatmap days={ins.heat} today={t} />
-        </section>
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">Work ahead</h2><span className="sp" /><span className="hint">Open items due in the next 4 weeks · overdue counted in this week</span></div>
-          <div className="pb" style={{ paddingBottom: 4 }}>
-            <StackedColumns xs={weeks6} xLabels={weeks6.map((w, i) => (i === 0 ? "This wk" : fmtDate(w)))} series={series} values={aheadVals} unit="Open items" highlight={0} />
-          </div>
-        </section>
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">Where your time went</h2><span className="sp" /><span className="hint">{lastWeek ? `Active minutes in Claude sessions, week of ${fmtDate(lastWeek)}` : "From the Monday reviews"}</span></div>
-          {timeRows.length ? <HBars rows={timeRows} format="minutes" />
-            : <div className="empty">This fills in after the first Monday review reads your Claude sessions for the week.</div>}
-        </section>
-      </div>
-
       <section className="panel">
-        <div className="ph"><h2 className="ph-t">This week's reviews</h2><span className="sp" /><Link href="/reviews" className="hint">All reviews →</Link></div>
+        <div className="ph"><h2 className="ph-t">This week&apos;s reviews</h2><span className="sp" /><Link href="/reviews" className="hint">All reviews →</Link></div>
         <div className="revlist">
           {thisWeekReviews.length ? thisWeekReviews.map((r) => (
-            <Link key={r.id} href={`/reviews?id=${r.id}`} className="revrow" data-c={byId[r.project_id || ""]?.color || (r.type === "coaching" ? "life" : "other")}>
+            <Link key={r.id} href={`/reviews?id=${r.id}`} className="revrow" data-c={byId[r.project_id || ""] ? D.displayColor(byId[r.project_id || ""], topIds) : r.type === "coaching" ? "life" : "other"}>
               <i className="dot" />
               <span className="t"><b>{r.title}</b><span>{r.headline}</span></span>
               {r.verdict ? <span className={`verdict v-${r.verdict}`}>{r.verdict.replace("-", " ")}</span> : <span className="pill">{r.type}</span>}
@@ -193,14 +174,11 @@ export default async function Overview({ searchParams }: { searchParams: Promise
           )) : <div className="empty">{cap(REVIEW_WHEN)} your Mac writes a review per project, a recap of the week, a note on how you work with Claude, and a review of how you use Jarvis. They land here.</div>}
         </div>
       </section>
+      <Link href="/stats" className="home-charts end">All charts: burn-ups, pace, finished per week, your rhythm, time per project →</Link>
     </>
   );
 }
 
-function Due({ d, t }: { d: string; t: string }) {
-  const n = daysBetween(t, d);
-  return <span className={`due${n < 0 ? " late" : n <= 2 ? " soon" : ""}`}>{fmtDate(d)}</span>;
-}
 function isoWeek(d: string) {
   const x = new Date(d + "T12:00:00Z"), n = x.getUTCDay() || 7;
   x.setUTCDate(x.getUTCDate() + 4 - n);
