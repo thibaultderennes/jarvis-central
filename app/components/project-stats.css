@@ -60,3 +60,5 @@
 }
 .ps-col { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
 @media (max-width: 1180px) { .ps-tiles-5 .ps-tile:last-child { grid-column: span 2; } }
+.ps-empty .empty-art { display: block; color: var(--ink-3); margin: 2px 0 -2px; }
+.ps-empty .empty-art path, .ps-empty .empty-art circle { stroke: currentColor; stroke-width: 2.2; } .ps-empty .empty-art .h { opacity: .45; } .ps-empty .empty-art .dot { fill: var(--signal); stroke: none; }

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Pt, Tile } from "@/lib/projectStats";
 import "./project-stats.css";
+import { EmptyArt } from "./brand";
 
 const P = (d: string) => new Date(d + "T12:00:00Z");
 const fd = (d: string, o: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" }) => P(d).toLocaleDateString("en-CA", { timeZone: "UTC", ...o });
@@ -74,7 +75,7 @@ function LineChart({ title, hint, lines }: { title: string; hint: string; lines:
   const dates = [...new Set(ls.flatMap((l) => l.pts.map((p) => p.date)))].sort();
   const W = useWidth(ref, 520), H = 200, L = 40, R = 10, T = 12, B = 22;
   const head = <div className="ph"><h3 className="ps-h">{title}</h3><span className="sp" /><span className="hint">{hint}</span></div>;
-  if (dates.length < 2) return <section className="panel ps-chart">{head}<div className="empty">{dates.length ? `One snapshot so far (${fd(dates[0])}): the line starts with the second.` : "No numbers yet."}</div></section>;
+  if (dates.length < 2) return <section className="panel ps-chart">{head}<div className="empty">{!dates.length && <EmptyArt kind="numbers" />}{dates.length ? `One snapshot so far (${fd(dates[0])}): the line starts with the second.` : "No numbers yet."}</div></section>;
   const max = niceMax(Math.max(1, ...ls.flatMap((l) => l.pts.map((p) => p.v)))), n = span(dates[0], dates.at(-1)!) || 1;
   const x = (d: string) => L + ((W - L - R) * span(dates[0], d)) / n, y = (v: number) => T + (H - T - B) * (1 - v / max);
   const ticks = [0, max / 2, max], xt = [dates[0], dates[Math.floor(dates.length / 2)], dates.at(-1)!].filter((v, i, a) => a.indexOf(v) === i);
@@ -178,7 +179,7 @@ export type ProductProps = {
 export type DeliveryProps = {
   tiles: Tile[]; weeks: Week[]; open: number;
   oldest: { id: string; title: string; age: number; due: string | null; late: boolean; owner: string | null; status: string }[];
-  forecast: { milestone: { date: string; label: string } | null; scope: number; scopeIsDue: boolean; p50: string | null; p85: string | null; status: "on" | "risk" | "off" | null; samples: number; rate: number };
+  forecast: { milestone: { date: string; label: string } | null; scope: number; scopeIsDue: boolean; p50: string | null; p85: string | null; status: "on" | "risk" | "off" | null; samples: number; young: boolean; rate: number };
 };
 
 const VERDICT = { on: ["on-track", "On track"], risk: ["at-risk", "At risk"], off: ["off-track", "Off track"] } as const;
@@ -212,6 +213,7 @@ export default function ProjectStats({ project, product, delivery, today }: { pr
           <>
             {product.tiles.some((t) => t.key === "expenses" && t.value !== null) && <div className="ps-tiles ps-tiles-few">{product.tiles.filter((t) => t.key === "expenses").map((t) => <StatTile key={t.key} t={t} currency={product.currency} />)}</div>}
             <div className="panel ps-empty">
+              <EmptyArt kind="numbers" />
               <p><b>No product numbers for {project.name} yet.</b> Once they arrive this shows users, active users, visitors, revenue, expenses and cost per user, each with its trend, and users and visitors over time.</p>
               <div className="ps-ways">
                 <div>
@@ -251,7 +253,7 @@ export default function ProjectStats({ project, product, delivery, today }: { pr
                           <div><span className="lbl">Likely (50%)</span><b>{fd(f.p50)}</b></div>
                           <div><span className="lbl">Safe bet (85%)</span><b className={f.milestone && f.p85! > f.milestone.date ? "ps-bad" : ""}>{fd(f.p85!)}</b></div>
                         </div>
-                        <p className="hint">{f.scope} item{f.scope > 1 ? "s" : ""} {f.scopeIsDue ? "due by the milestone" : "open"}, simulated 2,000 times from the last {f.samples} weeks of finished items (avg {f.rate}/week).{f.milestone && !f.scopeIsDue ? " No open item is dated before the milestone, so this counts them all." : ""}</p>
+                        <p className="hint">{f.scope} item{f.scope > 1 ? "s" : ""} {f.scopeIsDue ? "due by the milestone" : "open"}, simulated 2,000 times from {f.young ? "this week’s finished items so far (nothing finished before)" : `the last ${f.samples} weeks of finished items`} (avg {f.rate}/week).{f.milestone && !f.scopeIsDue ? " No open item is dated before the milestone, so this counts them all." : ""}</p>
                       </>
                     )}
               </div>

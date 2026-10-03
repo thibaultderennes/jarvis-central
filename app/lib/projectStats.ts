@@ -92,7 +92,9 @@ export function deliveryStats(p: Project, items: Item[], weekly: DailyStats, t: 
   const full = weeks.slice(0, -1); // the current week is partial
   const last4 = full.slice(-4), prev4 = full.slice(-8, -4), last8 = full.slice(-8);
   const sum = (a: { done: number }[]) => a.reduce((s, d) => s + d.done, 0);
-  const thr = last4.length ? sum(last4) / last4.length : 0, thrPrev = prev4.length ? sum(prev4) / prev4.length : null;
+  // A young project may have finished work only this week: then the partial week is the only pace there is.
+  const cur = weeks.at(-1), young = sum(last8) === 0 && (cur?.done || 0) > 0;
+  const thr = young ? cur!.done : last4.length ? sum(last4) / last4.length : 0, thrPrev = young ? null : prev4.length ? sum(prev4) / prev4.length : null;
   const since56 = addDays(t, -56);
   const lead = items.filter((i) => i.status === "done" && i.done_at && day(i.done_at) >= since56).map((i) => Math.max(0, daysBetween(day(i.created_at), day(i.done_at!))));
   const ages = open.map((i) => ({ i, age: Math.max(0, daysBetween(day(i.created_at), t)) })).sort((a, b) => b.age - a.age);
@@ -101,11 +103,11 @@ export function deliveryStats(p: Project, items: Item[], weekly: DailyStats, t: 
   const ms = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0] || null;
   const due = ms ? open.filter((i) => i.due && i.due <= ms.date) : [];
   const scope = ms && due.length ? due.length : open.length;
-  const fw = forecastWeeks(scope, last8.map((d) => d.done));
+  const fw = forecastWeeks(scope, (young ? [cur!] : last8).map((d) => d.done));
   const p50 = fw ? addDays(t, fw[0] * 7) : null, p85 = fw ? addDays(t, fw[1] * 7) : null;
   const status: "on" | "risk" | "off" | null = !ms || !fw ? (ms && scope ? "off" : null) : p85! <= ms.date ? "on" : p50! <= ms.date ? "risk" : "off";
   const tiles: Tile[] = [
-    { key: "throughput", label: "Throughput", value: r1(thr), fmt: "n", prev: thrPrev === null ? null : r1(thrPrev), up: "good", spark: full.slice(-12).map((d) => ({ date: d.date, v: d.done })), hint: "Items finished per week, average of the last 4 full weeks", sub: "items / week · last 4 weeks" },
+    { key: "throughput", label: "Throughput", value: r1(thr), fmt: "n", prev: thrPrev === null ? null : r1(thrPrev), up: "good", spark: full.slice(-12).map((d) => ({ date: d.date, v: d.done })), hint: young ? "Nothing finished in earlier weeks: this is the current week so far" : "Items finished per week, average of the last 4 full weeks", sub: young ? "this week so far" : "items / week · last 4 weeks" },
     { key: "lead", label: "Lead time", value: median(lead), fmt: "days", prev: null, up: "bad", spark: [], hint: "Median days from adding an item to finishing it, items finished in the last 8 weeks", sub: lead.length ? `median · 85% within ${pctl(lead, 0.85)} d · ${lead.length} items` : "nothing finished in 8 weeks" },
     { key: "age", label: "Age of open work", value: median(ages.map((a) => a.age)), fmt: "days", prev: null, up: "bad", spark: [], hint: "Median days since open items were added", sub: `median · ${ages.filter((a) => a.age > 30).length} of ${open.length} older than 30 d` },
     { key: "overdue", label: "Overdue", value: late.length, fmt: "n", prev: null, up: "bad", spark: [], hint: "Open items past their due date", sub: late.length ? `oldest ${oldestLate} d late` : "nothing late", tone: late.length ? "bad" : undefined },
@@ -114,6 +116,6 @@ export function deliveryStats(p: Project, items: Item[], weekly: DailyStats, t: 
   return {
     tiles, weeks: weeks.slice(-12), open: open.length,
     oldest: ages.slice(0, 5).map(({ i, age }) => ({ id: i.id, title: i.title, age, due: i.due, late: !!(i.due && i.due < t), owner: i.owner, status: i.status })),
-    forecast: { milestone: ms, scope, scopeIsDue: !!(ms && due.length), p50, p85, status, samples: last8.length, rate: r1(thr) },
+    forecast: { milestone: ms, scope, scopeIsDue: !!(ms && due.length), p50, p85, status, samples: last8.length, young, rate: r1(thr) },
   };
 }

@@ -4,7 +4,7 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
-## 0.6.0 — 2026-10-02
+## 0.6.0 — 2026-10-03
 - **Sentient Dash**: the product is renamed in the UI (sidebar, login, browser title, Home, Admin), with the Lane S mark
   as favicon, app icon, sidebar and login logo. The repo, CLI, docs and calendar names keep "Jarvis" for now.
 - **Identity kit**: one quiet visual language from the mark (rounded lanes, hairlines, one amber "now" dot): a Lane icon
