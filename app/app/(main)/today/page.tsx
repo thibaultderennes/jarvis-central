@@ -1,30 +1,23 @@
-import Link from "next/link";
 import { requireSession } from "@/lib/auth";
 import { boardData } from "@/lib/board";
-import { addDays, fmtDate, isDate, today } from "@/lib/time";
-import Board from "@/components/Board";
-import "./board.css";
+import { getPlan } from "@/lib/plan";
+import { getItems, isOpen } from "@/lib/data";
+import { addDays, fmtDate, isDate, mondayOf, today } from "@/lib/time";
+import TodayView from "@/components/TodayView";
+import "./today.css";
 
 export default async function TodayPage({ searchParams }: { searchParams: Promise<{ d?: string }> }) {
   await requireSession();
   const sp = await searchParams, t = today();
   const d = isDate(sp.d) ? sp.d : t;
-  const data = await boardData(d, d);
+  const [data, plan] = await Promise.all([boardData(d, d), getPlan(mondayOf(d)).catch(() => null)]);
+  // What the week's plan couldn't fit, still open: offered under "Later" as suggestions.
+  const open = plan?.unscheduled.length ? new Set((await getItems()).filter(isOpen).map((i) => `${i.project_id}/${i.id}`)) : new Set<string>();
   return (
-    <>
-      <div className="hello">
-        <div>
-          <h1 className="page">{d === t ? "Today" : fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}</h1>
-          <p className="sub">Decide what happens to anything overdue or due today, then work the list: ticking a work todo also ticks its checklist item. The load line shows how much is left against a day of focus.</p>
-        </div>
-        <nav className="daynav" aria-label="Change day">
-          <Link href={`/today?d=${addDays(d, -1)}`}>‹ {fmtDate(addDays(d, -1), { weekday: "short" })}</Link>
-          {d !== t && <Link href="/today">Today</Link>}
-          <span className="cur">{fmtDate(d, { weekday: "short", month: "short", day: "numeric" })}</span>
-          <Link href={`/today?d=${addDays(d, 1)}`}>{fmtDate(addDays(d, 1), { weekday: "short" })} ›</Link>
-        </nav>
-      </div>
-      <Board mode="day" days={[d]} {...data} />
-    </>
+    <TodayView {...data} day={d}
+      label={d === t ? "Today" : fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}
+      dateLine={fmtDate(d, { weekday: "long", month: "long", day: "numeric" })}
+      prev={{ d: addDays(d, -1), l: fmtDate(addDays(d, -1), { weekday: "short" }) }} next={{ d: addDays(d, 1), l: fmtDate(addDays(d, 1), { weekday: "short" }) }}
+      blocks={(plan?.blocks || []).filter((b) => b.date === d)} unplanned={(plan?.unscheduled || []).filter((u) => open.has(`${u.project_id}/${u.item_id}`))} />
   );
 }

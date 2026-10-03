@@ -97,6 +97,14 @@ export async function getItems(opts: { project?: string; open?: boolean; refine?
   const rows = await q(`select * from items ${where.length ? "where " + where.join(" and ") : ""} order by project_id, sort, created_at`, params);
   return rows.map(normItem);
 }
+/** Open and late (open, due before `day`) items per project, in one query: the sidebar's counts. */
+/** Open items per project: total, late (due before `day`) and soon (due from `day` through 7 days later). */
+export async function openCounts(day: string): Promise<Record<string, { open: number; late: number; soon: number }>> {
+  const rows = await sql()`select project_id, count(*)::int as open, count(*) filter (where due < ${day}::date)::int as late,
+      count(*) filter (where due >= ${day}::date and due <= ${day}::date + 7)::int as soon
+    from items where status in ('todo', 'doing') group by 1`;
+  return Object.fromEntries(rows.map((r) => [r.project_id as string, { open: r.open as number, late: r.late as number, soon: r.soon as number }]));
+}
 export function slugify(s: string, max = 4): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "").split("-").filter(Boolean).slice(0, max).join("-") || "item";
@@ -353,27 +361,43 @@ export async function insights(project?: string): Promise<{ projects: Insight[];
 }
 
 /* ---------- daily stats ---------- */
-export type DayStat = { date: string; added: number; done: number; done_late: number; cancelled: number };
-/** Per day, last `days` days: items added, finished (of which past their due date when finished) and cancelled; plus the open overdue count today. */
-export async function dailyStats(days = 14, project?: string): Promise<{ from: string; tracking_since: string | null; overdue_open: number; days: DayStat[] }> {
-  const { addDays: add, today: tdy, isoInTZ } = await import("./time");
-  const t = tdy(), from = add(t, -(days - 1));
+export type StatRef = { id: string; project_id: string; title: string; late?: boolean };
+export type DayStat = { date: string; added: number; done: number; done_late: number; cancelled: number; items?: { added: StatRef[]; done: StatRef[] } };
+export type StatBucket = "day" | "week" | "month";
+export const STAT_BUCKETS: Record<StatBucket, { n: number; max: number }> = { day: { n: 14, max: 90 }, week: { n: 12, max: 52 }, month: { n: 12, max: 24 } };
+export type DailyStats = { bucket: StatBucket; from: string; to: string; tracking_since: string | null; overdue_open: number; days: DayStat[] };
+/**
+ * Per bucket (day, week from Monday, or calendar month, in the owner's timezone), the last `n` buckets: items added,
+ * finished (of which past their due date when finished) and cancelled; plus the open overdue count today.
+ * `days[].date` is the bucket's first day. With `items`, each bucket also lists the items added and finished.
+ */
+export async function dailyStats(n?: number, project?: string, opts: { bucket?: StatBucket; items?: boolean } = {}): Promise<DailyStats> {
+  const { addDays: add, today: tdy, isoInTZ, mondayOf } = await import("./time");
+  const bucket: StatBucket = opts.bucket && opts.bucket in STAT_BUCKETS ? opts.bucket : "day";
+  const count = Math.min(STAT_BUCKETS[bucket].max, Math.max(1, Math.round(n || STAT_BUCKETS[bucket].n)));
+  const t = tdy();
+  const month = (d: string, k: number) => { const [y, m] = d.split("-").map(Number); return new Date(Date.UTC(y, m - 1 + k, 1)).toISOString().slice(0, 10); };
+  const start = (d: string) => (bucket === "week" ? mondayOf(d) : bucket === "month" ? d.slice(0, 8) + "01" : d);
+  const step = (d: string, k: number) => (bucket === "week" ? add(d, 7 * k) : bucket === "month" ? month(d, k) : add(d, k));
+  const from = step(start(t), -(count - 1));
   const p = project || null;
   const [rows, [first], [od]] = await Promise.all([
-    sql()`select created_at, done_at, updated_at, due, status from items where (${p}::text is null or project_id = ${p}) and (created_at >= ${from}::date - 1 or done_at >= ${from}::date - 1 or (status = 'cancelled' and updated_at >= ${from}::date - 1))`,
+    sql()`select id, project_id, title, created_at, done_at, updated_at, due, status from items where (${p}::text is null or project_id = ${p}) and (created_at >= ${from}::date - 1 or done_at >= ${from}::date - 1 or (status = 'cancelled' and updated_at >= ${from}::date - 1)) order by created_at`,
     sql()`select min(created_at) as first from items where ${p}::text is null or project_id = ${p}`,
     sql()`select count(*)::int as n from items where (${p}::text is null or project_id = ${p}) and status in ('todo', 'doing') and due is not null and due < ${t}`,
   ]);
   const day = (v: unknown) => (v == null ? null : isoInTZ(v instanceof Date ? v : new Date(String(v))));
-  const out: DayStat[] = Array.from({ length: days }, (_, i) => ({ date: add(from, i), added: 0, done: 0, done_late: 0, cancelled: 0 }));
-  const idx = Object.fromEntries(out.map((d, i) => [d.date, i]));
+  const out: DayStat[] = Array.from({ length: count }, (_, i) => ({ date: step(from, i), added: 0, done: 0, done_late: 0, cancelled: 0, ...(opts.items ? { items: { added: [], done: [] } } : {}) }));
+  const idx: Record<string, number> = Object.fromEntries(out.map((d, i) => [d.date, i]));
+  const at = (d: string | null) => (d && d >= from && d <= t ? out[idx[start(d)]] : undefined);
   for (const r of rows) {
-    const c = day(r.created_at), d = day(r.done_at), u = day(r.updated_at);
-    if (c && c in idx) out[idx[c]].added++;
-    if (r.status === "done" && d && d in idx) { out[idx[d]].done++; if (r.due && d10(r.due)! < d) out[idx[d]].done_late++; }
-    if (r.status === "cancelled" && u && u in idx) out[idx[u]].cancelled++;
+    const ref = { id: String(r.id), project_id: String(r.project_id), title: String(r.title) };
+    const dd = day(r.done_at), c = at(day(r.created_at)), d = r.status === "done" ? at(dd) : undefined, u = r.status === "cancelled" ? at(day(r.updated_at)) : undefined;
+    if (c) { c.added++; c.items?.added.push(ref); }
+    if (d) { const late = !!(r.due && d10(r.due)! < dd!); d.done++; if (late) d.done_late++; d.items?.done.push({ ...ref, late }); }
+    if (u) u.cancelled++;
   }
-  return { from, tracking_since: day(first?.first), overdue_open: Number(od?.n || 0), days: out };
+  return { bucket, from, to: t, tracking_since: day(first?.first), overdue_open: Number(od?.n || 0), days: out };
 }
 
 /* ---------- recurring costs (finance) ---------- */
@@ -412,3 +436,35 @@ export const monthly = (c: Cost) => (c.period === "week" ? (c.amount * 52) / 12 
 /* ---------- owner preferences (kv "prefs", set on the Admin page) ---------- */
 export type Prefs = { show_done_default?: boolean; finance_currency?: string };
 export async function getPrefs(): Promise<Prefs> { return (await kvGet<Prefs>("prefs"))?.value || {}; }
+
+/* ---------- unit economics (kv "economics.<project>", evaluated on the Mac by agent/economics.mjs) ---------- */
+/** One evaluated model; the shape is documented in docs/unit-economics.md. Grid keys are "option.mix.usage.driver" indexes. */
+export type EconomicsData = {
+  v: 1; title: string; currency: string; note: string;
+  options: { id: string; label: string }[]; mixes: { id: string; label: string }[];
+  plans: { id: string; label: string; price: number; yearly: number | null }[];
+  users: number[]; usage: number[];
+  driver: { id: string; label: string; unit: string; values: number[] } | null;
+  thresholds: { users: number; label: string }[];
+  defaults: { option: string; mix: string; usage: number; driver: number | null; plan: string | null; users: number };
+  lines: { id: string; label: string; fixed: boolean }[];
+  /** Per users value: [revenue, total cost, ...one value per line]. */
+  grid: Record<string, number[][]>;
+  /** Key "option.usage.driver"; per plan: [monthly revenue, monthly cost, yearly revenue / 12, yearly cost / 12]. */
+  planGrid: Record<string, (number | null)[][]>;
+};
+export type Economics = { project_id: string; file: string; sha: string | null; synced_at: string | null; error: string | null; error_at: string | null; data: EconomicsData | null };
+export const ECONOMICS_MAX_BYTES = 2_000_000;
+export async function getEconomics(project: string): Promise<Economics | null> {
+  return (await kvGet<Economics>(`economics.${project}`))?.value || null;
+}
+/** A successful run replaces the data; a failed one keeps the last good data and records the error beside it. */
+export async function putEconomics(project: string, b: { file: string; sha?: string; data?: EconomicsData; error?: string }) {
+  const prev = await getEconomics(project);
+  const now = new Date().toISOString();
+  const next: Economics = b.error
+    ? { project_id: project, file: b.file, sha: prev?.sha || null, synced_at: prev?.synced_at || null, data: prev?.data || null, error: b.error.slice(0, 500), error_at: now }
+    : { project_id: project, file: b.file, sha: b.sha || null, synced_at: now, data: b.data || null, error: null, error_at: null };
+  await kvSet(`economics.${project}`, next);
+  return next;
+}

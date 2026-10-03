@@ -9,6 +9,7 @@ import { getPlan } from "@/lib/plan";
 import { cap, PLAN_WHEN } from "@/lib/instance";
 import { TZ } from "@/lib/time";
 import "../today/board.css";
+import { Glyph, HeaderVec } from "@/components/brand";
 
 export default async function WeekPage({ searchParams }: { searchParams: Promise<{ w?: string }> }) {
   await requireSession();
@@ -25,9 +26,10 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
     <>
       <div className="hello">
         <div>
-          <h1 className="page">Week of {fmtDate(w, { month: "long", day: "numeric" })}</h1>
+          <h1 className="page"><Glyph n="week" />Week of {fmtDate(w, { month: "long", day: "numeric" })}</h1>
           <p className="sub">Overdue work first, then the week: each day shows its appointments, what&apos;s due (critical first) and your todos, with the load against a day of focus. Drag todos between days.</p>
         </div>
+        <HeaderVec n="week" />
         <nav className="daynav" aria-label="Change week">
           <Link href={`/week?w=${addDays(w, -7)}`}>‹ Previous</Link>
           {w !== home && <Link href="/week">This week</Link>}

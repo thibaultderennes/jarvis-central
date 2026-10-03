@@ -4,6 +4,103 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.6.0 — 2026-10-03
+- **Sentient Dash**: the product is renamed in the UI (sidebar, login, browser title, Home, Admin), with the Lane S mark
+  as favicon, app icon, sidebar and login logo. The repo, CLI, docs and calendar names keep "Jarvis" for now.
+- **Identity kit**: one quiet visual language from the mark (rounded lanes, hairlines, one amber "now" dot): a Lane icon
+  set for navigation (the dot turns amber on the current page), a glyph tile and a faint header drawing on every page,
+  coloured section lanes on checklists (build blue, decide amber, done green), sidebar group lanes, status stickers and
+  empty-state drawings. `components/icons.tsx`, `components/brand.tsx`.
+- **Sidebar**: Stats and Finance move to the You section; each project shows "N late" in red, or, when nothing is late,
+  "N in 7d" in yellow for items due in the next 7 days.
+- **Today redesigned** around "what do I do next, and am I on track?": one ordered list with **Next up** highlighted, a
+  header with "N of M done" and a load meter against your daily focus, a slim agenda rail (calendar + timed blocks, a
+  now-line; a one-line strip on narrow screens), and one closed "Later" section (overdue, what the plan couldn't fit,
+  the next two weeks, Someday) with counts. Quick add reads "14:00 …" as a time; Alt+↑/↓ reorders; "+ Today" and ↓
+  replace dragging between the backlog, the day and Someday.
+- **Project Stats rebuilt**: **Product** (users, active users, visitors, revenue, expenses, cost per active user, each
+  with the change against a week earlier and a sparkline, plus users and visitors over time) and **Delivery**
+  (throughput, lead time, age of open work, overdue, scope added vs finished, a 50%/85% forecast to the next milestone
+  with on/off track, the oldest open items). Day-by-day added/finished stays on Stats.
+- **Product metrics**: new `metrics_snapshots` table, `GET/POST /api/agent/metrics`, `jarvis metrics <project> [--set
+  k=v …]`, and `agent/metrics.mjs`, which reads each project's source (`metrics.sources.<id>`: a URL with a token from
+  an env var, or a command) daily through the worker. Keys in `docs/metrics.md`. The Monday project review gets the
+  last 8 weekly snapshots and the project's recurring costs.
+- **New navigation (UI Proposal A)**: a left sidebar replaces the top tab bar: You (Home, Today, Week, Timeline,
+  Inbox), Pinned (your top 3), every project with open/late counts, and Library (Reviews, Finance, Stats, Admin). It
+  collapses to an icon rail (remembered; automatic under 1100px) and becomes a bottom bar with a Menu drawer on phones.
+- **⌘K / Ctrl+K (or `/`) jump palette**: pages, projects, and checklist items by code or title words (case- and
+  accent-insensitive, open first), plus quick actions; new site endpoint `GET /api/search` (owner session).
+  Shortcuts: `g h` Home, `g t` Today, `g w` Week, `g i` Inbox, `g l` Timeline, `g s` Stats; `?` lists them.
+- **Home replaces the Overview**: four tiles (next event, today's list, overdue across projects, next deadline), a
+  **Needs you** list (your decide items, PRs waiting for Approve & merge, unread replies, oldest first; its count is on
+  Home in the sidebar), and the top-3 cards with pace against the next milestone. The charts moved to a new **Stats**
+  page (`/stats`).
+- **Project pages open on the checklist**, with an "At a glance" column (a strip on narrower screens) in place of the
+  Dashboard view, and a view bar along the top instead of the left menu. Old `?v=dashboard` and `?tab=` links still work.
+- **Checklist status is a checkbox** (done ↔ to do in one click); a separate "Start ▸" ("Start build ▸" on Claude's
+  items) marks an item in progress, shown as "◐ In progress" with Stop. Ticking an item done can no longer queue a build
+  by passing through "doing"; unticking a linked todo on Today/Week sends the item back to "to do".
+- Usage tracking records the project view and checklist filter chips (codes only); the weekly aggregate groups pages by
+  view, counts back-to-back views of one page as one visit, and lists the filters used.
+- **Build runs can commit again**: headless build runs were denied `git -C <dir> add/commit` (the allow list only
+  matched `git add …`). The worktree's own `git -C` path is now allowed (push stays denied), the prompt asks for plain
+  `git add`/`git commit`, permission denials are logged and named on a failed item, and edits a run leaves uncommitted
+  are committed by the worker as the last commit on the PR.
+- **Worker guards**: the merge pass only touches items that are `merge_requested` with a PR (it no longer trusts the
+  API filter); the build queue filters client-side too; `POST /api/agent/heartbeat` returns the site version and the
+  worker pauses its build and merge passes when the agent and site differ in major.minor; repeated identical log lines
+  are written once per state change.
+- **Timeline drag**: drag a milestone diamond or a due-date tick to another day (mouse, touch hold, or ←/→ with Shift for
+  a week, then Enter). A ghost pin shows "Oct 9 → Oct 14 (+5 d)" and a confirm popover saves only on Confirm (Esc or
+  clicking away cancels); a tick with several items lists them so you pick which move. No dates before today. Items
+  change due date through the logged path (a later date still shows as a slip in the Monday review). A milestone moves
+  the project deadline at once, and the Mac worker writes the new date into that row of the project's PRD.md on its next
+  pass (file only, no commit; `agent/milestones.mjs`); sync and plans do it first, so they no longer revert a move.
+- **Timeline** (new top-level page and a "Timeline" view in each project's left menu): last week to 8 weeks out, one
+  lane per project (per section on a project page). PRD milestones are diamonds, open items are due-date ticks per day
+  (red overdue, amber critical, taller when more), this and next week's Sunday-plan blocks are bars, calendar events
+  have their own lane, plus a line for today. "Upcoming milestones" lists days left and the open, critical and overdue
+  work due before each. Built from existing data.
+- **"Added and finished" chart**: switch between days (14), weeks (12, Monday start) and months (12); filter by
+  project on the home page; tap or keyboard-select a bar to list the items added and completed in that period, each
+  linking to the item on its project's checklist. `GET /api/agent/stats` takes `bucket=day|week|month`, `n`,
+  `project` and `items=1` (defaults unchanged); new `jarvis stats` CLI command.
+- **Checklist filters combine**: several sections, owners and due ranges (OR within a group, AND across groups);
+  Overdue and Next 7 days can be on together; undated items match neither. Filters live in the URL, with a visible
+  "Clear filters", an item count and an empty state. The project dashboard's Overdue card opens the checklist filtered.
+- **Inputs**: Enter does what the button does everywhere (in the chat-like boxes Enter sends and Shift+Enter is a new
+  line, IME-safe). Text is cleared only after a successful save; a failure keeps it and says why. Each save shows a
+  pending state and a brief "Added" / "Saved" / "Sent", and a newly added checklist item is highlighted.
+- **Project Finances: unit economics**. A project that keeps a model file (`jarvis.economics.mjs|cjs|js`, or
+  `economics.models.<id>`) gets profit by users per vendor option with decision thresholds, a users × usage profit
+  grid, margin per subscriber per plan (monthly/yearly), fixed vs per-user cost lines, and controls for plan, mix,
+  usage and a project-specific driver. The Mac agent evaluates the model hourly (`agent/economics.mjs`) and uploads it
+  (`GET/PUT /api/agent/economics`, kv `economics.<id>`). Contract: `docs/unit-economics.md`. New config keys
+  `economics.files`, `economics.models`, `economics.sync_minutes`, `economics.timeout_seconds`.
+- **Usage tracking for the Monday Jarvis review**: the site records your page views and clicks (first-party, in your
+  own database; only the labels the tool gives its links, buttons and tabs, never what you type) in a new
+  `click_events` table via `POST /api/usage`. The Jarvis review gets a weekly aggregate (top clicks, dead-end pages,
+  page-to-page sequences and backtracks, rarely used features; `GET /api/agent/usage`) and files its flow suggestions
+  under "Your settings" or "Tool changes". Raw events are pruned after `usage.retention_days` (default 90). Turn it off
+  with `usage.track_clicks: false` (new `setup.mjs usage` command). Page views no longer go to the `activity` log.
+- **Silent refine**: adding a checklist item no longer posts a "New checklist item" note to the Inbox; Claude's refine
+  stays on the item. Replies to your comments on an item still go to the Inbox. New config key
+  `worker.refine_inbox_notes` (default `false`) brings the old note back.
+- **Plan this project / refresh**: the PRD, PRD milestones, "How we work" and audit-prompts setup items are skipped when
+  you already have an open or done item with a matching title; `planproject.mjs <id> --dry-run` lists the ones skipped.
+- This repo has a `PRD.md` draft, a "How we work" section in `CLAUDE.md`, and `docs/audits/PROMPTS.md` (the 3-day audit).
+
+**Upgrade notes**
+- Redeploy: the migration also creates `metrics_snapshots`; until then project Stats shows its Product empty state.
+- Optional: add `metrics.sources.<project id>` to `jarvis.config.json` (tokens in `~/.config/jarvis/env`), or record numbers with `jarvis metrics <id> --set …`.
+- Redeploy: the migration adds the `click_events` table (additive; tracking is silently skipped until it exists).
+- `git pull` on the Mac: the worker pauses building and merging until the agent and the site run the same release.
+- Refining a new item is now silent. To keep the Inbox note, set `"worker": { "refine_inbox_notes": true }`.
+- Click tracking is on by default; to turn it off set `"usage": {"track_clicks": false}`, run
+  `node app/scripts/setup.mjs usage` and redeploy.
+- Unit economics: add a model file to a project's folder (see `docs/unit-economics.md`); nothing to do otherwise.
+
 ## 0.5.0 — 2026-09-30
 - **Project page with a left menu**: Dashboard (open / overdue / in progress / latest review / recurring costs, next up,
   in progress, deadlines, latest reports, the project settings), Checklists, Project (description + strategy documents),

@@ -5,6 +5,7 @@ import { fmtDate } from "@/lib/time";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
 import { cap, REVIEW_WHEN } from "@/lib/instance";
+import { Glyph, HeaderVec } from "@/components/brand";
 
 const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document", security: "Security audit" };
 const PROJECT_TAB: Record<string, string> = { doc: "strategy", security: "security" };
@@ -50,9 +51,10 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
       <div className="hello">
         <div>
-          <h1 className="page">Reviews</h1>
+          <h1 className="page"><Glyph n="reviews" />Reviews</h1>
           <p className="sub">{cap(REVIEW_WHEN)} your Mac reads the week (commits, PRs, checklists, calendar, your Claude sessions) and writes four kinds of report: one per project, a recap, how you work with Claude, and how you use Jarvis.</p>
         </div>
+        <HeaderVec n="reviews" />
         <div className="chips" role="group" aria-label="Filter by type">
           <Link className="chip" aria-pressed={!sp.type} href="/reviews">All</Link>
           {ORDER.map((t) => <Link key={t} className="chip" aria-pressed={sp.type === t} href={`/reviews?type=${t}`}>{TYPE[t]}</Link>)}

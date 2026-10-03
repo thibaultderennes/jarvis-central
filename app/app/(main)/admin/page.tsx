@@ -5,6 +5,7 @@ import { TZ, fmtDate } from "@/lib/time";
 import { OWNER, PLAN_WHEN, REVIEW_WHEN, VERSION } from "@/lib/instance";
 import { PrefsForm, RescanButton, type Rescan } from "@/components/Admin";
 import "./admin.css";
+import { Glyph, HeaderVec } from "@/components/brand";
 
 export default async function AdminPage() {
   await requireSession();
@@ -20,9 +21,10 @@ export default async function AdminPage() {
     <div className="admin">
       <div className="hello">
         <div>
-          <h1 className="page">Admin</h1>
+          <h1 className="page"><Glyph n="admin" />Admin</h1>
           <p className="sub">Everything about this Jarvis that isn&apos;t project work: your projects list, your account, subscriptions, and how the site behaves.</p>
         </div>
+        <HeaderVec n="admin" />
       </div>
 
       <section className="panel" aria-labelledby="h-projects">
@@ -51,7 +53,7 @@ export default async function AdminPage() {
         <dl className="kv">
           <dt>Owner</dt><dd>{OWNER || "not set"}</dd>
           <dt>Timezone</dt><dd>{TZ}</dd>
-          <dt>Jarvis Central</dt><dd>v{VERSION}</dd>
+          <dt>Sentient Dash</dt><dd>v{VERSION}</dd>
           <dt>Sign in</dt><dd>Password + authenticator app. To change them, update the site&apos;s environment variables and redeploy (see <code>docs/security.md</code> in the repo); there is no form for it here.</dd>
           <dt>Session</dt><dd><form action="/api/auth/logout" method="post"><button className="btn ghost sm">Sign out</button></form></dd>
         </dl>

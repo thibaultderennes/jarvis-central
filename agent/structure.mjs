@@ -14,14 +14,33 @@ export const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return null; } };
 
 /** `| 2026-11-02 | Public launch |` rows under a Milestones heading (or anywhere) → deadlines. */
+const MS_ROW = /^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+?)\s*\|/;
+const msLabel = (raw) => raw.replace(/\*\*/g, "").slice(0, 80);
 export function parseMilestones(prd) {
   if (!prd) return [];
   const out = [];
   for (const line of prd.split("\n")) {
-    const m = line.match(/^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+?)\s*\|/);
-    if (m && !/\{\{/.test(m[2])) out.push({ date: m[1], label: m[2].replace(/\*\*/g, "").slice(0, 80) });
+    const m = line.match(MS_ROW);
+    if (m && !/\{\{/.test(m[2])) out.push({ date: m[1], label: msLabel(m[2]) });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Milestones moved on the dashboard carry `prd`: the date PRD.md still has. Rewrites the date cell of each matching
+ * row (same old date + label) in place, leaving the rest of the file alone. Returns the new text and what didn't match.
+ */
+export function moveMilestoneRows(prd, deadlines) {
+  const moves = (deadlines || []).filter((d) => d?.prd && d.prd !== d.date);
+  const left = [...moves];
+  const text = prd.split("\n").map((line) => {
+    const m = line.match(MS_ROW);
+    const i = m ? left.findIndex((d) => d.prd === m[1] && d.label === msLabel(m[2])) : -1;
+    if (i < 0) return line;
+    const [d] = left.splice(i, 1);
+    return line.replace(m[1], d.date);
+  }).join("\n");
+  return { text, moved: moves.length - left.length, unmatched: left };
 }
 
 /** What a project folder has of the expected structure: PRD.md at the root, "How we work" in CLAUDE.md, audit prompts. */
@@ -52,11 +71,29 @@ export function sectionRoles(sections) {
   return { ids: new Set(list.map((s) => s.id)), list, decide: decide.id, build: build.id, other: other.id };
 }
 
+/** Lower-case words only, accents and punctuation dropped: "Write PRD.md" → "write prd md". */
+export const normTitle = (t) => String(t || "").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-z0-9]+/g, " ").trim();
+
+// What an item the owner wrote by hand looks like when it already covers a setup item (matched on the normalised title).
+// Anchored at the start so an item that only mentions the file ("Plan: don't add the PRD item when …") doesn't count.
+const PRD = /^(write|draft|create|add|start|finish)( \w+){0,2} prd\b|^prd\b/;
+const SETUP_MATCH = {
+  prd: PRD,
+  "prd-milestones": new RegExp(`${PRD.source}|^(date|add|write|set|fill)\\b.*\\bmilestones?\\b.*\\bprd\\b`),
+  "how-we-work": /^(add|write|create|draft|fill)?\b.*\bhow we work\b/,
+  "audit-prompts": /^(add|write|create|draft|set up|copy)\b.*\baudits?\b.*\bprompts?\b|^audits? prompts?\b/,
+};
+
+/** Does an existing item (open or done; cancelled ones don't count) already cover this setup item by its title? */
+export const coveredByTitle = (id, items = []) =>
+  !!SETUP_MATCH[id] && items.some((i) => i && i.status !== "cancelled" && SETUP_MATCH[id].test(normTitle(i.title)));
+
 /**
  * Checklist items that create the missing pieces instead of planning without them. Fixed ids, so a second plan run
- * never adds them twice (an item with the same id, done or not, counts as already there).
+ * never adds them twice (an item with the same id, done or not, counts as already there). An item the owner added by
+ * hand with a matching title (e.g. "Write PRD.md") counts too, so the plan doesn't add a second one next to it.
  */
-export function setupItems(st, { project, roles, jarvisRoot, existingIds }) {
+export function setupItems(st, { project, roles, jarvisRoot, existingIds, existingItems = [] }) {
   const tpl = (f) => path.join(jarvisRoot, "templates", f);
   const scaffold = `node ${path.join(jarvisRoot, "agent", "projects.mjs")} scaffold --only ${project.id}`;
   const out = [];
@@ -92,5 +129,5 @@ export function setupItems(st, { project, roles, jarvisRoot, existingIds }) {
 2. List what is known and intentional here (so the audit doesn't flag it), citing files.
 3. Open a PR; the owner merges, then schedules the audit every 3 days (a Claude Code routine) or runs it by hand.`,
   });
-  return out.filter((i) => !existingIds.has(i.id));
+  return out.filter((i) => !existingIds.has(i.id) && !coveredByTitle(i.id, existingItems));
 }

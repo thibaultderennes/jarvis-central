@@ -7,4 +7,6 @@ export const REVIEW_WHEN = process.env.JARVIS_REVIEW_WHEN || "every Monday morni
 export const PLAN_WHEN = process.env.JARVIS_PLAN_WHEN || "every Sunday afternoon";
 /** Tool version, baked in at build time from ../VERSION (see next.config.ts). */
 export const VERSION = process.env.NEXT_PUBLIC_JARVIS_VERSION || "dev";
+/** Product name shown in the UI (wordmark: first word bold, the rest light). */
+export const BRAND = "Sentient Dash";
 export const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);

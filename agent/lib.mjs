@@ -31,7 +31,13 @@ function defaults() {
   ex.site_url = "";
   ex.timezone = "UTC";
   if (ex.projects) ex.projects = { ...ex.projects, overrides: {} };
+  // Unit-economics models: a project opts in with a model file; `models` maps a project id to a non-default path.
+  ex.economics = { files: ["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"], sync_minutes: 60, timeout_seconds: 30, ...(ex.economics || {}), models: {} };
+  // Product metrics: a project opts in with a source (url or command) under metrics.sources.<id>; daily by default.
+  ex.metrics = { sync_minutes: 1440, timeout_seconds: 30, ...(ex.metrics || {}), sources: {} };
   if (ex.planner) ex.planner = { ...ex.planner, project_caps: {} };
+  // Page-view/click tracking for the Monday Jarvis review: on unless the owner's config says false.
+  ex.usage = { track_clicks: true, retention_days: 90, ...(ex.usage || {}) };
   return ex;
 }
 
@@ -117,6 +123,23 @@ export function makeLog(name) {
     const line = `${new Date().toISOString()} ${parts.map((p) => (typeof p === "string" ? p : JSON.stringify(p))).join(" ")}`;
     try { fs.appendFileSync(file, line + "\n"); } catch {}
     if (process.stderr.isTTY) process.stderr.write(line + "\n");
+  };
+}
+
+/**
+ * Wrap a log so a line keyed `key` is written only when `state` changed since the last pass (each pass is a new
+ * process, so the last state lives in <cache>/<name>-logstate.json). Returns logChanged(key, state, ...parts).
+ */
+export function makeLogOnce(name, log) {
+  const file = path.join(CACHE_DIR, `${name}-logstate.json`);
+  let seen = {};
+  try { seen = JSON.parse(fs.readFileSync(file, "utf8")); } catch {}
+  return (key, state, ...parts) => {
+    const s = JSON.stringify(state);
+    if (seen[key] === s) return;
+    seen[key] = s;
+    try { fs.mkdirSync(CACHE_DIR, { recursive: true }); fs.writeFileSync(file, JSON.stringify(seen)); } catch {}
+    log(...parts);
   };
 }
 

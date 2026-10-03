@@ -4,6 +4,10 @@ import * as D from "@/lib/data";
 import { getEvents as getCalendar } from "@/lib/calendar";
 import { isDate } from "@/lib/time";
 import { getPlan, savePlan } from "@/lib/plan";
+import { VERSION } from "@/lib/instance";
+import { pruneClickEvents, usageSummary } from "@/lib/usage";
+import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
+import { today } from "@/lib/time";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -75,7 +79,11 @@ async function handle(req: NextRequest, ctx: Ctx) {
       const msg = await D.patchMessage(b.id, b);
       return msg ? J({ message: msg }) : bad("No such message", 404);
     }
-    case "GET stats": return J(await D.dailyStats(Math.min(90, Math.max(1, +(sp.get("days") || 14)))));
+    case "GET stats": {
+      const bucket = sp.get("bucket") || "day";
+      if (!(bucket in D.STAT_BUCKETS)) return bad("bucket must be day, week or month");
+      return J(await D.dailyStats(+(sp.get("n") || sp.get("days") || 0) || undefined, sp.get("project") || undefined, { bucket: bucket as D.StatBucket, items: sp.get("items") === "1" }));
+    }
 
     case "GET costs": return J(await D.getCosts({ project: sp.has("project") ? sp.get("project") || null : undefined, all: sp.get("all") === "1" }));
     case "POST costs": {
@@ -91,6 +99,40 @@ async function handle(req: NextRequest, ctx: Ctx) {
     }
     case "DELETE costs": { const id = sp.get("id"); if (!id) return bad("id required"); await D.deleteCost(id); return J({ ok: true }); }
 
+    case "GET economics": {
+      const p = sp.get("project"); if (!p) return bad("project required");
+      const e = await D.getEconomics(p);
+      if (!e) return bad("No model synced for that project", 404);
+      return J(sp.get("full") === "1" ? e : { ...e, data: undefined });
+    }
+    case "PUT economics": {
+      // Written by agent/economics.mjs: the evaluated unit-economics model of one project (or why it failed).
+      if (!b.project_id || typeof b.file !== "string") return bad("project_id and file are required");
+      if (!(await D.getProject(b.project_id))) return bad("No such project", 404);
+      if (b.error) return J({ economics: { ...(await D.putEconomics(b.project_id, { file: b.file, error: String(b.error) })), data: undefined } });
+      const d = b.data;
+      if (!d || d.v !== 1 || !Array.isArray(d.options) || !Array.isArray(d.users) || !Array.isArray(d.usage) || !Array.isArray(d.lines) || typeof d.grid !== "object" || !d.grid) return bad("data must be a version 1 model result");
+      if (JSON.stringify(d).length > D.ECONOMICS_MAX_BYTES) return bad("data is too large; use a smaller grid", 413);
+      return J({ economics: { ...(await D.putEconomics(b.project_id, { file: b.file, sha: typeof b.sha === "string" ? b.sha : undefined, data: d })), data: undefined } });
+    }
+
+    case "GET metrics": {
+      const since = sp.get("since");
+      if (since && !isDate(since)) return bad("since must be YYYY-MM-DD");
+      return J(await getMetrics({ project: sp.get("project") || undefined, since: since || undefined, limit: +(sp.get("limit") || 0) || undefined }));
+    }
+    case "POST metrics": {
+      // One snapshot of a project's product numbers; keys are merged into that day's row (null removes a key).
+      if (!b.project_id) return bad("project_id required");
+      const date = b.date || today();
+      if (!isDate(date) || date > today()) return bad("date must be YYYY-MM-DD, today or earlier");
+      const m = cleanMetrics(b.metrics);
+      if (!m) return bad("metrics must be an object of numbers, keys like active_users (a-z, 0-9, _)");
+      if (!(await D.getProject(b.project_id))) return bad("No such project", 404);
+      try { return J({ snapshot: await putMetrics(b.project_id, date, m, typeof b.source === "string" && b.source ? b.source : "manual") }, 201); }
+      catch (e) { return J({ error: `metrics unavailable (has the deploy migrated?): ${(e as Error).message}` }, 503); }
+    }
+
     case "GET reviews": if (sp.get("id")) { const r = await D.getReview(sp.get("id")!); return r ? J([r]) : J([]); }
       return J(await D.getReviews({ type: sp.get("type") || undefined, project: sp.get("project") || undefined, limit: +(sp.get("limit") || 20), week: sp.get("week") || undefined }));
     case "POST reviews": {
@@ -103,9 +145,21 @@ async function handle(req: NextRequest, ctx: Ctx) {
     case "POST heartbeat": {
       const w = b.worker === "weekly" ? "weekly" : "worker";
       await D.kvSet(`${w}.heartbeat`, { at: new Date().toISOString(), info: b.info || {} });
-      return J({ ok: true });
+      // The worker compares major.minor with its own VERSION and pauses its build/merge passes on a mismatch.
+      return J({ ok: true, version: VERSION });
     }
     case "GET activity": return J(await D.getActivity(sp.get("since") || new Date(Date.now() - 7 * 864e5).toISOString()));
+    case "GET usage": {
+      // Weekly aggregate of page views and clicks (top clicks, dead ends, sequences, rarely used). No raw events.
+      const since = sp.get("since") || new Date(Date.now() - 7 * 864e5).toISOString(), until = sp.get("until") || new Date().toISOString();
+      if (isNaN(Date.parse(since)) || isNaN(Date.parse(until))) return bad("since and until must be ISO dates");
+      try { return J(await usageSummary(since, until)); } catch (e) { return J({ error: `usage unavailable: ${(e as Error).message}` }, 503); }
+    }
+    case "DELETE usage": {
+      const days = Number(sp.get("days"));
+      if (!Number.isFinite(days) || days < 1) return bad("days (>= 1) required");
+      try { return J({ deleted: await pruneClickEvents(days) }); } catch (e) { return J({ error: `prune failed: ${(e as Error).message}` }, 503); }
+    }
     case "GET calendar": {
       const from = sp.get("from"), to = sp.get("to");
       if (!isDate(from) || !isDate(to)) return bad("from and to (YYYY-MM-DD) are required");

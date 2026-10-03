@@ -4,24 +4,13 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "./auth";
 import { sql } from "./db";
 import * as D from "./data";
-import { isDate } from "./time";
+import { isDate, today } from "./time";
 
 const done = () => revalidatePath("/", "layout");
-const NEXT = { todo: "doing", doing: "done", done: "todo", cancelled: "todo" } as const;
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
 
 /* ---------- checklist ---------- */
-export async function cycleItem(project_id: string, id: string) {
-  await requireSession();
-  const [it] = await sql()`select status from items where project_id = ${project_id} and id = ${id}`;
-  if (!it) return;
-  const status = NEXT[it.status as keyof typeof NEXT];
-  await D.updateItem(project_id, id, { status });
-  await sql()`update todos set done = ${status === "done"}, done_at = ${status === "done" ? new Date().toISOString() : null} where project_id = ${project_id} and item_id = ${id}`;
-  await D.logActivity("item_status", `/p/${project_id}`, { id, status });
-  done();
-}
-/** Set a status directly (Today/Week one-click done, reopen). Todos linked to the item follow. */
+/** Set a status directly (checklist checkbox / Start / Stop, Today/Week one-click done, reopen). Todos linked to the item follow. */
 export async function setItemStatus(project_id: string, id: string, status: "todo" | "doing" | "done") {
   await requireSession();
   if (!["todo", "doing", "done"].includes(status)) return;
@@ -56,22 +45,54 @@ export async function setDue(project_id: string, id: string, due: string | null)
   await D.logActivity("item_due", `/p/${project_id}`, { id, due });
   done();
 }
-export async function newItem(project_id: string, section: string, title: string, due: string | null): Promise<{ error?: string; duplicate?: string }> {
+/** Timeline drag: one or more items (a day's cluster) to a new due date. Same logged path as setDue, so Monday reviews still see the slip. */
+export async function moveItemsDue(project_id: string, ids: string[], due: string): Promise<{ error?: string }> {
+  await requireSession();
+  if (!isDate(due) || due < today()) return { error: "Pick today or a later day." };
+  const list = ids.filter(ID_OK).slice(0, 50);
+  if (!list.length) return { error: "Nothing to move." };
+  for (const id of list) if (!(await D.updateItem(project_id, id, { due }))) return { error: `Item ${id} is gone.` };
+  await D.logActivity("item_due", `/timeline`, { ids: list, due, via: "timeline" });
+  done();
+  return {};
+}
+/**
+ * Timeline drag on a milestone: the project's deadline moves now; `prd` keeps the date PRD.md still has, and the Mac
+ * worker writes the new date into that PRD.md row on its next pass (agent/milestones.mjs), so the sync doesn't revert it.
+ */
+export async function moveMilestone(project_id: string, label: string, from: string, to: string): Promise<{ error?: string }> {
+  await requireSession();
+  if (!isDate(from) || !isDate(to) || to < today()) return { error: "Pick today or a later day." };
+  const p = await D.getProject(project_id);
+  if (!p) return { error: "Project not found." };
+  type DL = { date: string; label: string; prd?: string };
+  const list = (p.deadlines || []) as DL[];
+  const i = list.findIndex((d) => d.date === from && d.label === label);
+  if (i < 0) return { error: "That milestone changed since the page loaded. Reload and try again." };
+  const prd = list[i].prd || from;
+  const deadlines = list.map((d, j) => (j !== i ? d : prd === to ? { date: to, label } : { date: to, label, prd }));
+  await D.upsertProject({ id: project_id, deadlines });
+  await D.logActivity("milestone_move", `/timeline`, { project_id, label, from, to });
+  done();
+  return {};
+}
+export async function newItem(project_id: string, section: string, title: string, due: string | null): Promise<{ error?: string; duplicate?: string; id?: string }> {
   await requireSession();
   const t = title.trim().slice(0, 300);
-  if (!t) return {};
+  if (!t) return { error: "Type a title first." };
   const p = await D.getProject(project_id);
   const sec = p?.sections.find((s) => s.id === section);
+  let id: string;
   try {
     // Claude refines items you add by hand (steps, section, priority, estimate, a due date that doesn't clash).
-    await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder", refine: process.env.JARVIS_REFINE_ITEMS === "off" ? null : "pending" });
+    ({ id } = await D.addItem({ project_id, section, title: t, due: due && isDate(due) ? due : null, owner: sec?.owner_default || "founder", refine: process.env.JARVIS_REFINE_ITEMS === "off" ? null : "pending" }));
   } catch (e) {
     if (e instanceof D.DuplicateError) return { error: `Already on the checklist: "${e.item.title}" (${e.item.id}).`, duplicate: e.item.id };
     throw e;
   }
   await D.logActivity("item_add", `/p/${project_id}`, { section });
   done();
-  return {};
+  return { id };
 }
 /** Cancel an item: it stays on the list (under "Show completed") but leaves every open count. `duplicateOf` points at the survivor. */
 export async function cancelItem(project_id: string, id: string, reason: string, duplicateOf: string | null = null) {
@@ -145,7 +166,8 @@ export async function placeTodo(id: string, date: string | null, order: string[]
 export async function toggleTodo(id: string) {
   await requireSession();
   const [t] = await sql()`update todos set done = not done, done_at = case when done then null else now() end where id = ${id} returning done, project_id, item_id`;
-  if (t?.project_id && t.item_id) await D.updateItem(t.project_id, t.item_id, { status: t.done ? "done" : "doing" });
+  // Unticking goes back to todo, never doing: doing is the go signal that queues a build on Claude's items.
+  if (t?.project_id && t.item_id) await D.updateItem(t.project_id, t.item_id, { status: t.done ? "done" : "todo" });
   await D.logActivity("todo_done", "/today", { done: t?.done });
   done();
 }

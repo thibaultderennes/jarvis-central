@@ -41,6 +41,22 @@ If the owner asks to set up Jarvis Central, follow [`SETUP.md`](SETUP.md) phase 
    a manual migration), move `Unreleased` into a dated section, tag `vX.Y.Z`.
 9. The stored owner value `founder` means "the owner" — UI copy says "you". Don't rename stored values without a migration.
 
+## How we work
+These rules are for the maintainer's sessions in this repo; someone who only installed Jarvis can skip them.
+- **`PRD.md`** (repo root) is the product truth for the tool: who it's for, scope, non-negotiables. Its Milestones
+  table is what Jarvis reads for this project's deadlines: change dates there, not on the dashboard.
+- **The checklist lives on the maintainer's own Jarvis Central** (project id `jarvis`) and is the single source of
+  truth for what's open. Item ids are the code names used in chat. Read it at session start
+  (`node agent/jarvis.mjs items jarvis --open`), mark items done when they ship, add new work there.
+- **The loop.** An item in `build` set to **in progress is the go**: Claude builds it on a branch, the checks in rule 7
+  gate the PR, the maintainer merges. Nothing merges on its own; the Jarvis worker follows the same rule (branch
+  `jarvis/<id>` + PR, merged only when the maintainer presses merge).
+- **3-day audit.** The prompts in [`docs/audits/PROMPTS.md`](docs/audits/PROMPTS.md) run against `main` every 3 days
+  (a scheduled Claude Code routine, or by hand). Each report is `docs/audits/YYYY-MM-DD-audit.md`; fixes come as PRs,
+  regressions against the previous report first. Nothing merges on its own.
+- **"Plan this project"** on Jarvis reads this file, `PRD.md`, `docs/audits/` and the checklist, then adds only missing
+  items. Keep them current so it plans from reality.
+
 ## Where improvement ideas come from
 The Monday **Jarvis review** reads how the owner used the site that week and splits its advice into
 *your settings* and *tool changes*. Tool changes are written as ready-to-file GitHub issues for this repo.

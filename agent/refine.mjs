@@ -2,6 +2,8 @@
 // that doesn't pile onto an already-full day. Run by the inbox worker each pass (worker.refine_new_items).
 // Also answers comments the owner leaves on an existing item (the comment bar under "Show more"): Claude reads the
 // comment and adjusts only what it asks for, with the same load check for a new date.
+// A new item is refined silently: the result (refine_note, flagged state, changed fields) stays on the item. Only replies to
+// the owner's comments go to the Inbox, unless worker.refine_inbox_notes is true.
 // The model proposes; a deterministic check makes sure the chosen day has room (items due that day + calendar).
 import fs from "node:fs";
 import path from "node:path";
@@ -136,7 +138,7 @@ Output ONLY one JSON object:
   if (Array.isArray(out.duplicate_of) && out.duplicate_of.length) {
     const note = `Looks like it overlaps ${out.duplicate_of.map((d) => `\`${d}\``).join(", ")}. ${out.reply || out.reason || ""} Merge them or delete one.`;
     await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, refine: "flagged", refine_note: note.slice(0, 1000), ...(await after()) });
-    await note2inbox(p, it.title, `**Possible duplicate.** ${note}`, comment);
+    if (comment || refineNotes()) await note2inbox(p, it.title, `**Possible duplicate.** ${note}`, comment);
     log("refine flagged", key, out.duplicate_of);
     return;
   }
@@ -169,9 +171,13 @@ Output ONLY one JSON object:
        changed("estimate_minutes", "estimate", (v) => (v ? `~${v} min` : "—")), changed("priority", "priority", (v) => ["—", "high", "normal", "low"][v || 0]),
        changed("critical", "critical", (v) => (v ? "yes" : "no")), it.detail !== patch.detail ? "steps rewritten" : ""].filter(Boolean).join(" · ") || "nothing changed"
     : [it.due !== patch.due ? `due ${it.due || "—"} → **${patch.due}**` : `due **${patch.due}**`, `~${est} min`, `priority ${["", "high", "normal", "low"][patch.priority]}`, it.section !== patch.section ? `section ${it.section} → ${patch.section}` : "", patch.critical ? "critical" : ""].filter(Boolean).join(" · ");
-  await note2inbox(p, patch.title, comment ? `> ${comment.replace(/\n/g, "\n> ")}\n\n${was}\n\n_${why}_` : `${was}\n\n${patch.detail}\n\n_${why}_`, comment);
+  // A new item is refined silently (the result stays on the item); a reply to the owner's comment goes to the Inbox.
+  if (comment || refineNotes()) await note2inbox(p, patch.title, comment ? `> ${comment.replace(/\n/g, "\n> ")}\n\n${was}\n\n_${why}_` : `${was}\n\n${patch.detail}\n\n_${why}_`, comment);
   log(comment ? "comment answered" : "refined", key, { due: patch.due, est, moved: fit.moved, cost_usd: res.cost_usd });
 }
+
+/** worker.refine_inbox_notes: also post an Inbox note after refining a new item (off by default). */
+const refineNotes = () => CONFIG.worker?.refine_inbox_notes === true;
 
 async function note2inbox(p, title, reply, comment = "") {
   await api("POST", "/api/agent/messages", { project_id: p.id, text: comment ? `Your comment on ${p.name}: ${title}` : `New checklist item on ${p.name}: ${title}`, reply, meta: { kind: comment ? "comment" : "refine" } })

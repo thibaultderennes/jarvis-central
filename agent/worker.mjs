@@ -8,16 +8,20 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { api, qs, makeLog, acquireLock, todayTZ, hostName, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
+import { api, qs, makeLog, makeLogOnce, acquireLock, todayTZ, hostName, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
 import { syncAuditsDue } from "./audits.mjs";
+import { syncEconomicsDue } from "./economics.mjs";
+import { syncMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
+import { applyMilestoneMoves } from "./milestones.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
 const log = makeLog("worker");
+const logChanged = makeLogOnce("worker", log);
 
 const CLI_CMD = `node ${CLI}`;
 const READ_TOOLS = [
@@ -31,6 +35,9 @@ const CODE_TOOLS = [
   "Bash(npm test:*)", "Bash(npm run test:*)", "Bash(npm run lint:*)", "Bash(npm run typecheck:*)", "Bash(npm run build:*)",
   "Bash(npx tsc:*)", "Bash(npx vitest:*)",
 ];
+// `git -C <dir> add` doesn't match "git add:*", and headless Claude often writes it that way: allow it for the
+// worktree path only, so `git -C <anywhere> push` stays denied.
+const codeTools = (wt) => [...CODE_TOOLS, `Bash(git -C ${wt} add:*)`, `Bash(git -C ${wt} commit:*)`];
 const DENY = ["Bash(git push:*)", "Bash(gh pr merge:*)", "Bash(gh pr create:*)", "Bash(rm -rf:*)", "Bash(curl:*)", "Bash(vercel:*)", "Bash(railway:*)", "Bash(stripe:*)", "Bash(supabase:*)"];
 
 const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
@@ -85,6 +92,17 @@ function prFor(repo, branch) {
   try { return JSON.parse(execFileSync("gh", ["pr", "view", branch, "--json", "url,state"], { cwd: repo.top, encoding: "utf8", timeout: 60_000 })); } catch { return null; }
 }
 
+/** Edits the run left uncommitted (a denied commit, a stop at the turn limit): commit them so the work reaches the PR. */
+function commitLeftovers(wt, title) {
+  const dirty = tryGit(wt, "status", "--porcelain");
+  if (!dirty) return false;
+  // node_modules are symlinks into the main checkout (linkNodeModules): a "node_modules/" ignore rule doesn't match a symlink
+  git(wt, "add", "-A", "--", ".", ":(exclude)node_modules", ":(exclude)**/node_modules");
+  if (!tryGit(wt, "diff", "--cached", "--name-only")) return false;
+  git(wt, "commit", "-m", `${title}\n\nChanges the build run left uncommitted, committed by the Jarvis worker. Review before merging.`);
+  return true;
+}
+
 function finishWorktree(repo, wt, branch, reply) {
   let pr_url = null;
   const ahead = Number(tryGit(wt, "rev-list", "--count", `origin/${repo.base}..HEAD`) || 0);
@@ -115,7 +133,7 @@ The Jarvis inbox check at session start is already handled by this worker: ignor
 ## Rules (set by the owner)
 - You may answer questions, research, plan days, and read or edit checklist items and todos with the Jarvis CLI.
 ${mode === "code"
-    ? `- CODE MODE: this directory is a fresh git worktree on its own branch. Work only here. Make focused changes, commit them with clear messages (git add / git commit), and run the project's tests, typecheck or lint if they exist. Do not push and do not open a PR: the worker does that after you finish. Never touch .env files, secrets, credentials, billing, or production data.`
+    ? `- CODE MODE: this directory is a fresh git worktree on its own branch. Work only here. Make focused changes, commit them with clear messages, and run the project's tests, typecheck or lint if they exist. Run git from this directory as plain \`git add …\` / \`git commit …\` (not \`git -C\`, no \`cd\` elsewhere): other forms are denied in this headless session. Do not push and do not open a PR: the worker does that after you finish. Never touch .env files, secrets, credentials, billing, or production data.`
     : wantedBuild
       ? `- The owner pressed "Build it" but this project has no git repository with a remote, so you can't change files. Plan the change concretely (files, steps, risks), add the work to the checklist with the CLI if it isn't there, and say that setting up the repo unlocks building from the dashboard.`
       : `- DISCUSSION MODE: you cannot edit files. Think it through with the owner: challenge weak ideas with evidence, build on good ones, be concrete. If you agree on next steps, propose them as checklist items with codes; add them with the CLI only if the founder asked you to. If they want it built, tell them to press "Build it (PR)".`}
@@ -132,6 +150,7 @@ ${CLI_CMD} todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project 
 ${CLI_CMD} todos [--from D] [--to D]
 ${CLI_CMD} reviews [--type project|recap|coaching|jarvis|doc|security] [--project P] [--limit N] [--full]
 ${CLI_CMD} audits <project>                 security audit reports synced from the project folder (date, verdict, headline)
+${CLI_CMD} metrics <project> [--days N]     product numbers (users, active users, visits, revenue…) per snapshot
 Do not use the CLI's inbox or reply commands: the worker posts your final message as the reply.
 
 ## Projects
@@ -200,7 +219,7 @@ async function handle(message, projects) {
   let res;
   try {
     // Discussions default to a lighter model to spare plan usage; code work uses worker.build_model (null = CLI default).
-    res = await runClaude({ prompt, cwd, allowedTools: mode === "code" ? CODE_TOOLS : READ_TOOLS, disallowedTools: DENY,
+    res = await runClaude({ prompt, cwd, allowedTools: mode === "code" ? codeTools(cwd) : READ_TOOLS, disallowedTools: DENY,
       model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: mode === "code" ? 60 : 30,
       timeoutMs: (W.timeout_minutes || 25) * 60_000, log });
   } catch (e) {
@@ -208,6 +227,14 @@ async function handle(message, projects) {
     throw e;
   }
   let reply = (res.result || "").trim() || "(Claude finished without a reply.)";
+  // What the permission mode refused, so a stuck build can be diagnosed from the log rather than guessed.
+  const denied = (res.raw?.permission_denials || []).map((d) => d.tool_input?.command || d.tool_name).filter(Boolean);
+  if (denied.length) log("permission denied", message.id, [...new Set(denied)].slice(0, 10));
+  let leftovers = false;
+  if (wt) {
+    try { leftovers = commitLeftovers(wt, item ? item.title : message.text.split("\n")[0].slice(0, 72)); }
+    catch (e) { log("leftover commit failed", message.id, e.message); }
+  }
   if (res.is_error && res.subtype === "error_max_turns") reply += "\n\n_Stopped at the turn limit; the work may be incomplete._";
   let pr_url = null, commits = 0;
   if (wt) {
@@ -215,13 +242,14 @@ async function handle(message, projects) {
     catch (e) { log("push/PR failed", message.id, e.message); reply += `\n\n**The branch \`${branch}\` has commits but the PR could not be opened:** ${e.message.split("\n")[0]}`; }
   }
   if (pr_url) reply += `\n\n**PR:** ${pr_url} (not merged)`;
+  if (pr_url && leftovers) reply += "\n\n_The run left edits uncommitted; the worker committed them as the last commit on the PR. Review it before merging._";
   const needsYou = /^\s*NEEDS YOU:/i.test(reply);
   const status = needsYou ? "needs_you" : pr_url ? "done" : "answered";
   await api("PATCH", "/api/agent/messages", { id: message.id, status, reply, meta: { mode, branch: commits ? branch : null, pr_url, cost_usd: res.cost_usd, duration_s: res.duration_s } });
   if (item) {
     // The item shows the outcome: a PR awaiting the owner, or why the run stopped. It never stays "working".
     const ok = !!pr_url && !needsYou;
-    const why = needsYou ? reply.replace(/^\s*NEEDS YOU:\s*/i, "").split("\n")[0].slice(0, 300) : !repo ? "This project has no git repository with a remote, so nothing could be built." : !commits ? "Claude finished without committing anything." : !pr_url ? "The branch has commits but the pull request could not be opened." : "";
+    const why = needsYou ? reply.replace(/^\s*NEEDS YOU:\s*/i, "").split("\n")[0].slice(0, 300) : !repo ? "This project has no git repository with a remote, so nothing could be built." : !commits ? `Claude finished without changing any file.${denied.length ? ` Denied: ${[...new Set(denied)].slice(0, 3).join("; ").slice(0, 300)}` : ""}` : !pr_url ? "The branch has commits but the pull request could not be opened." : "";
     await api("PATCH", "/api/agent/items", { project_id: project.id, id: item.id, build_status: ok ? "pr_open" : "failed", pr_url: pr_url || item.pr_url || null, build_note: ok ? "" : why.slice(0, 500) }).catch((e) => log("item build update failed", item.id, e.message));
   }
   log("done", message.id, { status, pr_url, cost_usd: res.cost_usd, duration_s: res.duration_s });
@@ -234,14 +262,18 @@ async function handle(message, projects) {
  */
 async function queueBuilds(projects, log) {
   if (W.allow_build === false) return;
-  const inflight = await api("GET", "/api/agent/items" + qs({ build: "working" }));
+  // Trust the filter only as far as the rows say: an older API that ignores ?build= returns every item.
+  const inflight = (await api("GET", "/api/agent/items" + qs({ build: "working" }))).filter((i) => i.build_status === "working");
   if (inflight.length) {
     // A run that vanished (worker killed mid-build) must not stay "working" forever.
     const stale = inflight.filter((i) => i.build_updated_at && Date.now() - +new Date(i.build_updated_at) > ((W.timeout_minutes || 25) + 10) * 60_000);
     for (const i of stale) await api("PATCH", "/api/agent/items", { project_id: i.project_id, id: i.id, build_status: "failed", build_note: "The build run stopped without finishing (the worker was interrupted). Retry to start it again." }).catch(() => {});
     if (stale.length < inflight.length) return;
   }
-  const [queued, back] = await Promise.all([api("GET", "/api/agent/items" + qs({ build: "queue" })), api("GET", "/api/agent/items" + qs({ build: "sent_back" }))]);
+  const [queued, back] = await Promise.all([
+    api("GET", "/api/agent/items" + qs({ build: "queue" })).then((r) => r.filter((i) => i.status === "doing" && ["claude", "both"].includes(i.owner) && !i.build_status)),
+    api("GET", "/api/agent/items" + qs({ build: "sent_back" })).then((r) => r.filter((i) => i.build_status === "sent_back")),
+  ]);
   const next = [...back, ...queued].sort((a, b) => Number(b.critical) - Number(a.critical) || (a.due || "9").localeCompare(b.due || "9"))[0];
   if (!next) return;
   const project = projects.find((p) => p.id === next.project_id);
@@ -258,21 +290,25 @@ async function queueBuilds(projects, log) {
 
 /** Approved PRs: merge them (squash, branch deleted), mark the item done, leave a note in the inbox. Only the owner's click gets here. */
 async function mergeApproved(projects, log) {
-  const items = await api("GET", "/api/agent/items" + qs({ build: "merge_requested" }));
+  const rows = await api("GET", "/api/agent/items" + qs({ build: "merge_requested" }));
+  // Only items the owner really asked to merge, with a PR: anything else is untouched (no failure note either).
+  const items = rows.filter((i) => i.build_status === "merge_requested" && i.pr_url);
+  if (items.length < rows.length) logChanged("merge-filter", rows.length - items.length, "merge pass ignored", rows.length - items.length, "rows that aren't merge-requested with a PR (API filter not applied?)");
   for (const it of items) {
     const project = projects.find((p) => p.id === it.project_id);
     const repo = project?.dir && fs.existsSync(project.dir) ? repoInfo(project.dir) : null;
     try {
-      if (!repo || !it.pr_url) throw new Error("no repository or PR to merge");
+      if (!repo) throw new Error("no git repository with a remote for this project on this Mac");
       execFileSync("gh", ["pr", "merge", it.pr_url, "--squash", "--delete-branch"], { cwd: repo.top, encoding: "utf8", timeout: 120_000 });
       tryGit(repo.top, "fetch", "origin", repo.base);
       await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, status: "done", build_status: "merged", build_note: "" });
       await api("POST", "/api/agent/messages", { project_id: it.project_id, text: `Merged: ${it.title}`, reply: `${it.pr_url} was merged into ${repo.base} on your approval and the item [${it.id}] is done. Pull ${repo.base} in your working copy to get it.`, meta: { kind: "merged" }, item_id: it.id });
       log("merged", it.project_id, it.id, it.pr_url);
+      logChanged(`merge:${it.id}`, "merged", "merge state cleared", it.id);
     } catch (e) {
       const why = e.message.split("\n").find((l) => l.trim()) || e.message;
       await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, build_status: "pr_open", build_note: `Merge failed: ${why.slice(0, 300)}. Fix it on GitHub or send the PR back.` }).catch(() => {});
-      log("merge failed", it.project_id, it.id, e.message);
+      logChanged(`merge:${it.id}`, why, "merge failed", it.project_id, it.id, e.message);
     }
   }
 }
@@ -281,17 +317,30 @@ async function pass() {
   const release = acquireLock("worker");
   if (!release) return log("previous pass still running, skipping");
   try {
-    await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName() } }).catch((e) => log("heartbeat failed", e.message));
+    const hb = await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName() } }).catch((e) => (log("heartbeat failed", e.message), null));
+    // Agent and site from different releases disagree on the API: building or merging against it can loop
+    // over every item. Pause those two passes (refine and messages stay on) until both are updated.
+    const mm = (v) => String(v || "").split(".").slice(0, 2).join(".");
+    const skew = hb && mm(hb.version) !== mm(VERSION) && VERSION !== "dev" ? (hb.version || "older than 0.6") : null;
+    logChanged("version-skew", skew, skew ? `version skew: agent ${VERSION}, site ${skew}. Build and merge passes paused until both run the same release (git pull, re-run agent/install.sh, redeploy).` : "agent and site versions match again");
     const projects = await api("GET", "/api/agent/projects");
     // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
     await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
     // Security audit reports in each project folder → the project's Security tab; at most once an hour.
     await syncAuditsDue(projects, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
+    // Unit-economics model files in project folders → evaluated here, results on the project's Finances tab; hourly.
+    await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
+    // Product metrics (users, visits, revenue…) from each project's source in the config → the project's Stats view; daily.
+    await syncMetricsDue(projects, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
+    // Milestones moved on the Timeline: write the new dates into each PRD.md so the next sync keeps them.
+    await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
-    await mergeApproved(projects, log).catch((e) => log("merge pass failed", e.message));
-    await queueBuilds(projects, log).catch((e) => log("build queue failed", e.message));
+    if (!skew) {
+      await mergeApproved(projects, log).catch((e) => logChanged("merge-pass", e.message, "merge pass failed", e.message));
+      await queueBuilds(projects, log).catch((e) => logChanged("build-queue", e.message, "build queue failed", e.message));
+    }
     const messages = await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }));
     if (!messages.length) return;
     for (const m of messages) {

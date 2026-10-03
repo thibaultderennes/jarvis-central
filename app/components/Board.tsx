@@ -11,6 +11,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { createTodo, editTodo, placeTodo, removeTodo, setDue, setItemStatus, toggleTodo } from "@/lib/actions";
 import type { Todo } from "@/lib/data";
 import type { CalEvent } from "@/lib/calendar";
+import { Ack, imeGuard, useSubmit } from "./Submit";
 
 export type BItem = { project_id: string; id: string; title: string; due: string | null; status: string; critical: boolean; owner: string | null; secName: string; estimate_minutes: number | null };
 type P = { id: string; name: string; color: string };
@@ -207,7 +208,7 @@ export default function Board(props: Props) {
                 {!decide.length && <div className="empty" style={{ padding: "4px 12px 8px" }}>Nothing overdue or due today that isn&apos;t already on the list.</div>}
               </div>
             )}
-            <QuickAdd date={days[0]} projects={projects} run={run} />
+            <QuickAdd date={days[0]} projects={projects} />
             <Zone id={days[0]}>
               <SortableContext items={ordered(days[0]).map((t) => t.id)} strategy={verticalListSortingStrategy}>
                 {ordered(days[0]).map((t) => <TodoRow key={t.id} t={t} c={days[0]} p={t.project_id ? pmap[t.project_id] : undefined} run={run} compact={false} mode={mode} today={today} late={lateTodo(t)} />)}
@@ -230,7 +231,7 @@ export default function Board(props: Props) {
                 {overdue.length > 20 && <div className="empty" style={{ padding: "4px 12px" }}>{overdue.length - 20} more in the backlog.</div>}
               </div>
             )}
-            <QuickAdd date={target} projects={projects} run={run} days={days} />
+            <QuickAdd date={target} projects={projects} days={days} />
             <div className="week7">
               {days.map((d) => {
                 const evs = props.events.filter((e) => e.date === d);
@@ -325,10 +326,8 @@ function TodoRow({ t, c, p, run, compact, mode, today, late }: { t: Todo; c: str
   const body = (
     <span className="tt" onDoubleClick={() => !tmp && setEditing(true)}>
       {editing ? (
-        <input className="input" defaultValue={t.title} autoFocus aria-label="Edit todo"
-          onBlur={(e) => { setEditing(false); if (e.target.value.trim() && e.target.value !== t.title) run(() => editTodo(t.id, { title: e.target.value })); }}
-          onKeyDown={(e) => { if (e.key === "Enter") (e.target as HTMLInputElement).blur(); if (e.key === "Escape") setEditing(false); }} />
-      ) : <span>{t.time && <span className="tm">{t.time} </span>}{t.title}</span>}
+        <EditTitle t={t} onDone={() => setEditing(false)} />
+      ) :<span>{t.time && <span className="tm">{t.time} </span>}{t.title}</span>}
       {!compact && (p || t.kind === "life") && <small>{p ? `${p.name}${t.item_id ? ` · ${t.item_id}` : ""}` : "Personal"}{late && !t.done ? <b className="latetag"> · overdue</b> : null}</small>}
     </span>
   );
@@ -364,14 +363,29 @@ function BacklogRow({ it, p, today, planned, onAdd, addLabel }: { it: BItem; p?:
   );
 }
 
-function QuickAdd({ date, projects, run, days }: { date: string; projects: P[]; run: (fn: () => Promise<unknown>) => void; days?: string[] }) {
+/** Double-click a todo to rename it: Enter or leaving the field saves; it stays open with the text if the save fails. */
+export function EditTitle({ t, onDone }: { t: Todo; onDone: () => void }) {
+  const [v, setV] = useState(t.title);
+  const s = useSubmit();
+  const save = () => { const x = v.trim(); if (s.pending) return; if (!x || x === t.title) return onDone(); s.submit(() => editTodo(t.id, { title: x }), { onOk: onDone }); };
+  return (
+    <form style={{ display: "contents" }} onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); save(); }}>
+      <input className="input" value={v} onChange={(e) => setV(e.target.value)} autoFocus aria-label="Edit todo" disabled={s.pending}
+        onBlur={() => { if (!s.err) save(); }} onKeyDown={(e) => { if (e.key === "Escape") onDone(); }} />
+      <Ack s={s} />
+    </form>
+  );
+}
+
+function QuickAdd({ date, projects, days }: { date: string; projects: P[]; days?: string[] }) {
   const [title, setTitle] = useState(""), [time, setTime] = useState(""), [proj, setProj] = useState(""), [day, setDay] = useState(date);
+  const s = useSubmit();
   useEffect(() => setDay(date), [date]);
   return (
-    <form className="quick" onSubmit={(e) => {
-      e.preventDefault(); const v = title.trim(); if (!v) return;
-      setTitle(""); setTime("");
-      run(() => createTodo({ date: day, title: v, time: time || null, project_id: proj || null, kind: proj ? "work" : "life" }));
+    <form className="quick" onKeyDown={imeGuard} onSubmit={(e) => {
+      e.preventDefault(); const v = title.trim(); if (!v || s.pending) return;
+      s.submit(async () => (await createTodo({ date: day, title: v, time: time || null, project_id: proj || null, kind: proj ? "work" : "life" })) ?? { error: "Couldn't add that todo: check the title and day." },
+        { ok: "Added", onOk: () => { setTitle(""); setTime(""); } });
     }}>
       <input id={`qa-title-${days ? "w" : "d"}`} className="input" value={title} onChange={(e) => setTitle(e.target.value)} placeholder={days ? "Add a todo to the week…" : "Add a todo: groceries, gym, call the bank…"} aria-label="New todo" />
       {days && (
@@ -384,7 +398,8 @@ function QuickAdd({ date, projects, run, days }: { date: string; projects: P[]; 
         <option value="">Personal</option>
         {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
       </select>
-      <button className="btn">Add</button>
+      <button className="btn" disabled={!title.trim() || s.pending}>{s.pending ? "Adding…" : "Add"}</button>
+      <Ack s={s} busy="Adding…" />
     </form>
   );
 }

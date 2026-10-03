@@ -1,8 +1,10 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
-import { approveBuild, cancelItem, commentItem, cycleItem, newItem, resetBuild, sendBackBuild, sendNote, setDue } from "@/lib/actions";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { approveBuild, cancelItem, commentItem, newItem, resetBuild, sendBackBuild, sendNote, setDue, setItemStatus } from "@/lib/actions";
 import { isOpen, type Item, type Section } from "@/lib/data";
+import { Ack, enterSends, imeGuard, useSubmit } from "./Submit";
+import { Icon } from "./icons";
 
 // Owner values stored in the database: "founder" is you (the dashboard's owner), "claude", or "both".
 const OWN: Record<string, string> = { founder: "you", claude: "Claude", both: "both" };
@@ -10,12 +12,37 @@ const addDays = (d: string, n: number) => { const x = new Date(d + "T12:00:00Z")
 const fmtWhen = (iso: string) => new Date(iso).toLocaleString("en-CA", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 
 /**
- * Filters are three independent groups, ANDed: scope (everything / yours / Claude's, single choice), flags (critical only,
- * show completed: independent toggles) and due range (single choice). Done and cancelled items are hidden until
- * "Show completed" is on. The selection is remembered per project in this browser.
+ * Filters live in the URL (?sec=…&own=…&due=…&crit=1&done=1), so a reload or a shared link keeps them; a bare link reopens
+ * the ones last used on this project in this browser. AND across groups, OR within one: sections, whose (yours /
+ * Claude's), due (overdue / next 7 days / next 14 days: open items only, undated items match none), critical. Done and
+ * cancelled items are hidden until "Show completed" is on. "Today" comes from the server, in the configured timezone.
  */
-type Filters = { cat: string; crit: boolean; showDone: boolean; own: "" | "founder" | "claude"; when: "any" | "overdue" | "week" | "2w" };
-const defaults = (showDone: boolean): Filters => ({ cat: "", crit: false, showDone, own: "", when: "any" });
+type Own = "founder" | "claude";
+type When = "overdue" | "week" | "2w";
+type Filters = { sec: string[]; own: Own[]; due: When[]; crit: boolean; showDone: boolean };
+const KEYS = ["sec", "own", "due", "crit", "done"];
+const WHEN: [When, string, string][] = [["overdue", "Overdue", "Open items due before today"], ["week", "Next 7 days", "Open items due today through 7 days from now"], ["2w", "Next 14 days", "Open items due today through 14 days from now"]];
+const csv = (v: string | null) => (v || "").split(",").map((x) => x.trim()).filter(Boolean);
+function parse(q: URLSearchParams, showDoneDefault: boolean): Filters {
+  const d = q.get("done");
+  return {
+    sec: csv(q.get("sec")), own: csv(q.get("own")).filter((x): x is Own => x === "founder" || x === "claude"),
+    due: csv(q.get("due")).filter((x): x is When => WHEN.some(([k]) => k === x)), crit: q.get("crit") === "1",
+    showDone: d === "1" ? true : d === "0" ? false : showDoneDefault,
+  };
+}
+function toQuery(f: Filters, showDoneDefault: boolean, base: string): string {
+  const q = new URLSearchParams(base);
+  for (const k of KEYS) q.delete(k);
+  if (f.sec.length) q.set("sec", f.sec.join(","));
+  if (f.own.length) q.set("own", f.own.join(","));
+  if (f.due.length) q.set("due", f.due.join(","));
+  if (f.crit) q.set("crit", "1");
+  if (f.showDone !== showDoneDefault) q.set("done", f.showDone ? "1" : "0");
+  return q.toString();
+}
+const flip = <T,>(a: T[], v: T) => (a.includes(v) ? a.filter((x) => x !== v) : [...a, v]);
+const goTo = (qs: string) => window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
 
 export default function Checklist({ projectId, sections: given, items, today, showDoneDefault = false }: { projectId: string; sections: Section[]; items: Item[]; today: string; showDoneDefault?: boolean }) {
   // Items can use a section the project doesn't declare (added by Claude or an import): show those too, never hide items.
@@ -33,34 +60,50 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   useEffect(() => { if (!busy) return; const t = setInterval(() => router.refresh(), 10000); return () => clearInterval(t); }, [busy, router]);
   const [, start] = useTransition();
   const [err, setErr] = useState("");
-  const [f, setF] = useState<Filters>(() => defaults(showDoneDefault));
+  const [fresh, setFresh] = useState("");
+  useEffect(() => { if (!fresh) return; const t = setTimeout(() => setFresh(""), 10000); return () => clearTimeout(t); }, [fresh]);
+  const sp = useSearchParams();
+  const [jumpAll, setJumpAll] = useState(false);
+  const f = useMemo((): Filters => (jumpAll ? { sec: [], own: [], due: [], crit: false, showDone: true } : parse(new URLSearchParams(sp.toString()), showDoneDefault)), [sp, showDoneDefault, jumpAll]);
   const storeKey = `jarvis.filters.${projectId}`;
-  useEffect(() => { try { const v = localStorage.getItem(storeKey); if (v) setF({ ...defaults(showDoneDefault), ...JSON.parse(v) }); } catch { /* private mode: keep the defaults */ } }, [storeKey, showDoneDefault]);
-  const setFilters = (next: Filters) => { setF(next); try { localStorage.setItem(storeKey, JSON.stringify(next)); } catch { /* ignore */ } };
+  const setFilters = (next: Filters) => {
+    setJumpAll(false);
+    goTo(toQuery(next, showDoneDefault, window.location.search));
+    try { localStorage.setItem(storeKey, toQuery(next, showDoneDefault, "")); } catch { /* private mode */ }
+  };
+  useEffect(() => {
+    if (location.hash.startsWith("#item-") || KEYS.some((k) => new URLSearchParams(window.location.search).has(k))) return;
+    try { const v = localStorage.getItem(storeKey); if (v && !v.startsWith("{")) goTo(toQuery(parse(new URLSearchParams(v), showDoneDefault), showDoneDefault, window.location.search)); } catch { /* ignore */ }
+  }, [storeKey, showDoneDefault]);
+  // A link to #item-<id> (from the stats panel) shows everything once, without saving that filter, then scrolls to the item.
+  const [target, setTarget] = useState(""), jumped = useRef(false);
+  useEffect(() => {
+    const id = location.hash.startsWith("#item-") ? decodeURIComponent(location.hash.slice(6)) : "";
+    if (jumped.current || !id || !items.some((i) => i.id === id)) return;
+    jumped.current = true; setJumpAll(true); setTarget(id);
+  }, [items]);
+  useEffect(() => { if (target) { document.getElementById(`item-${target}`)?.scrollIntoView({ block: "center" }); setTarget(""); } }, [target]);
   const run = (fn: () => Promise<unknown>) => start(async () => { try { setErr(""); await fn(); } catch { setErr("Couldn't save that. Try again."); } });
-  const win = useMemo(() => {
-    switch (f.when) {
-      case "overdue": return { to: addDays(today, -1), overdue: true };
-      case "week": return { from: today, to: addDays(today, 6) };
-      case "2w": return { from: today, to: addDays(today, 13) };
-      default: return null;
-    }
-  }, [f.when, today]);
+  const in7 = addDays(today, 7), in14 = addDays(today, 14);
+  const dated = (i: Item) => !!i.due && isOpen(i) && f.due.some((w) => (w === "overdue" ? i.due! < today : i.due! >= today && i.due! <= (w === "week" ? in7 : in14)));
   const keep = (i: Item) => {
+    if (f.sec.length && !f.sec.includes(i.section)) return false;
     if (f.crit && !i.critical) return false;
     if (!f.showDone && !isOpen(i)) return false;
-    if (f.own && !(i.owner === f.own || i.owner === "both" || (f.own === "founder" && !i.owner))) return false;
-    if (win) { if (!i.due) return false; if (win.overdue && !isOpen(i)) return false; if ("from" in win && win.from && i.due < win.from) return false; if (i.due > win.to) return false; }
+    if (f.own.length && !f.own.some((o) => i.owner === o || i.owner === "both" || (o === "founder" && !i.owner))) return false;
+    if (f.due.length && !dated(i)) return false;
     return true;
   };
-  const cycle = (i: Item) => {
-    const next = ({ todo: "doing", doing: "done", done: "todo", cancelled: "todo" } as const)[i.status];
-    setList((l) => l.map((x) => (x.id === i.id ? { ...x, status: next } : x)));
-    run(() => cycleItem(projectId, i.id));
+  // One explicit status per click: the checkbox is done <-> todo, Start is doing (the go signal for Claude's items), Stop is todo.
+  const setStatus = (i: Item, status: "todo" | "doing" | "done") => {
+    setList((l) => l.map((x) => (x.id === i.id ? { ...x, status } : x)));
+    run(() => setItemStatus(projectId, i.id, status));
   };
   const closed = list.filter((i) => !isOpen(i)).length;
   const shown = list.filter(keep).length;
-  const active = !!f.cat || f.crit || f.showDone !== showDoneDefault || !!f.own || f.when !== "any";
+  const active = f.sec.length > 0 || f.crit || f.showDone !== showDoneDefault || f.own.length > 0 || f.due.length > 0;
+  const clear = () => setFilters({ sec: [], own: [], due: [], crit: false, showDone: showDoneDefault });
+  const added = fresh ? list.find((i) => i.id === fresh) : undefined;
   const chip = (label: string, on: boolean, click: () => void, title?: string) => <button key={label} className="chip" aria-pressed={on} onClick={click} title={title}>{label}</button>;
 
   return (
@@ -69,7 +112,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
         {sections.map((s) => {
           const its = list.filter((i) => i.section === s.id && i.status !== "cancelled"), d = its.filter((i) => i.status === "done").length, g = its.filter((i) => i.status === "doing").length, n = its.length || 1;
           return (
-            <button key={s.id} className="sum" aria-pressed={f.cat === s.id} onClick={() => setFilters({ ...f, cat: f.cat === s.id ? "" : s.id })}>
+            <button key={s.id} className="sum" aria-pressed={f.sec.includes(s.id)} onClick={() => setFilters({ ...f, sec: flip(f.sec, s.id) })}>
               <span className="k"><span>{s.name}</span><span className="n">{d}/{its.length}</span></span>
               <span className="bar"><i className="d" style={{ width: `${(d / n) * 100}%` }} /><i className="g" style={{ width: `${(g / n) * 100}%` }} /></span>
             </button>
@@ -78,9 +121,9 @@ export default function Checklist({ projectId, sections: given, items, today, sh
       </div>
       <div className="filters" role="group" aria-label="Filters">
         <div className="fgroup" role="group" aria-label="Whose">
-          {chip("Everything", !f.own, () => setFilters({ ...f, own: "" }))}
-          {chip("Yours", f.own === "founder", () => setFilters({ ...f, own: f.own === "founder" ? "" : "founder" }))}
-          {chip("Claude's", f.own === "claude", () => setFilters({ ...f, own: f.own === "claude" ? "" : "claude" }))}
+          {chip("Everything", !f.own.length, () => setFilters({ ...f, own: [] }))}
+          {chip("Yours", f.own.includes("founder"), () => setFilters({ ...f, own: flip(f.own, "founder") }))}
+          {chip("Claude's", f.own.includes("claude"), () => setFilters({ ...f, own: flip(f.own, "claude") }))}
         </div>
         <div className="fgroup" role="group" aria-label="Flags">
           {chip("Critical only", f.crit, () => setFilters({ ...f, crit: !f.crit }))}
@@ -88,31 +131,34 @@ export default function Checklist({ projectId, sections: given, items, today, sh
         </div>
         <div className="fgroup" role="group" aria-label="Due">
           <span className="lbl">Due</span>
-          {([["any", "Any date"], ["overdue", "Overdue"], ["week", "Next 7 days"], ["2w", "Next 14 days"]] as const).map(([k, l]) => chip(l, f.when === k, () => setFilters({ ...f, when: k })))}
+          {chip("Any date", !f.due.length, () => setFilters({ ...f, due: [] }))}
+          {WHEN.map(([k, l, t]) => chip(l, f.due.includes(k), () => setFilters({ ...f, due: flip(f.due, k) }), t))}
         </div>
         <span className="fend">
-          {active && <button className="more" onClick={() => setFilters(defaults(showDoneDefault))}>Reset filters</button>}
-          <span className="due">{shown} of {list.length} shown</span>
+          {active && <button className="more" onClick={clear}>Clear filters</button>}
+          <span className="due" role="status">{active ? `${shown} of ${list.length} items` : `${shown} item${shown === 1 ? "" : "s"}`}</span>
         </span>
       </div>
       {err && <div className="due late" role="alert">{err}</div>}
-      {sections.filter((s) => !f.cat || f.cat === s.id).map((s) => {
+      {added && !keep(added) && <div className="due" role="status">Added &ldquo;{added.title}&rdquo; ({added.id}): your filters hide it. <button className="more" onClick={clear}>Clear filters</button></div>}
+      {active && !shown && list.length > 0 && <div className="panel empty">No items match these filters. <button className="more" onClick={clear}>Clear filters</button></div>}
+      {sections.filter((s) => !f.sec.length || f.sec.includes(s.id)).map((s) => {
         const all = list.filter((i) => i.section === s.id);
         let its = all.filter(keep).sort((a, b) => a.sort - b.sort);
-        if (win) its = its.sort((a, b) => (a.due || "9").localeCompare(b.due || "9"));
+        if (f.due.length) its = its.sort((a, b) => (a.due || "9").localeCompare(b.due || "9"));
         const hiddenClosed = all.filter((i) => !isOpen(i) && !keep(i)).length;
         return (
           <section className="cat" key={s.id}>
-            <div className="cat-h"><h2>{s.name}</h2>{s.note && <p>{s.note}</p>}</div>
+            <div className={`cat-h sec-${s.id}`}><h2><i className="lane" aria-hidden="true" />{s.name}{s.id === "decide" && <i className="sdot" aria-hidden="true" />}</h2>{s.note && <p>{s.note}</p>}</div>
             <div className="list">
               {!its.length && (
                 <div className="empty">
                   {!all.length ? "Nothing here yet." : hiddenClosed === all.length ? <>All {all.length} done or cancelled. <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></> : "Nothing here with these filters."}
                 </div>
               )}
-              {its.map((i) => <Row key={i.id} i={i} s={s} today={today} onCycle={() => cycle(i)} run={run} projectId={projectId} />)}
+              {its.map((i) => <Row key={i.id} i={i} s={s} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
               {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "8px 14px" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
-              <AddRow projectId={projectId} section={s} run={run} today={today} />
+              <AddRow projectId={projectId} section={s} today={today} onAdded={setFresh} />
             </div>
           </section>
         );
@@ -121,18 +167,23 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   );
 }
 
-function Row({ i, s, today, onCycle, run, projectId }: { i: Item; s: Section; today: string; onCycle: () => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
+const ACTIVE_BUILD = ["working", "merge_requested", "sent_back"];
+function Row({ i, s, today, fresh, onStatus, run, projectId }: { i: Item; s: Section; today: string; fresh: boolean; onStatus: (s: "todo" | "doing" | "done") => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
   const [open, setOpen] = useState(false);
   const long = i.detail.length > 170 || i.detail.includes("\n");
   const late = i.due && isOpen(i) && i.due < today, soon = i.due && isOpen(i) && !late && i.due <= addDays(today, 2);
   const claudeOwned = i.owner === "claude" || i.owner === "both";
   return (
-    <div className={`row${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}`}>
-      <button className="st" data-s={i.status} onClick={onCycle} aria-label={`${i.title}: ${i.status}. Change status`}>{i.status === "done" ? "✓" : i.status === "doing" ? "◐" : i.status === "cancelled" ? "–" : ""}</button>
+    <div id={`item-${i.id}`} className={`row${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}${fresh ? " fresh" : ""}`}>
+      {i.status === "cancelled"
+        ? <span className="st" data-s="cancelled" role="img" aria-label={`${i.title}: cancelled`}>–</span>
+        : <button className="st" data-s={i.status} role="checkbox" aria-checked={i.status === "done"} onClick={() => onStatus(i.status === "done" ? "todo" : "done")}
+            aria-label={`Done: ${i.title}`} title={i.status === "done" ? "Done · click to reopen" : "Mark done"}>{i.status === "done" ? "✓" : ""}</button>}
       <div style={{ minWidth: 0 }}>
         <div className="t">
           <span>{i.title}</span>
           <span className="pill code" title="Say this code to Claude to refer to the item">{i.id}</span>
+          {fresh && <span className="pill go">just added</span>}
           {i.owner && <span className={`pill${i.owner === "founder" ? " you" : ""}`}>{OWN[i.owner] || i.owner}</span>}
           {i.critical && isOpen(i) && <span className="pill crit">critical</span>}
           {i.priority === 1 && !i.critical && <span className="pill crit">high</span>}
@@ -155,11 +206,23 @@ function Row({ i, s, today, onCycle, run, projectId }: { i: Item; s: Section; to
         {i.build_status === "failed" && !i.pr_url && <Build i={i} run={run} projectId={projectId} />}
         <button className="more" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Show less" : long ? "Show more" : "Comment"}</button>
         {open && <Comment i={i} run={run} projectId={projectId} />}
-        {(s.notes || i.note) && <Note i={i} run={run} projectId={projectId} />}
+        {(s.notes || i.note) && <Note i={i} projectId={projectId} />}
       </div>
       <div className="rowside">
         <input type="date" className={`duein due${late ? " late" : soon ? " soon" : ""}`} value={i.due || ""} aria-label={`Due date for ${i.title}`}
           onChange={(e) => run(() => setDue(projectId, i.id, e.target.value || null))} />
+        {i.status === "todo" && !ACTIVE_BUILD.includes(i.build_status || "") && (
+          <button className="btn sm ghost startbtn" onClick={() => onStatus("doing")} aria-label={`${claudeOwned ? "Start build" : "Start"}: ${i.title}`}
+            title={claudeOwned ? "Claude builds this on a branch and opens a pull request for you to review (the Mac worker picks it up within a minute)" : "Mark it in progress"}>{claudeOwned ? "Start build ▸" : "Start ▸"}</button>
+        )}
+        {i.status === "doing" && (
+          <span className="inprog">
+            <span className="st-doing"><Icon n="timeline" size={13} />In progress</span>
+            {!ACTIVE_BUILD.includes(i.build_status || "") && (
+              <button className="more" onClick={() => onStatus("todo")} aria-label={`Stop: ${i.title}`} title={claudeOwned && !i.build_status ? "Back to to do: the queued build won't start" : "Back to to do"}>Stop</button>
+            )}
+          </span>
+        )}
       </div>
     </div>
   );
@@ -168,6 +231,7 @@ function Row({ i, s, today, onCycle, run, projectId }: { i: Item; s: Section; to
 /** The PR of a build run, with the only two things the owner does here: approve (the worker merges) or send it back. */
 function Build({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
   const [back, setBack] = useState(false), [note, setNote] = useState("");
+  const s = useSubmit();
   const short = (i.pr_url || "").replace("https://github.com/", "");
   return (
     <div className="buildbar">
@@ -186,12 +250,14 @@ function Build({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unknown
         {i.pr_url && <button className="btn sm ghost" onClick={() => setBack(true)}>Send back with a note</button>}
       </>}
       {back && (
-        <form className="addrow" style={{ width: "100%" }} onSubmit={(e) => { e.preventDefault(); setBack(false); run(() => sendBackBuild(projectId, i.id, note)); setNote(""); }}>
+        <form className="addrow" style={{ width: "100%" }} onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); const v = note.trim(); if (!v || s.pending) return; s.submit(() => sendBackBuild(projectId, i.id, v), { ok: "Sent back", onOk: () => { setNote(""); setBack(false); } }); }}>
           <input className="input" value={note} onChange={(e) => setNote(e.target.value)} maxLength={2000} autoFocus aria-label="What to change" placeholder="What should change? Claude continues on the same branch and PR." />
-          <button className="btn sm" disabled={!note.trim()}>Send back</button>
+          <button className="btn sm" disabled={!note.trim() || s.pending}>{s.pending ? "Sending…" : "Send back"}</button>
           <button type="button" className="more" onClick={() => setBack(false)}>Cancel</button>
+          <Ack s={s} busy="Sending…" />
         </form>
       )}
+      {!back && s.ok && <Ack s={s} />}
     </div>
   );
 }
@@ -200,64 +266,71 @@ function Build({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unknown
 function Comment({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
   const [t, setT] = useState("");
   const [cancelling, setCancelling] = useState(false), [reason, setReason] = useState(""), [dup, setDup] = useState("");
+  const s = useSubmit(), c = useSubmit();
   const pending = i.refine === "pending" && !!i.refine_request;
   return (
     <div className="comment">
       {pending && <div className="said"><span className="lbl">Your comment</span> {i.refine_request}<span className="due"> · Claude is reading it…</span></div>}
       {!pending && i.refine_note && <div className="said"><span className="lbl">Claude</span> {i.refine_note}</div>}
-      {i.status === "cancelled" && <div className="said"><span className="lbl">Cancelled</span> {i.cancel_reason || "No reason given."}{i.duplicate_of ? ` Duplicate of ${i.duplicate_of}.` : ""} <button className="more" onClick={() => run(() => cycleItem(projectId, i.id))}>Reopen</button></div>}
-      <form className="addrow" onSubmit={(e) => { e.preventDefault(); const v = t.trim(); if (!v) return; setT(""); run(() => commentItem(projectId, i.id, v)); }}>
+      {i.status === "cancelled" && <div className="said"><span className="lbl">Cancelled</span> {i.cancel_reason || "No reason given."}{i.duplicate_of ? ` Duplicate of ${i.duplicate_of}.` : ""} <button className="more" onClick={() => run(() => setItemStatus(projectId, i.id, "todo"))}>Reopen</button></div>}
+      <form className="addrow" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); const v = t.trim(); if (!v || s.pending) return; s.submit(() => commentItem(projectId, i.id, v), { ok: "Sent to Claude", onOk: () => setT("") }); }}>
         <input className="input" value={t} onChange={(e) => setT(e.target.value)} maxLength={2000} aria-label={`Comment on ${i.title}`}
           placeholder="Comment or ask for a change: split it, move it to Friday, it's blocked by…, add a step…" />
-        <button className="btn sm" disabled={!t.trim()}>Send to Claude</button>
+        <button className="btn sm" disabled={!t.trim() || s.pending}>{s.pending ? "Sending…" : "Send to Claude"}</button>
         {isOpen(i) && !cancelling && <button type="button" className="more" onClick={() => setCancelling(true)}>Cancel this item</button>}
+        <Ack s={s} busy="Sending…" />
       </form>
       {cancelling && (
-        <form className="addrow" onSubmit={(e) => { e.preventDefault(); setCancelling(false); run(() => cancelItem(projectId, i.id, reason, dup.trim() || null)); }}>
+        <form className="addrow" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); if (c.pending) return; c.submit(() => cancelItem(projectId, i.id, reason, dup.trim() || null), { ok: "Cancelled", onOk: () => { setCancelling(false); setReason(""); setDup(""); } }); }}>
           <input className="input" value={reason} onChange={(e) => setReason(e.target.value)} maxLength={500} autoFocus aria-label="Why cancel" placeholder="Why? (optional: no longer needed, superseded, duplicate…)" />
           <input className="input" value={dup} onChange={(e) => setDup(e.target.value)} maxLength={60} aria-label="Duplicate of item code" placeholder="Duplicate of (item code, optional)" style={{ flex: "0 1 220px" }} />
-          <button className="btn sm">Cancel item</button>
+          <button className="btn sm" disabled={c.pending}>{c.pending ? "Cancelling…" : "Cancel item"}</button>
           <button type="button" className="more" onClick={() => setCancelling(false)}>Keep it</button>
+          <Ack s={c} />
         </form>
       )}
     </div>
   );
 }
 
-/** The decision box: a draft stays here until "Send to Claude"; then it shows sent / read states. */
-function Note({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
+/** The decision box: a draft stays here until "Send to Claude" (or Enter; Shift+Enter is a new line); then it shows sent / read states. */
+function Note({ i, projectId }: { i: Item; projectId: string }) {
   const draftKey = `jarvis.note.${projectId}.${i.id}`;
   const [note, setNote] = useState(i.note);
-  const [sending, setSending] = useState(false);
+  const s = useSubmit();
   useEffect(() => { try { const d = localStorage.getItem(draftKey); setNote(d ?? i.note); } catch { setNote(i.note); } }, [i.note, draftKey]);
   const dirty = note.trim() !== i.note.trim();
   const readIt = !!i.note_sent_at && i.refine !== "pending" && !dirty;
   const sentNotRead = !!i.note_sent_at && i.refine === "pending" && !dirty;
   const change = (v: string) => { setNote(v); try { if (v.trim() !== i.note.trim()) localStorage.setItem(draftKey, v); else localStorage.removeItem(draftKey); } catch { /* ignore */ } };
   return (
-    <div className="note">
+    <form className="note" onSubmit={(e) => { e.preventDefault(); if (!dirty || !note.trim() || s.pending) return; s.submit(() => sendNote(projectId, i.id, note), { ok: "Sent", onOk: () => { try { localStorage.removeItem(draftKey); } catch { /* ignore */ } } }); }}>
       <label className="lbl" htmlFor={`note-${i.id}`}>Your answer (Claude reads it when you send it)</label>
-      <textarea id={`note-${i.id}`} className="textarea" rows={2} value={note} placeholder="Your call, or a question back" onChange={(e) => change(e.target.value)} />
+      <textarea id={`note-${i.id}`} className="textarea" rows={2} value={note} placeholder="Your call, or a question back · Enter sends, Shift+Enter for a new line" onChange={(e) => change(e.target.value)} onKeyDown={enterSends} />
       <div className="crow" style={{ gap: 10 }}>
-        <button className="btn sm" disabled={!dirty || !note.trim() || sending} onClick={() => { setSending(true); run(async () => { const r = await sendNote(projectId, i.id, note); setSending(false); if (r.error) throw new Error(r.error); try { localStorage.removeItem(draftKey); } catch { /* ignore */ } }); }}>
-          {sending ? "Sending…" : "Send to Claude"}
-        </button>
-        <span className="due">
-          {dirty ? "Draft, not sent" : sentNotRead ? `Sent ${fmtWhen(i.note_sent_at!)} · Claude has not read it yet` : readIt ? `Sent ${fmtWhen(i.note_sent_at!)} · Claude read it` : i.note ? "Saved" : ""}
-        </span>
+        <button className="btn sm" disabled={!dirty || !note.trim() || s.pending}>{s.pending ? "Sending…" : "Send to Claude"}</button>
+        {s.err || s.pending || s.ok ? <Ack s={s} busy="Sending…" /> : (
+          <span className="due">
+            {dirty ? "Draft, not sent" : sentNotRead ? `Sent ${fmtWhen(i.note_sent_at!)} · Claude has not read it yet` : readIt ? `Sent ${fmtWhen(i.note_sent_at!)} · Claude read it` : i.note ? "Saved" : ""}
+          </span>
+        )}
       </div>
-    </div>
+    </form>
   );
 }
 
-function AddRow({ projectId, section, run, today }: { projectId: string; section: Section; run: (fn: () => Promise<unknown>) => void; today: string }) {
-  const [t, setT] = useState(""), [d, setD] = useState(addDays(today, 7)), [msg, setMsg] = useState("");
+function AddRow({ projectId, section, today, onAdded }: { projectId: string; section: Section; today: string; onAdded: (id: string) => void }) {
+  const [t, setT] = useState(""), [d, setD] = useState(addDays(today, 7));
+  const s = useSubmit();
   return (
-    <form className="addrow" onSubmit={(e) => { e.preventDefault(); const v = t.trim(); if (!v) return; setMsg(""); run(async () => { const r = await newItem(projectId, section.id, v, d || null); if (r?.error) setMsg(r.error); else setT(""); }); }}>
+    <form className="addrow" onKeyDown={imeGuard} onSubmit={(e) => {
+      e.preventDefault(); const v = t.trim(); if (!v || s.pending) return;
+      s.submit(() => newItem(projectId, section.id, v, d || null), { ok: "Added", onOk: (r) => { setT(""); const id = (r as { id?: string } | undefined)?.id; if (id) onAdded(id); } });
+    }}>
       <input id={`add-${section.id}`} className="input" value={t} onChange={(e) => setT(e.target.value)} placeholder={`Add to ${section.name}…`} aria-label={`New ${section.name} item`} />
       <input className="input" type="date" value={d} onChange={(e) => setD(e.target.value)} aria-label="Due date" />
-      <button className="btn sm">Add</button>
-      {msg && <span className="due late" role="alert" style={{ flexBasis: "100%" }}>{msg}</span>}
+      <button className="btn sm" disabled={!t.trim() || s.pending}>{s.pending ? "Adding…" : "Add"}</button>
+      <Ack s={s} busy="Adding…" />
     </form>
   );
 }

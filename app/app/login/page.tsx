@@ -1,5 +1,6 @@
 "use client";
 import { useState } from "react";
+import { Mark } from "@/components/icons";
 
 export default function Login() {
   const [err, setErr] = useState(""), [busy, setBusy] = useState(false);
@@ -14,7 +15,7 @@ export default function Login() {
   return (
     <main className="login">
       <form onSubmit={submit}>
-        <div className="word"><i className="pulse" aria-hidden="true" />Jarvis <span>Central</span></div>
+        <div className="word"><Mark size={30} className="live" />Sentient <span>Dash</span></div>
         <label>Password<input className="input" type="password" name="password" autoComplete="current-password" required autoFocus /></label>
         <label>6-digit code from your authenticator app<input className="input" name="code" inputMode="numeric" autoComplete="one-time-code" pattern="[0-9 ]{6,7}" required /></label>
         <button className="btn" disabled={busy}>{busy ? "Signing in…" : "Sign in"}</button>

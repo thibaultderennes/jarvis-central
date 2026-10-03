@@ -7,11 +7,18 @@
 2. **Mac agent** `agent/` — Node scripts run by launchd (or cron) on the owner's machine:
    - `worker.mjs` every minute: picks up inbox messages, runs `claude -p` in the project, replies.
    - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar.
-   - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review.
+   - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
+     (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.
    - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
      to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
      (`audits.sync_minutes`); `node agent/audits.mjs sync [--project id] [--dry-run]` runs it by hand.
+   - `economics.mjs`: evaluates each opted-in project's unit-economics model file (`economics.files`, default
+     `jarvis.economics.mjs|cjs|js`, or `economics.models.<id>`) over its grid in a child process and uploads changed
+     results for the project's **Finances** tab; hourly (`economics.sync_minutes`). Contract: [`unit-economics.md`](unit-economics.md).
+   - `metrics.mjs`: for each project with a source in `metrics.sources.<id>` (a URL fetched with a token from an env
+     var, or a command run in the project folder, giving JSON numbers), posts the day's product-metrics snapshot for
+     the project's **Stats** view and the Monday review; daily (`metrics.sync_minutes`). Keys: [`metrics.md`](metrics.md).
    - `rescan.mjs`: runs a project-folder scan when "Refresh project folders" was pressed on the Admin page (kv
      `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
@@ -30,7 +37,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 ## Data model (Postgres)
 - `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
-  - `deadlines`: `[{date, label}]`, `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
+  - `deadlines`: `[{date, label, prd?}]` (`prd`: a milestone moved on the Timeline; the date PRD.md still has until the Mac worker writes the new date into that row, `agent/milestones.mjs`), `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
 - `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at)` pk `(project_id, id)`
   - **open** = `todo` or `doing`; `done` and `cancelled` are closed and leave every count, deadline, load and top-3 card.
   - Creating an item (site, API, CLI, plan) refuses an exact duplicate of a title in the same project (normalised: case,
@@ -59,9 +66,20 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     counts from its CRITICAL/HIGH/… sections) plus the first item of a "Ranked"/"Fix order" section; `verdict` =
     off-track (critical > 0), at-risk (high > 0), on-track, or null when the counts can't be read.
 - `recurring_costs(id uuid, project_id null /* null = independent */, name, amount numeric, currency, period 'week'|'month'|'year', next_renewal date null, notes, active bool, created_at, updated_at)` — the Finance page and each project's Finances view; manual entry only.
+- `metrics_snapshots(project_id, date, metrics jsonb /* {key: number}, see metrics.md */, source 'manual'|'url'|'command', created_at, updated_at)` —
+  primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
+  `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, added?, archived?, total?, error?}`).
 - `login_attempts(ip, at, ok)`.
+- `click_events(id bigserial, at, session_id /* random per browser tab, new after 30 idle min */, kind 'click'|'view', page /* path + ?v=/?k=/?tab= + checklist filter codes ?sec=/?own=/?due=/?crit=/?done= */, label, target /* link, button, tab, checkbox… */, section /* the region's aria-label or heading */, href null /* a link's destination path */)` —
+  first-party usage tracking for the Monday Jarvis review. `components/UsageTracker.tsx` (mounted once in the `(main)`
+  layout, one delegated click listener) batches events to `POST /api/usage` (owner session cookie, same origin;
+  sendBeacon, at most every 15 s or 25 events, and when the tab is hidden). Labels come from `data-track`, else
+  aria-label/title/short button text with the row's own text (item and todo titles) replaced by `…` and numbers by `#`;
+  content links are stored by path only; inputs are never read. `data-track-section="…"` names a region, `data-track-off`
+  excludes one. Off when `JARVIS_TRACK_CLICKS=off` (`usage.track_clicks: false`); rows older than
+  `usage.retention_days` (90) are deleted by the Monday run. `activity` keeps the server-side action log.
 
 ## Agent API
 All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JSON in, JSON out. Errors: `{error}` + 4xx/5xx.
@@ -81,16 +99,31 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/messages` | `?status=new&limit=5` (oldest first) or `?since=ISO` | `[{message}]` |
 | POST | `/api/agent/messages` | `{text, project_id?, status? 'answered'|'new'|…, reply?, meta?, mode?, item_id?, thread_id?}` a note already answered, or (`status: 'new'`) work queued for the worker | `{message: {id}}` |
 | PATCH | `/api/agent/messages` | `{id, status?, reply?, meta?, opened?, treated?}` (meta merged; reply sets replied_at and clears opened_at) | `{message}` |
-| GET | `/api/agent/stats` | `?days=14` | `{from, tracking_since, overdue_open, days: [{date, added, done, done_late, cancelled}]}` |
+| GET | `/api/agent/stats` | `?bucket=day\|week\|month` (default `day`) `&n=` buckets (default 14 days / 12 weeks from Monday / 12 months, owner's timezone; `days=` still works) `&project=ID` `&items=1` | `{bucket, from, to, tracking_since, overdue_open, days: [{date (bucket start), added, done, done_late, cancelled, items?: {added: [{id, project_id, title}], done: [{id, project_id, title, late}]}}]}` |
 | GET | `/api/agent/costs` | `?project=ID` (`project=` empty = independent only; absent = all) `&all=1` (inactive too) | `[{cost}]` |
 | POST | `/api/agent/costs` | `{name, amount, currency?, period?, project_id?, next_renewal?, notes?}` | `{cost}` |
 | PATCH | `/api/agent/costs` | `{id, ...fields}` | `{cost}` |
 | DELETE | `/api/agent/costs` | `?id=UUID` | `{ok}` |
 | GET | `/api/agent/reviews` | `?type=&project=&limit=` newest first | `[{review}]` |
 | POST | `/api/agent/reviews` | `{type, project_id?, week_start?, title, verdict?, headline?, body_md, meta?}` upsert (key: `week_start` for weekly types, else `meta.file` when set, else `id`, else insert) | `{review}` |
+| GET | `/api/agent/economics` | `?project=ID` (`&full=1` includes `data`) | `{project_id, file, sha, synced_at, error, error_at}`; 404 when none synced |
+| PUT | `/api/agent/economics` | `{project_id, file, sha, data}` (an evaluated model, `data.v = 1`, ≤ 2 MB) or `{project_id, file, error}` (keeps the last good data) | `{economics}` without `data` |
+| GET | `/api/agent/metrics` | `?project=ID&since=YYYY-MM-DD&limit=N` (default 400, newest kept) | `[{project_id, date, metrics, source, updated_at}]` oldest first; `[]` before the table exists |
+| POST | `/api/agent/metrics` | `{project_id, date? /* default today, never future */, metrics: {key: number \| null /* null removes the key */}, source?}` upsert by project + date, keys merged | `{snapshot}` |
 | POST | `/api/agent/heartbeat` | `{worker: 'worker'|'weekly', info?}` | `{ok}` |
 | POST | `/api/agent/import` | `{projects?:[], items?:[], reviews?:[]}` bulk upsert (migration) | `{counts}` |
 | GET | `/api/agent/calendar` | `?from=DATE&to=DATE` | `[{start, end, allDay, title, location}]` |
+| GET | `/api/agent/activity` | `?since=ISO` | `[{at, kind, page, detail}]` server-side action log |
+| GET | `/api/agent/usage` | `?since=ISO&until=ISO` (default: the last 7 days) | `{totals: {events, clicks, views, sessions, active_days}, top_clicks: [{page, label, target, section, n}], pages: [{page, views, clicks, dead_ends, exits}], dead_end_pages, sequences: [{from, to, n}], paths: [{path, n}], filters: [{page, filters, n}], backtracks: [{page, via, n}], rarely_used: [{page, label, before, now}], truncated}` aggregate of `click_events`: pages group by path + view (filter codes counted apart in `filters`), and consecutive views of one page count as one visit; 503 when the table is missing |
+| DELETE | `/api/agent/usage` | `?days=90` | `{deleted}` raw click events older than that (retention) |
+
+Site endpoint (owner session cookie, not the agent token): `POST /api/usage` — body (text/plain JSON)
+`{sid, events: [{t /* ms */, k 'click'|'view', p /* page */, l /* label */, g /* element kind */, s /* section */, h /* href */}]}`,
+≤ 100 events and 64 KB; always `204` once signed in (dropped silently when tracking is off or the table is missing),
+`401` logged out, `403` from another origin.
+Site endpoint for the ⌘K palette (owner session cookie): `GET /api/search?q=TEXT[&projects=1]` →
+`{items: [{project_id, id, title, status, due, section}], projects?: [{id, name, color, tagline}]}` — items whose id or
+title contain every word (case- and accent-insensitive, archived projects left out), open first, ≤ 20; `401` logged out.
 
 ## Worker rules
 - Answers questions, researches, edits checklists/todos through the API, plans days.
@@ -98,7 +131,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
   item's build run); the worker script (not Claude) pushes and opens the PR. Claude never merges, deploys, pays, emails,
   texts, or touches production data or secrets. The only merge the worker script does is `gh pr merge` of a PR the
   owner approved on the item ("Approve & merge"); the item is then done.
-- Every pass, before the inbox: refine new items, sync audits, run a requested folder rescan, merge approved PRs, then
+- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, merge approved PRs, then
   queue at most one build run (in-progress items owned by Claude, sent-back PRs first, critical first).
 - Anything outside that → status `needs_you` with a clear explanation.
 
@@ -121,9 +154,17 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 - `GET /api/cal/jarvis.ics?key=` (calendar token in the URL): iCalendar feed of planned weeks for Apple Calendar.
 
 ## Site pages
-- `/` Overview · `/today` · `/week` · `/p/<id>` (left menu: Dashboard, Checklists, Project, Reviews, Finances, Statistics;
-  `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
+- `/` Home: four tiles (next event, today's list, overdue, next deadline), **Needs you** (`app/lib/needs.ts`
+  `needsYou()` → `{rows, count}`: open items in each project's decide section owned by you, items with a PR waiting for
+  Approve & merge, replies you haven't opened; oldest first), the top-3 project cards with pace against the next
+  milestone, this week's reviews; the charts live on `/stats`. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
+  (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
+  Inbox, Timeline, Stats and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · `/timeline` (last week → 8 weeks out, one lane per project: PRD milestones,
+  open items' due dates per day, this and next week's Sunday-plan blocks, calendar events; built in `app/lib/timeline.ts`
+  from existing data, no table of its own) · `/p/<id>` (left menu: Dashboard, Checklists, Timeline (one lane per section),
+  Project, Reviews, Finances, Statistics; `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
   `/inbox` (New / Pending / Treated) · `/admin` (projects + "Refresh project folders", account, subscriptions, preferences).
 - Env vars the site reads beyond the secrets: `JARVIS_TZ`, `JARVIS_OWNER`, `JARVIS_REVIEW_WHEN`, `JARVIS_PLAN_WHEN`,
   `JARVIS_FOCUS_MINUTES` (a day of focus for the Today/Week load bars; written from `planner.max_focus_minutes_per_day`
-  by `node app/scripts/setup.mjs secrets`).
+  by `node app/scripts/setup.mjs secrets`), `JARVIS_TRACK_CLICKS` (`on`/`off`, from `usage.track_clicks`; missing = on;
+  `setup.mjs secrets` or `setup.mjs usage`).

@@ -10,6 +10,9 @@ API contract: `../docs/architecture.md`.
 | `jarvis.mjs` | CLI for Claude Code sessions: checklists, todos, inbox, reviews (`node jarvis.mjs help`) |
 | `projects.mjs` | Your projects folder: `list`, `scaffold` (draft missing CLAUDE.md / PRD.md), `sync` (register on the site), `checklist <id>` (first checklist from the PRD) |
 | `worker.mjs` | One inbox pass: picks up messages from the site, runs `claude -p` in the project, replies; once an hour also mirrors audit reports |
+| `economics.mjs` | Evaluates each project's unit-economics model file (`jarvis.economics.*` or `economics.models.<id>`; see `docs/unit-economics.md`) and uploads it to the Finances tab; `sync [--project id] [--dry-run]`, `eval <file>` |
+| `metrics.mjs` | Fetches each project's product numbers from its source in `metrics.sources.<id>` (URL or command; see `docs/metrics.md`) and posts the day's snapshot for the Stats view; `sync [--project id] [--dry-run]` |
+| `milestones.mjs` | Milestones moved on the Timeline → the new date written into that PRD.md row (file only, no commit); the worker runs it every pass, `sync` and plans before reading the PRD |
 | `audits.mjs` | Mirrors each project's security audit reports (`audits.dir`, default `docs/audits/*.md`) to the site's Security tab; `sync [--project id] [--dry-run]` runs it by hand |
 | `plan.mjs` | Weekly planner: estimates open items, packs them around your calendar → todos + calendars |
 | `weekly.mjs` | Weekly reviews: CEO / CMO / PO advisors per project + synthesis, recap, "working with AI" coaching, Jarvis usage |
@@ -71,6 +74,9 @@ node worker.mjs                        # one pass       · --dry-run prints a sa
 node plan.mjs --dry-run                # plan next week without posting · --week YYYY-MM-DD · --force
 node weekly.mjs                        # review last week · --week YYYY-MM-DD · --only <id> · --dry-run [--offline]
 node transcripts.mjs --days 7          # session counts per folder (no message text)
+node economics.mjs sync --dry-run      # evaluate unit-economics models without uploading · --project <id>
+node metrics.mjs sync --dry-run        # fetch product metrics without posting · --project <id>
+node jarvis.mjs metrics <id> --set users=120 --set visits=900   # record numbers by hand (today; --date D)
 node audits.mjs sync --dry-run         # which audit reports would be mirrored · --project <id>
 node jarvis.mjs audits <id>            # the synced reports for a project (date, verdict, headline)
 ```

@@ -34,6 +34,7 @@
     "interval_seconds": 60,
     "allow_build": true,
     "refine_new_items": true,
+    "refine_inbox_notes": false,
     "discuss_model": "sonnet",
     "build_model": null,
     "timeout_minutes": 25
@@ -44,8 +45,29 @@
     "sync_minutes": 60
   },
 
+  "economics": {
+    "files": ["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"],
+    "models": { "example-project": "docs/finance/jarvis.economics.cjs" },
+    "sync_minutes": 60,
+    "timeout_seconds": 30
+  },
+
+  "metrics": {
+    "sync_minutes": 1440,
+    "timeout_seconds": 30,
+    "sources": {
+      "example-project": { "url": "https://example.com/api/metrics", "token_env": "EXAMPLE_METRICS_TOKEN" },
+      "other-project": { "command": "node scripts/metrics.mjs", "map": { "visits": "traffic.visitors", "users": "accounts.total" } }
+    }
+  },
+
   "guard": {
     "deny": []
+  },
+
+  "usage": {
+    "track_clicks": true,
+    "retention_days": 90
   },
 
   "calendars": {
