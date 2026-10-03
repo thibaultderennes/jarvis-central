@@ -19,18 +19,18 @@ import "./project.css";
 import "../../finance/finance.css";
 
 type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; bucket?: string };
-const VIEWS = ["dashboard", "checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
+const VIEWS = ["checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
 type View = (typeof VIEWS)[number];
-// Links from before the left menu (?tab=…) keep working.
-const LEGACY: Record<string, { v: View; k?: string }> = { checklist: { v: "checklist" }, reviews: { v: "reviews" }, strategy: { v: "project" }, security: { v: "reviews", k: "security" } };
+// Older links keep working: ?tab=… (before the 0.5.0 menu) and ?v=dashboard (its summary now sits beside the checklist).
+const LEGACY: Record<string, { v: View; k?: string }> = { checklist: { v: "checklist" }, reviews: { v: "reviews" }, strategy: { v: "project" }, security: { v: "reviews", k: "security" }, dashboard: { v: "checklist" } };
 
 export default async function ProjectPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
   await requireSession();
   const { id } = await params, sp = await searchParams;
   const p = await D.getProject(id);
   if (!p) notFound();
-  const legacy = sp.tab ? LEGACY[sp.tab] : undefined;
-  const view: View = (VIEWS as readonly string[]).includes(sp.v || "") ? (sp.v as View) : legacy?.v || "dashboard";
+  const legacy = sp.tab ? LEGACY[sp.tab] : sp.v ? LEGACY[sp.v] : undefined;
+  const view: View = (VIEWS as readonly string[]).includes(sp.v || "") ? (sp.v as View) : legacy?.v || "checklist";
   const kind = sp.k || legacy?.k || "weekly";
   const t = today();
   const [items, weekly, docs, audits, msgs, all, prefs, costs, economics] = await Promise.all([
@@ -45,17 +45,16 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const rank = D.splitFeatured(all).featured.findIndex((x) => x.id === p.id) + 1;
   const href = (q: Record<string, string>) => `/p/${id}?${new URLSearchParams(q)}`;
   const menu: { v: View; label: string; count?: number }[] = [
-    { v: "dashboard", label: "Dashboard" },
-    { v: "checklist", label: "Checklists", count: open.length },
+    { v: "checklist", label: "Checklist", count: open.length },
     { v: "timeline", label: "Timeline" },
-    { v: "project", label: "Project", count: docs.length || undefined },
+    { v: "project", label: "Docs", count: docs.length || undefined },
     { v: "reviews", label: "Reviews", count: weekly.length + audits.length || undefined },
     { v: "finance", label: "Finances", count: costs.filter((c) => c.active).length || undefined },
-    { v: "stats", label: "Statistics" },
+    { v: "stats", label: "Stats" },
   ];
 
   return (
-    <div data-c={p.color} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+    <div data-c={p.color} className="ppage">
       <div className="hello">
         <div>
           <h1 className="page" style={{ display: "flex", gap: 12, alignItems: "center" }}><i className="dot" style={{ width: 14, height: 14 }} />{p.name}</h1>
@@ -67,133 +66,112 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         </div>
       </div>
 
-      <div className="pgrid">
-        <nav className="pmenu" aria-label="Project sections">
-          {menu.map((m) => (
-            <Link key={m.v} href={m.v === "dashboard" ? `/p/${id}` : href({ v: m.v })} aria-current={view === m.v ? "page" : undefined}>
-              <span>{m.label}</span>{m.count !== undefined && <span className="ct">{m.count}</span>}
-            </Link>
-          ))}
-        </nav>
-        <div className="pmain">
-          {view === "dashboard" && <Dashboard p={p} items={items} weekly={weekly} docs={docs} audits={audits} costs={costs} today={t} href={href} rank={rank} prefs={prefs} />}
+      <nav className="pviews" aria-label="Project views">
+        {menu.map((m) => (
+          <Link key={m.v} href={m.v === "checklist" ? `/p/${id}` : href({ v: m.v })} aria-current={view === m.v ? "page" : undefined}>
+            {m.label}{m.count !== undefined && <span className="ct">{m.count}</span>}
+          </Link>
+        ))}
+      </nav>
 
-          {view === "checklist" && <Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} />}
+      <div className="pmain">
+        {view === "checklist" && (
+          <div className="pchk">
+            <Glance p={p} items={items} weekly={weekly} costs={costs} today={t} href={href} rank={rank} />
+            <div className="pchk-list"><Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} /></div>
+          </div>
+        )}
 
-          {view === "timeline" && <ProjectTimeline id={id} />}
+        {view === "timeline" && <ProjectTimeline id={id} />}
 
-          {view === "project" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <section className="panel">
-                <div className="ph"><h2 className="ph-t">Description</h2><span className="sp" /><span className="hint">{p.kind === "running" ? "Running project" : "Checklist project"}{p.state ? ` · ${p.state}` : ""}</span></div>
-                <div className="pb" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
-                  <p style={{ margin: 0 }}>{p.tagline || <span className="due">No tagline yet: set one in the project&apos;s CLAUDE.md or `projects.overrides` in your config.</span>}</p>
-                  {p.status && <p style={{ margin: 0, color: "var(--ink-2)" }}>{p.status}</p>}
-                  <div className="flags">
-                    {p.dir && <span title="Folder on your Mac">{p.dir}</span>}
-                    {p.deadlines.map((d) => <span key={d.date}>{d.label} · {fmtDate(d.date)}</span>)}
-                    {p.links.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 10.5, padding: "1px 7px", borderRadius: 4, background: "var(--line-2)", color: "var(--doing)", textDecoration: "none" }}>{l.label} ↗</a>)}
-                  </div>
+        {view === "project" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <section className="panel">
+              <div className="ph"><h2 className="ph-t">Description</h2><span className="sp" /><span className="hint">{p.kind === "running" ? "Running project" : "Checklist project"}{p.state ? ` · ${p.state}` : ""}</span></div>
+              <div className="pb" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                <p style={{ margin: 0 }}>{p.tagline || <span className="due">No tagline yet: set one in the project&apos;s CLAUDE.md or `projects.overrides` in your config.</span>}</p>
+                {p.status && <p style={{ margin: 0, color: "var(--ink-2)" }}>{p.status}</p>}
+                <div className="flags">
+                  {p.dir && <span title="Folder on your Mac">{p.dir}</span>}
+                  {p.deadlines.map((d) => <span key={d.date}>{d.label} · {fmtDate(d.date)}</span>)}
+                  {p.links.map((l) => <a key={l.url} href={l.url} target="_blank" rel="noopener noreferrer" style={{ fontFamily: "var(--mono)", fontSize: 10.5, padding: "1px 7px", borderRadius: 4, background: "var(--line-2)", color: "var(--doing)", textDecoration: "none" }}>{l.label} ↗</a>)}
                 </div>
-              </section>
-              <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div className="lbl">Strategy documents · moat, why it matters, competitors, plans</div>
-                {docs.length ? <ReviewPicker list={docs} sel={sp.r} base={{ v: "project" }} href={href} subtab={sp.t} />
-                  : <div className="panel empty">No strategy documents for {p.name} yet. Ask Claude for one from the Inbox (for example &ldquo;Run a CEO review of {p.name}: moat, 5 whys, competitors&rdquo;), or press &ldquo;{items.length ? "Refresh this project checklist" : "Plan this project"}&rdquo; for a situation report. They land here.</div>}
-              </section>
-            </div>
-          )}
-
-          {view === "reviews" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-              <div className="chips" role="group" aria-label="Kind of review">
-                <Link className="chip" aria-pressed={kind !== "security"} href={href({ v: "reviews" })}>Weekly reviews{weekly.length > 0 && ` (${weekly.length})`}</Link>
-                <Link className="chip" aria-pressed={kind === "security"} href={href({ v: "reviews", k: "security" })}>Security audits{audits.length > 0 && ` (${audits.length})`}</Link>
               </div>
-              {kind !== "security" && (weekly.length ? <ReviewPicker list={weekly} sel={sp.r} base={{ v: "reviews" }} href={href} />
-                : <div className="panel empty">The first weekly review for {p.name} arrives {REVIEW_WHEN}. It covers what shipped, what slipped, an audit of the week&apos;s work, risks, and your top 3 for the week.</div>)}
-              {kind === "security" && (audits.length ? <ReviewPicker list={audits} sel={sp.r} base={{ v: "reviews", k: "security" }} href={href} />
-                : <div className="panel empty">No audit reports yet. Markdown reports in the project folder&apos;s audits directory (<code>docs/audits</code> unless <code>audits.dir</code> says otherwise) appear here after the next sync, within an hour of landing.</div>)}
-            </div>
-          )}
+            </section>
+            <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="lbl">Strategy documents · moat, why it matters, competitors, plans</div>
+              {docs.length ? <ReviewPicker list={docs} sel={sp.r} base={{ v: "project" }} href={href} subtab={sp.t} />
+                : <div className="panel empty">No strategy documents for {p.name} yet. Ask Claude for one from the Inbox (for example &ldquo;Run a CEO review of {p.name}: moat, 5 whys, competitors&rdquo;), or press &ldquo;{items.length ? "Refresh this project checklist" : "Plan this project"}&rdquo; for a situation report. They land here.</div>}
+            </section>
+          </div>
+        )}
 
-          {view === "finance" && (
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              {economics && <UnitEconomics economics={economics} />}
-              <Costs costs={costs} projects={all.map((x) => ({ id: x.id, name: x.name, color: x.color }))} project={id} currency={prefs.finance_currency || "USD"} today={t} />
-              {!economics && <div className="panel empty">No unit-economics model for {p.name}. Add a <code>jarvis.economics.mjs</code> (or <code>.cjs</code>) file to the project folder that prices one point of a users × usage × plan grid; the Mac agent evaluates it hourly and shows profit by users, a profit grid, margins per plan and cost lines here. See docs/unit-economics.md.</div>}
+        {view === "reviews" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+            <div className="chips" role="group" aria-label="Kind of review">
+              <Link className="chip" aria-pressed={kind !== "security"} href={href({ v: "reviews" })}>Weekly reviews{weekly.length > 0 && ` (${weekly.length})`}</Link>
+              <Link className="chip" aria-pressed={kind === "security"} href={href({ v: "reviews", k: "security" })}>Security audits{audits.length > 0 && ` (${audits.length})`}</Link>
             </div>
-          )}
+            {kind !== "security" && (weekly.length ? <ReviewPicker list={weekly} sel={sp.r} base={{ v: "reviews" }} href={href} />
+              : <div className="panel empty">The first weekly review for {p.name} arrives {REVIEW_WHEN}. It covers what shipped, what slipped, an audit of the week&apos;s work, risks, and your top 3 for the week.</div>)}
+            {kind === "security" && (audits.length ? <ReviewPicker list={audits} sel={sp.r} base={{ v: "reviews", k: "security" }} href={href} />
+              : <div className="panel empty">No audit reports yet. Markdown reports in the project folder&apos;s audits directory (<code>docs/audits</code> unless <code>audits.dir</code> says otherwise) appear here after the next sync, within an hour of landing.</div>)}
+          </div>
+        )}
 
-          {view === "stats" && <Stats project={p} bucket={sp.bucket} today={t} />}
-        </div>
+        {view === "finance" && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {economics && <UnitEconomics economics={economics} />}
+            <Costs costs={costs} projects={all.map((x) => ({ id: x.id, name: x.name, color: x.color }))} project={id} currency={prefs.finance_currency || "USD"} today={t} />
+            {!economics && <div className="panel empty">No unit-economics model for {p.name}. Add a <code>jarvis.economics.mjs</code> (or <code>.cjs</code>) file to the project folder that prices one point of a users × usage × plan grid; the Mac agent evaluates it hourly and shows profit by users, a profit grid, margins per plan and cost lines here. See docs/unit-economics.md.</div>}
+          </div>
+        )}
+
+        {view === "stats" && <Stats project={p} bucket={sp.bucket} today={t} />}
       </div>
     </div>
   );
 }
 
-/** The landing view: what to do next, what is in progress, what the reviews say. Every card shows data that exists. */
-function Dashboard({ p, items, weekly, docs, audits, costs, today: t, href, rank, prefs }: { p: D.Project; items: D.Item[]; weekly: D.Review[]; docs: D.Review[]; audits: D.Review[]; costs: D.Cost[]; today: string; href: (q: Record<string, string>) => string; rank: number; prefs: D.Prefs }) {
+/** "At a glance" beside the checklist (a strip above it on narrower screens): what the old Dashboard view showed. */
+function Glance({ p, items, weekly, costs, today: t, href, rank }: { p: D.Project; items: D.Item[]; weekly: D.Review[]; costs: D.Cost[]; today: string; href: (q: Record<string, string>) => string; rank: number }) {
   const open = items.filter(D.isOpen);
   const late = open.filter((i) => i.due && i.due < t);
-  const nextUp = [...open].sort((a, b) => Number(!!b.due && b.due < t) - Number(!!a.due && a.due < t) || Number(b.critical) - Number(a.critical) || (a.due || "9").localeCompare(b.due || "9")).slice(0, 6);
   const doing = open.filter((i) => i.status === "doing");
-  const owners = { you: open.filter((i) => !i.owner || i.owner === "founder").length, claude: open.filter((i) => i.owner === "claude").length, both: open.filter((i) => i.owner === "both").length };
-  const review = weekly[0], doc = docs[0], audit = audits[0];
-  const monthly = costs.filter((c) => c.active).reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.currency]: (acc[c.currency] || 0) + D.monthly(c) }), {});
-  const upcoming = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date)).slice(0, 4);
-  const Due = ({ d }: { d: string }) => { const n = daysBetween(t, d); return <span className={`due${n < 0 ? " late" : n <= 2 ? " soon" : ""}`}>{fmtDate(d)}</span>; };
-  const ItemRow = ({ i }: { i: D.Item }) => (
-    <div className="dr">
-      <span className={`dstat${i.status === "doing" ? " doing" : ""}`} aria-hidden="true" />
-      <span className="dt2"><span>{i.title}</span><small>{i.id}{i.owner ? ` · ${i.owner === "founder" ? "you" : i.owner}` : ""}{i.critical ? " · critical" : ""}{i.build_status ? ` · ${i.build_status.replace("_", " ")}` : ""}</small></span>
-      {i.pr_url ? <a className="due" href={i.pr_url} target="_blank" rel="noopener noreferrer">PR ↗</a> : i.due ? <Due d={i.due} /> : <span className="due">no date</span>}
-    </div>
-  );
+  const building = open.filter((i) => i.build_status === "working" || i.build_status === "merge_requested" || i.build_status === "sent_back" || (i.status === "doing" && (i.owner === "claude" || i.owner === "both") && !i.build_status));
+  const prs = open.filter((i) => i.build_status === "pr_open").length;
+  const review = weekly[0];
+  const active = costs.filter((c) => c.active);
+  const monthly = active.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.currency]: (acc[c.currency] || 0) + D.monthly(c) }), {});
+  const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
+  const n = next ? daysBetween(t, next.date) : 0;
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      <div className="glance dash">
-        <Link className="gl" href={href({ v: "checklist" })}><span className="lbl">Open</span><span className="v">{open.length}</span><span className="s">{items.filter((i) => i.status === "done").length} done · {items.filter((i) => i.status === "cancelled").length} cancelled</span></Link>
-        <Link className="gl" href={href({ v: "checklist", due: "overdue" })}><span className="lbl">Overdue</span><span className={`v${late.length ? " bad" : ""}`}>{late.length}</span><span className="s">{open.filter((i) => i.due === t).length} due today</span></Link>
-        <Link className="gl" href={href({ v: "checklist" })}><span className="lbl">In progress</span><span className="v">{doing.length}</span><span className="s">{doing.filter((i) => i.build_status === "pr_open").length ? `${doing.filter((i) => i.build_status === "pr_open").length} PR waiting for you` : doing.filter((i) => i.build_status === "working").length ? "Claude is building" : "—"}</span></Link>
-        <Link className="gl" href={href({ v: "reviews" })}><span className="lbl">Latest review</span><span className="v" style={{ fontSize: 17, paddingTop: 3 }}>{review?.verdict ? review.verdict.replace("-", " ") : review ? "no verdict" : "none yet"}</span><span className="s">{review?.week_start ? `Week of ${fmtDate(review.week_start)}` : `First one ${REVIEW_WHEN}`}</span></Link>
-        <Link className="gl" href={href({ v: "finance" })}><span className="lbl">Recurring costs</span><span className="v" style={{ fontSize: 17, paddingTop: 3 }}>{Object.keys(monthly).length ? Object.entries(monthly).map(([c, v]) => `${v.toFixed(0)} ${c}`).join(" + ") : "—"}</span><span className="s">{costs.filter((c) => c.active).length ? "per month" : "Nothing entered yet"}</span></Link>
+    <aside className="pglance" aria-label="At a glance">
+      <h2 className="lbl pg-h">At a glance</h2>
+      <div className="pg-stats">
+        <Link className="pg-s" href={href({ due: "overdue" })}><span className="lbl">Overdue</span><b className={late.length ? "bad" : ""}>{late.length}</b><small>{open.filter((i) => i.due === t).length} due today</small></Link>
+        <div className="pg-s"><span className="lbl">Open</span><b>{open.length}</b><small>{items.filter((i) => i.status === "done").length} done</small></div>
+        <div className="pg-s"><span className="lbl">In progress</span><b>{doing.length}</b><small>{prs ? `${prs} PR${prs > 1 ? "s" : ""} for you` : "being worked on"}</small></div>
+        <div className="pg-s"><span className="lbl">Claude building</span><b className={building.length ? "go" : ""}>{building.length}</b><small>{building.length ? "refreshes on its own" : "nothing queued"}</small></div>
+        <Link className="pg-s wide" href={href({ v: "finance" })}><span className="lbl">Costs / month</span><b className="sm">{Object.keys(monthly).length ? Object.entries(monthly).map(([c, v]) => `${v.toFixed(0)} ${c}`).join(" + ") : "—"}</b><small>{active.length ? `${active.length} recurring` : "nothing entered"}</small></Link>
       </div>
-      <ProjectSettings id={p.id} plan={p.plan_enabled !== false} minutes={p.weekly_minutes ?? null} reviews={p.reviews_enabled !== false} rank={rank || null} />
-      <div className="grid2">
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">Next up</h2><span className="sp" /><Link className="hint" href={href({ v: "checklist" })}>Open the checklist →</Link></div>
-          <div className="pb" style={{ padding: "4px 14px 8px" }}>
-            {nextUp.map((i) => <ItemRow key={i.id} i={i} />)}
-            {!nextUp.length && <div className="empty" style={{ padding: "10px 0" }}>{items.length ? "Everything is done or cancelled." : `No checklist yet: press "Plan this project", or add items in Checklists.`}</div>}
-          </div>
-        </section>
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">In progress</h2><span className="sp" /><span className="hint">{owners.you} on you · {owners.claude} on Claude · {owners.both} on both</span></div>
-          <div className="pb" style={{ padding: "4px 14px 8px" }}>
-            {doing.map((i) => <ItemRow key={i.id} i={i} />)}
-            {!doing.length && <div className="empty" style={{ padding: "10px 0" }}>Nothing in progress. Set an item to in progress; if Claude owns it, the Mac worker builds it and opens a PR for you.</div>}
-          </div>
-        </section>
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">Deadlines</h2><span className="sp" /><span className="hint">From PRD.md&apos;s milestones table</span></div>
-          <div className="pb" style={{ padding: "4px 14px 8px" }}>
-            {upcoming.map((d) => <div key={d.date} className="dr"><span className="dstat" aria-hidden="true" /><span className="dt2"><span>{d.label}</span><small>{daysBetween(t, d.date)} days</small></span><Due d={d.date} /></div>)}
-            {!upcoming.length && <div className="empty" style={{ padding: "10px 0" }}>No upcoming deadline. Add a dated Milestones table to PRD.md and run the project sync.</div>}
-          </div>
-        </section>
-        <section className="panel">
-          <div className="ph"><h2 className="ph-t">Latest reports</h2><span className="sp" /><Link className="hint" href={href({ v: "reviews" })}>All reviews →</Link></div>
-          <div className="revlist">
-            {review && <Link href={href({ v: "reviews", r: review.id })} className="revrow"><i className="dot" /><span className="t"><b>Weekly review · {review.week_start ? fmtDate(review.week_start) : ""}</b><span>{review.headline}</span></span>{review.verdict ? <span className={`verdict v-${review.verdict}`}>{review.verdict.replace("-", " ")}</span> : <span />}</Link>}
-            {doc && <Link href={href({ v: "project", r: doc.id })} className="revrow"><i className="dot" /><span className="t"><b>{doc.title}</b><span>{doc.headline}</span></span><span className="due">{fmtDate(doc.created_at.slice(0, 10))}</span></Link>}
-            {audit && <Link href={href({ v: "reviews", k: "security", r: audit.id })} className="revrow"><i className="dot" /><span className="t"><b>Security · {audit.title}</b><span>{audit.headline}</span></span>{audit.verdict ? <span className={`verdict v-${audit.verdict}`}>{audit.verdict.replace("-", " ")}</span> : <span />}</Link>}
-            {!review && !doc && !audit && <div className="empty">No reports yet. Weekly reviews arrive {REVIEW_WHEN}; strategy documents come from the Inbox or the plan button.</div>}
-          </div>
-        </section>
+      <div className="pg-cards">
+        <Link className="pg-c" href={review ? href({ v: "reviews", r: review.id }) : href({ v: "reviews" })}>
+          <span className="lbl">Latest review</span>
+          <span className="pg-t">{review?.verdict && <span className={`verdict v-${review.verdict}`}>{review.verdict.replace("-", " ")}</span>}<span>{review?.week_start ? `Week of ${fmtDate(review.week_start)}` : review ? "No verdict" : `First one ${REVIEW_WHEN}`}</span></span>
+          {review?.headline && <span className="pg-d">{review.headline}</span>}
+        </Link>
+        <Link className="pg-c" href={href({ v: "timeline" })}>
+          <span className="lbl">Next milestone</span>
+          {next ? <span className="pg-t"><span>{next.label}</span><span className={`due${n <= 2 ? " soon" : ""}`}>{n === 0 ? "today" : `${n} d`} · {fmtDate(next.date)}</span></span>
+            : <span className="pg-d">None dated. Add a Milestones table to PRD.md.</span>}
+        </Link>
+        <details className="pg-set">
+          <summary><span className="lbl">Project settings</span><span className="pg-d">{[p.plan_enabled !== false ? "planned" : "not planned", p.reviews_enabled !== false ? "reviewed" : "no review", rank ? `top 3 · #${rank}` : ""].filter(Boolean).join(" · ")}</span></summary>
+          <ProjectSettings id={p.id} plan={p.plan_enabled !== false} minutes={p.weekly_minutes ?? null} reviews={p.reviews_enabled !== false} rank={rank || null} />
+        </details>
       </div>
-      {prefs.show_done_default ? null : null}
-    </div>
+    </aside>
   );
 }
 
