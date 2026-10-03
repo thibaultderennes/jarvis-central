@@ -6,6 +6,8 @@ import { isDate } from "@/lib/time";
 import { getPlan, savePlan } from "@/lib/plan";
 import { VERSION } from "@/lib/instance";
 import { pruneClickEvents, usageSummary } from "@/lib/usage";
+import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
+import { today } from "@/lib/time";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -112,6 +114,23 @@ async function handle(req: NextRequest, ctx: Ctx) {
       if (!d || d.v !== 1 || !Array.isArray(d.options) || !Array.isArray(d.users) || !Array.isArray(d.usage) || !Array.isArray(d.lines) || typeof d.grid !== "object" || !d.grid) return bad("data must be a version 1 model result");
       if (JSON.stringify(d).length > D.ECONOMICS_MAX_BYTES) return bad("data is too large; use a smaller grid", 413);
       return J({ economics: { ...(await D.putEconomics(b.project_id, { file: b.file, sha: typeof b.sha === "string" ? b.sha : undefined, data: d })), data: undefined } });
+    }
+
+    case "GET metrics": {
+      const since = sp.get("since");
+      if (since && !isDate(since)) return bad("since must be YYYY-MM-DD");
+      return J(await getMetrics({ project: sp.get("project") || undefined, since: since || undefined, limit: +(sp.get("limit") || 0) || undefined }));
+    }
+    case "POST metrics": {
+      // One snapshot of a project's product numbers; keys are merged into that day's row (null removes a key).
+      if (!b.project_id) return bad("project_id required");
+      const date = b.date || today();
+      if (!isDate(date) || date > today()) return bad("date must be YYYY-MM-DD, today or earlier");
+      const m = cleanMetrics(b.metrics);
+      if (!m) return bad("metrics must be an object of numbers, keys like active_users (a-z, 0-9, _)");
+      if (!(await D.getProject(b.project_id))) return bad("No such project", 404);
+      try { return J({ snapshot: await putMetrics(b.project_id, date, m, typeof b.source === "string" && b.source ? b.source : "manual") }, 201); }
+      catch (e) { return J({ error: `metrics unavailable (has the deploy migrated?): ${(e as Error).message}` }, 503); }
     }
 
     case "GET reviews": if (sp.get("id")) { const r = await D.getReview(sp.get("id")!); return r ? J([r]) : J([]); }

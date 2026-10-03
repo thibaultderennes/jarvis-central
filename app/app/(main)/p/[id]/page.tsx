@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
 import * as D from "@/lib/data";
-import { daysBetween, fmtDate, today } from "@/lib/time";
+import { addDays, daysBetween, fmtDate, today } from "@/lib/time";
 import Checklist from "@/components/Checklist";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
@@ -10,15 +10,16 @@ import ProjectSettings from "@/components/ProjectSettings";
 import PlanButton from "@/components/PlanButton";
 import Costs from "@/components/Costs";
 import UnitEconomics from "@/components/UnitEconomics";
-import { BurnUp } from "@/components/Insights";
-import DailyStats from "@/components/DailyStats";
+import ProjectStats from "@/components/ProjectStats";
+import { getMetrics } from "@/lib/metrics";
+import { deliveryStats, productStats } from "@/lib/projectStats";
 import Timeline, { MilestoneList } from "@/components/Timeline";
 import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
 import "./project.css";
 import "../../finance/finance.css";
 
-type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; bucket?: string };
+type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string };
 const VIEWS = ["checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
 type View = (typeof VIEWS)[number];
 // Older links keep working: ?tab=… (before the 0.5.0 menu) and ?v=dashboard (its summary now sits beside the checklist).
@@ -127,7 +128,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           </div>
         )}
 
-        {view === "stats" && <Stats project={p} bucket={sp.bucket} today={t} />}
+        {view === "stats" && <Stats project={p} today={t} />}
       </div>
     </div>
   );
@@ -191,22 +192,14 @@ async function ProjectTimeline({ id }: { id: string }) {
   );
 }
 
-async function Stats({ project, bucket, today: t }: { project: D.Project; bucket?: string; today: string }) {
-  const projectId = project.id;
-  const [ins, stats] = await Promise.all([D.insights(projectId), D.dailyStats(undefined, projectId, { bucket: bucket === "week" || bucket === "month" ? bucket : "day", items: true })]);
-  const p = ins.projects[0];
-  return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-      {p ? <div className="burns" style={{ gridTemplateColumns: "1fr" }}><BurnUp p={p} today={t} /></div> : <div className="panel empty">No checklist data yet.</div>}
-      <section className="panel">
-        <DailyStats stats={stats} projects={[{ id: project.id, name: project.name, color: project.color }]} />
-      </section>
-      <section className="panel">
-        <div className="ph"><h2 className="ph-t">Users and visitors</h2></div>
-        <div className="empty">No analytics source is connected to this project, so there are no visitor or user numbers to show. Connecting one (site analytics, product events) is its own checklist item.</div>
-      </section>
-    </div>
-  );
+/** Stats: Product (metrics snapshots, costs, unit economics) and Delivery (flow metrics from the checklist). */
+async function Stats({ project, today: t }: { project: D.Project; today: string }) {
+  const [items, snaps, costs, economics, prefs, weekly] = await Promise.all([
+    D.getItems({ project: project.id }), getMetrics({ project: project.id, since: addDays(t, -120) }), D.getCosts({ project: project.id }),
+    D.getEconomics(project.id), D.getPrefs(), D.dailyStats(13, project.id, { bucket: "week" }),
+  ]);
+  const { latest, ...product } = productStats(snaps, costs, economics, prefs.finance_currency || "USD");
+  return <ProjectStats project={{ id: project.id, name: project.name }} today={t} product={{ ...product, latest: latest && { date: latest.date, source: latest.source } }} delivery={deliveryStats(project, items, weekly, t)} />;
 }
 
 async function ReviewPicker({ list, sel, base, href, subtab }: { list: D.Review[]; sel?: string; base: Record<string, string>; href: (q: Record<string, string>) => string; subtab?: string }) {
