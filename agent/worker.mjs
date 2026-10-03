@@ -16,6 +16,7 @@ import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
 import { syncMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
+import { applyMilestoneMoves } from "./milestones.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -331,6 +332,8 @@ async function pass() {
     await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
     // Product metrics (users, visits, revenue…) from each project's source in the config → the project's Stats view; daily.
     await syncMetricsDue(projects, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
+    // Milestones moved on the Timeline: write the new dates into each PRD.md so the next sync keeps them.
+    await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.

@@ -11,6 +11,8 @@ These are the few rules the whole tool relies on. Setup enforces them; everythin
   folder named `ACME-2024`) and point at a **subfolder** (`"dir": "app"` when the code lives in `MyProject/app`).
 - Re-running `sync` never wipes what's on the site: deadlines change only when the PRD has a milestones table,
   and an existing tagline or status line is kept unless you override it.
+- A milestone dragged to a new date on the Timeline is written back into its PRD.md row (the date cell only, no
+  commit) by the Mac worker on its next pass, and by `sync` / plan before they read the file, so the move sticks.
 - The Jarvis tool itself can live inside `projects_root`; it then shows up as a project like any other.
 
 ## Every project folder has two files

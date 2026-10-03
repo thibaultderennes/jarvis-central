@@ -14,14 +14,33 @@ export const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return null; } };
 
 /** `| 2026-11-02 | Public launch |` rows under a Milestones heading (or anywhere) → deadlines. */
+const MS_ROW = /^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+?)\s*\|/;
+const msLabel = (raw) => raw.replace(/\*\*/g, "").slice(0, 80);
 export function parseMilestones(prd) {
   if (!prd) return [];
   const out = [];
   for (const line of prd.split("\n")) {
-    const m = line.match(/^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+?)\s*\|/);
-    if (m && !/\{\{/.test(m[2])) out.push({ date: m[1], label: m[2].replace(/\*\*/g, "").slice(0, 80) });
+    const m = line.match(MS_ROW);
+    if (m && !/\{\{/.test(m[2])) out.push({ date: m[1], label: msLabel(m[2]) });
   }
   return out.sort((a, b) => a.date.localeCompare(b.date));
+}
+
+/**
+ * Milestones moved on the dashboard carry `prd`: the date PRD.md still has. Rewrites the date cell of each matching
+ * row (same old date + label) in place, leaving the rest of the file alone. Returns the new text and what didn't match.
+ */
+export function moveMilestoneRows(prd, deadlines) {
+  const moves = (deadlines || []).filter((d) => d?.prd && d.prd !== d.date);
+  const left = [...moves];
+  const text = prd.split("\n").map((line) => {
+    const m = line.match(MS_ROW);
+    const i = m ? left.findIndex((d) => d.prd === m[1] && d.label === msLabel(m[2])) : -1;
+    if (i < 0) return line;
+    const [d] = left.splice(i, 1);
+    return line.replace(m[1], d.date);
+  }).join("\n");
+  return { text, moved: moves.length - left.length, unmatched: left };
 }
 
 /** What a project folder has of the expected structure: PRD.md at the root, "How we work" in CLAUDE.md, audit prompts. */

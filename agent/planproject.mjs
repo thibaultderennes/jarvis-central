@@ -18,6 +18,7 @@ import { api, qs, CONFIG, JARVIS_ROOT, todayTZ, addDays, parseModelJSON } from "
 import { runClaude } from "./claude.mjs";
 import { dailyLoad } from "./refine.mjs";
 import { readStructure, sectionRoles, setupItems, slugify } from "./structure.mjs";
+import { applyMilestoneMoves } from "./milestones.mjs";
 
 const WD = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 const wd = (d) => WD[new Date(d + "T12:00:00Z").getUTCDay()];
@@ -43,6 +44,7 @@ export async function gather(project) {
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : null;
   if (!dir) throw new Error(`The project folder isn't on this Mac (${project?.dir || "no folder set"}).`);
   const today = todayTZ();
+  await applyMilestoneMoves([project]); // moved on the Timeline: into PRD.md before it's read
   const [mine, open, events] = await Promise.all([
     api("GET", "/api/agent/items" + qs({ project: project.id })),
     api("GET", "/api/agent/items" + qs({ open: 1 })),
