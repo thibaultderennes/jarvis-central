@@ -12,6 +12,7 @@ import { api, qs, CONFIG, PROJECTS_ROOT, JARVIS_ROOT, OWNER, TZ, todayTZ, parseM
 import { runClaude } from "./claude.mjs";
 import { oneLiner } from "./advisors.mjs";
 import { DEFAULT_SECTIONS, parseMilestones, slugify } from "./structure.mjs";
+import { applyMilestoneMoves } from "./milestones.mjs";
 
 export { DEFAULT_SECTIONS, parseMilestones, slugify };
 
@@ -118,6 +119,8 @@ export async function syncProjects({ dry = false, print = console.log } = {}) {
   const ps = scanProjects();
   let existing = [];
   try { existing = await api("GET", "/api/agent/projects?all=1"); } catch (e) { if (!dry) throw e; print(`(dry run: API unavailable — ${e.message})`); }
+  // Milestones moved on the Timeline go into PRD.md first, so the parse below keeps them instead of reverting.
+  if (!dry) await applyMilestoneMoves(existing, (...a) => print(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ")));
   const byId = Object.fromEntries(existing.map((p) => [p.id, p]));
   const used = new Set(existing.filter((p) => !p.archived).map((p) => p.color));
   const nextColor = () => { const c = COLORS.find((x) => !used.has(x)) || COLORS[used.size % COLORS.length]; used.add(c); return c; };

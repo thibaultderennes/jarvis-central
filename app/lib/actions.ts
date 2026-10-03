@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireSession } from "./auth";
 import { sql } from "./db";
 import * as D from "./data";
-import { isDate } from "./time";
+import { isDate, today } from "./time";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -44,6 +44,37 @@ export async function setDue(project_id: string, id: string, due: string | null)
   await D.updateItem(project_id, id, { due });
   await D.logActivity("item_due", `/p/${project_id}`, { id, due });
   done();
+}
+/** Timeline drag: one or more items (a day's cluster) to a new due date. Same logged path as setDue, so Monday reviews still see the slip. */
+export async function moveItemsDue(project_id: string, ids: string[], due: string): Promise<{ error?: string }> {
+  await requireSession();
+  if (!isDate(due) || due < today()) return { error: "Pick today or a later day." };
+  const list = ids.filter(ID_OK).slice(0, 50);
+  if (!list.length) return { error: "Nothing to move." };
+  for (const id of list) if (!(await D.updateItem(project_id, id, { due }))) return { error: `Item ${id} is gone.` };
+  await D.logActivity("item_due", `/timeline`, { ids: list, due, via: "timeline" });
+  done();
+  return {};
+}
+/**
+ * Timeline drag on a milestone: the project's deadline moves now; `prd` keeps the date PRD.md still has, and the Mac
+ * worker writes the new date into that PRD.md row on its next pass (agent/milestones.mjs), so the sync doesn't revert it.
+ */
+export async function moveMilestone(project_id: string, label: string, from: string, to: string): Promise<{ error?: string }> {
+  await requireSession();
+  if (!isDate(from) || !isDate(to) || to < today()) return { error: "Pick today or a later day." };
+  const p = await D.getProject(project_id);
+  if (!p) return { error: "Project not found." };
+  type DL = { date: string; label: string; prd?: string };
+  const list = (p.deadlines || []) as DL[];
+  const i = list.findIndex((d) => d.date === from && d.label === label);
+  if (i < 0) return { error: "That milestone changed since the page loaded. Reload and try again." };
+  const prd = list[i].prd || from;
+  const deadlines = list.map((d, j) => (j !== i ? d : prd === to ? { date: to, label } : { date: to, label, prd }));
+  await D.upsertProject({ id: project_id, deadlines });
+  await D.logActivity("milestone_move", `/timeline`, { project_id, label, from, to });
+  done();
+  return {};
 }
 export async function newItem(project_id: string, section: string, title: string, due: string | null): Promise<{ error?: string; duplicate?: string; id?: string }> {
   await requireSession();

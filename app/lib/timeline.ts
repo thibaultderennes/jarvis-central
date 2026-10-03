@@ -7,7 +7,9 @@ import { addDays, mondayOf, today } from "./time";
 export type TItem = { project_id: string; id: string; title: string; critical: boolean; late: boolean; status: string };
 /** Open items due on one day, clustered. */
 export type TDay = { date: string; items: TItem[] };
-export type TMilestone = { date: string; label: string; project_id: string; name: string; color: string; openBefore: number; criticalBefore: number; lateBefore: number };
+export type TMilestone = { date: string; label: string; project_id: string; name: string; color: string; openBefore: number; criticalBefore: number; lateBefore: number;
+  prd: string | null; // moved on the Timeline: the date PRD.md still has until the Mac worker writes the new one in
+};
 /** Sunday-plan blocks on one day: the "sprint" a lane is in this week and next. */
 export type TPlanDay = { date: string; minutes: number; blocks: { title: string; start: string; end: string }[] };
 export type TLane = {
@@ -62,7 +64,7 @@ export async function timelineData(opts: { project?: string } = {}): Promise<Tim
   const scope = opts.project ? projects.filter((p) => p.id === opts.project) : projects;
   const milestonesOf = (p: D.Project): TMilestone[] => (p.deadlines || []).filter((d) => d && /^\d{4}-\d{2}-\d{2}$/.test(d.date)).map((d) => {
     const before = dated.filter((i) => i.project_id === p.id && i.due! <= d.date);
-    return { date: d.date, label: d.label, project_id: p.id, name: p.name, color: color(p), openBefore: before.length, criticalBefore: before.filter((i) => i.critical).length, lateBefore: before.filter((i) => i.due! < t).length };
+    return { date: d.date, label: d.label, project_id: p.id, name: p.name, color: color(p), openBefore: before.length, criticalBefore: before.filter((i) => i.critical).length, lateBefore: before.filter((i) => i.due! < t).length, prd: (d as { prd?: string }).prd || null };
   }).sort((a, b) => a.date.localeCompare(b.date));
   const allMilestones = scope.flatMap(milestonesOf).sort((a, b) => a.date.localeCompare(b.date));
   const inRange = (d: string) => d >= from && d <= to;
