@@ -97,6 +97,12 @@ export async function getItems(opts: { project?: string; open?: boolean; refine?
   const rows = await q(`select * from items ${where.length ? "where " + where.join(" and ") : ""} order by project_id, sort, created_at`, params);
   return rows.map(normItem);
 }
+/** Open and late (open, due before `day`) items per project, in one query: the sidebar's counts. */
+export async function openCounts(day: string): Promise<Record<string, { open: number; late: number }>> {
+  const rows = await sql()`select project_id, count(*)::int as open, count(*) filter (where due < ${day}::date)::int as late
+    from items where status in ('todo', 'doing') group by 1`;
+  return Object.fromEntries(rows.map((r) => [r.project_id as string, { open: r.open as number, late: r.late as number }]));
+}
 export function slugify(s: string, max = 4): string {
   return s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-")
     .replace(/^-|-$/g, "").split("-").filter(Boolean).slice(0, max).join("-") || "item";
