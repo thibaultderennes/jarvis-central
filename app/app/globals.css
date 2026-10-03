@@ -72,7 +72,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sb-n { margin-left: auto; font-family: var(--mono); font-size: 10.5px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; flex: 0 0 auto; line-height: 17px; padding: 0 2px; }
 .sb-n.late { color: var(--bad); background: var(--bad-soft); border-radius: 9px; padding: 0 7px; font-weight: 600; }
 .sb-n.soon { color: var(--signal-ink); background: var(--signal-soft); border-radius: 9px; padding: 0 7px; font-weight: 600; }
-.sb-n.late + .sb-n.soon { margin-left: 4px; }
 .sb-dot b.soon { background: var(--signal); }
 .sb-n.hot { color: var(--signal-ink); background: var(--signal-soft); border-radius: 9px; padding: 0 7px; font-weight: 600; }
 .sb-dot { position: relative; width: 18px; height: 18px; display: grid; place-items: center; flex: 0 0 auto; }
@@ -509,7 +508,3 @@ h1.page .glyph .ac { fill: var(--signal); }
 .td-tag, .st-doing { display: inline-flex; align-items: center; gap: 5px; }
 .td-tag .ico .ac { fill: var(--signal); }
 .empty:has(.empty-art) { text-align: center; padding: 22px 14px; }
-.sb-legend { display: flex; gap: 12px; padding: 10px 12px 2px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
-.sb-legend span { display: inline-flex; align-items: center; gap: 5px; }
-.sb-legend i { width: 8px; height: 8px; border-radius: 3px; } .sb-legend i.late { background: var(--bad); } .sb-legend i.soon { background: var(--signal); }
-.sb-n.late + .sb-n.soon { margin-left: 3px; }

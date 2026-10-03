@@ -11,8 +11,8 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   set for navigation (the dot turns amber on the current page), a glyph tile and a faint header drawing on every page,
   coloured section lanes on checklists (build blue, decide amber, done green), sidebar group lanes, status stickers and
   empty-state drawings. `components/icons.tsx`, `components/brand.tsx`.
-- **Sidebar**: Stats and Finance move to the You section; each project shows a red count of late items and a yellow count
-  of items due in the next 7 days (a legend sits at the bottom).
+- **Sidebar**: Stats and Finance move to the You section; each project shows "N late" in red, or, when nothing is late,
+  "N in 7d" in yellow for items due in the next 7 days.
 - **Today redesigned** around "what do I do next, and am I on track?": one ordered list with **Next up** highlighted, a
   header with "N of M done" and a load meter against your daily focus, a slim agenda rail (calendar + timed blocks, a
   now-line; a one-line strip on narrow screens), and one closed "Later" section (overdue, what the plan couldn't fit,
