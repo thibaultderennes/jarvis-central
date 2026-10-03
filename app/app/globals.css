@@ -46,7 +46,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sb-top { display: flex; align-items: center; gap: 6px; min-height: 34px; padding-left: 6px; }
 .sb-brand { display: flex; align-items: center; gap: 9px; text-decoration: none; font-family: var(--display); font-weight: 800; font-size: 14px; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; min-width: 0; flex: 1; }
 .sb-brand .sb-l span { font-weight: 500; color: var(--ink-3); }
-.sb-brand .pulse { margin-left: 3px; }
+.sb-brand .mark { flex: 0 0 auto; }
 .sb-tog { border: 0; background: none; color: var(--ink-3); width: 30px; height: 30px; border-radius: 6px; display: grid; place-items: center; cursor: pointer; flex: 0 0 auto; }
 .sb-tog:hover { background: var(--sb-hover); color: var(--ink); }
 .sb-worker { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); padding: 0 8px 6px 10px; white-space: nowrap; }
@@ -86,7 +86,6 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .sb-in { padding-inline: 8px; }
   .sb-top { flex-direction: column; padding-left: 0; gap: 8px; }
   .sb-brand { flex: 0 0 auto; justify-content: center; height: 24px; }
-  .sb-brand .pulse { margin-left: 0; }
   .sb-worker { justify-content: center; padding: 2px 0 6px; }
   .sb-jump { justify-content: center; padding: 7px 0; }
   .sb-nav .sb-h ~ .sb-h { display: block; position: static !important; width: auto; height: 1px; margin: 9px 6px; padding: 0; background: var(--line); clip-path: none; }
@@ -478,3 +477,9 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 .dpanel li a { color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
 .dpanel li a:hover { text-decoration: underline; }
 .row:target { outline: 2px solid var(--signal-ink, var(--ink)); outline-offset: 2px; border-radius: 4px; }
+
+/* Icons (components/icons.tsx): the "now" dot follows the text colour, and turns amber on the active entry. */
+.ico .ac { fill: currentColor; }
+[aria-current="page"] .ico .ac, .ico.on .ac { fill: var(--signal); }
+.mark .mark-dot { fill: var(--signal); }
+@media (prefers-reduced-motion: no-preference) { .mark.live .mark-dot { animation: markdot 2.4s ease-in-out infinite; transform-origin: 52px 17px; } @keyframes markdot { 50% { opacity: .45; transform: scale(.82); } } }

@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { Icon, Mark } from "./icons";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
@@ -9,27 +10,6 @@ type Props = {
   rail: boolean; railCookie: string; version: string; children: React.ReactNode;
 };
 
-/* One stroke style for every icon: 20px box, 1.6 stroke, round joins. */
-const PATHS: Record<string, string> = {
-  home: "M3.5 9.2 10 4l6.5 5.2V16a.8.8 0 0 1-.8.8H12.2v-4.6H7.8v4.6H4.3a.8.8 0 0 1-.8-.8z",
-  today: "M10 2.8v1.6M10 15.6v1.6M2.8 10h1.6M15.6 10h1.6M4.9 4.9l1.1 1.1M14 14l1.1 1.1M4.9 15.1 6 14M14 6l1.1-1.1M10 6.6a3.4 3.4 0 1 1 0 6.8 3.4 3.4 0 0 1 0-6.8z",
-  week: "M3.5 5.2h13v11.3h-13zM3.5 8.6h13M7 3.2v3.4M13 3.2v3.4M6.5 11.6h1.4M9.3 11.6h1.4M12.1 11.6h1.4M6.5 14h1.4M9.3 14h1.4",
-  timeline: "M3.5 4.5v11M6.5 6h6M9 10h7.5M6.5 14h5",
-  inbox: "M3.5 11.5 5.6 4.8h8.8l2.1 6.7v3.9a.8.8 0 0 1-.8.8H4.3a.8.8 0 0 1-.8-.8zM3.5 11.5h3.8l1 1.9h3.4l1-1.9h3.8",
-  reviews: "M5.5 2.8h6.2l3 3V17H5.5zM11.5 2.8v3.2h3.2M7.8 9.5h4.6M7.8 12.3h4.6M7.8 15h2.6",
-  finance: "M10 2.8v14.4M13.4 6.3c-.6-1.1-1.9-1.7-3.4-1.7-1.9 0-3.3 1-3.3 2.5 0 3.5 6.9 1.9 6.9 5.6 0 1.5-1.5 2.6-3.6 2.6-1.6 0-2.9-.7-3.5-1.8",
-  stats: "M3.5 16.5h13M5.5 13.5v3M9 9.5v7M12.5 11.5v5M16 6v10.5M5.5 9.5 9 6l3.5 2.5L16 3.5",
-  admin: "M10 7.3a2.7 2.7 0 1 1 0 5.4 2.7 2.7 0 0 1 0-5.4zM10 2.8l1.3 1.9 2.2-.5.4 2.2 2 1-.9 2.1.9 2.1-2 1-.4 2.2-2.2-.5L10 17.2l-1.3-1.9-2.2.5-.4-2.2-2-1 .9-2.1-.9-2.1 2-1 .4-2.2 2.2.5z",
-  search: "M8.8 3.8a5 5 0 1 1 0 10 5 5 0 0 1 0-10zM12.4 12.4l4.1 4.1",
-  rail: "M3.5 4h13v12h-13zM8 4v12M13.2 8.2 11.4 10l1.8 1.8",
-  expand: "M3.5 4h13v12h-13zM8 4v12M11.4 8.2l1.8 1.8-1.8 1.8",
-  menu: "M3.5 5.5h13M3.5 10h13M3.5 14.5h13",
-  out: "M8 3.5H4.3v13H8M12 6.5 15.5 10 12 13.5M15.5 10H7.5",
-  close: "M5 5l10 10M15 5 5 15",
-};
-export function Icon({ n, size = 18 }: { n: keyof typeof PATHS | string; size?: number }) {
-  return <svg className="ico" width={size} height={size} viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth={1.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d={PATHS[n]} /></svg>;
-}
 function ago(t: string) {
   const m = Math.round((Date.now() - +new Date(t)) / 6e4);
   return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`;
@@ -95,7 +75,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
       <aside ref={sb} className="sb" id="sidebar" aria-label="Jarvis" {...(open ? { role: "dialog", "aria-modal": true } : {})}>
         <div className="sb-in">
           <div className="sb-top">
-            <Link href="/" className="sb-brand" title={iconic ? "Sentient Dash · Home" : undefined}><i className="pulse" aria-hidden="true" /><span className="sb-l">Sentient <span>Dash</span></span></Link>
+            <Link href="/" className="sb-brand" title={iconic ? "Sentient Dash · Home" : undefined}><Mark size={22} className="live" /><span className="sb-l">Sentient <span>Dash</span></span></Link>
             <button className="sb-tog" onClick={toggle} aria-label={open ? "Close the menu" : iconic ? "Expand the sidebar" : "Collapse the sidebar"} title={open ? "Close (Esc)" : iconic ? "Expand" : "Collapse"} aria-expanded={narrow ? open : !rail} aria-controls="sidebar">
               <Icon n={open ? "close" : iconic ? "expand" : "rail"} />
             </button>
