@@ -5,6 +5,23 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 ## Unreleased
 
 ## 0.6.0 — 2026-10-02
+- **New navigation (UI Proposal A)**: a left sidebar replaces the top tab bar: You (Home, Today, Week, Timeline,
+  Inbox), Pinned (your top 3), every project with open/late counts, and Library (Reviews, Finance, Stats, Admin). It
+  collapses to an icon rail (remembered; automatic under 1100px) and becomes a bottom bar with a Menu drawer on phones.
+- **⌘K / Ctrl+K (or `/`) jump palette**: pages, projects, and checklist items by code or title words (case- and
+  accent-insensitive, open first), plus quick actions; new site endpoint `GET /api/search` (owner session).
+  Shortcuts: `g h` Home, `g t` Today, `g w` Week, `g i` Inbox, `g l` Timeline, `g s` Stats; `?` lists them.
+- **Home replaces the Overview**: four tiles (next event, today's list, overdue across projects, next deadline), a
+  **Needs you** list (your decide items, PRs waiting for Approve & merge, unread replies, oldest first; its count is on
+  Home in the sidebar), and the top-3 cards with pace against the next milestone. The charts moved to a new **Stats**
+  page (`/stats`).
+- **Project pages open on the checklist**, with an "At a glance" column (a strip on narrower screens) in place of the
+  Dashboard view, and a view bar along the top instead of the left menu. Old `?v=dashboard` and `?tab=` links still work.
+- **Checklist status is a checkbox** (done ↔ to do in one click); a separate "Start ▸" ("Start build ▸" on Claude's
+  items) marks an item in progress, shown as "◐ In progress" with Stop. Ticking an item done can no longer queue a build
+  by passing through "doing"; unticking a linked todo on Today/Week sends the item back to "to do".
+- Usage tracking records the project view and checklist filter chips (codes only); the weekly aggregate groups pages by
+  view, counts back-to-back views of one page as one visit, and lists the filters used.
 - **Build runs can commit again**: headless build runs were denied `git -C <dir> add/commit` (the allow list only
   matched `git add …`). The worktree's own `git -C` path is now allowed (push stays denied), the prompt asks for plain
   `git add`/`git commit`, permission denials are logged and named on a failed item, and edits a run leaves uncommitted

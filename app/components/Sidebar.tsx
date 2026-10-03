@@ -5,7 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 export type NavProject = { id: string; name: string; color: string; open: number; late: number };
 type Props = {
-  pinned: NavProject[]; projects: NavProject[]; waiting: number; fresh: number; todayLeft: number; workerAt: string | null;
+  pinned: NavProject[]; projects: NavProject[]; waiting: number; fresh: number; todayLeft: number; needs: number; workerAt: string | null;
   rail: boolean; railCookie: string; version: string; children: React.ReactNode;
 };
 
@@ -37,7 +37,7 @@ function ago(t: string) {
 const NARROW = "(max-width: 1099px)";
 
 /** The app shell: left sidebar (icon rail when collapsed or under 1100px), bottom bar + drawer on phones. */
-export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, workerAt, rail: railCookieOn, railCookie, version, children }: Props) {
+export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, needs, workerAt, rail: railCookieOn, railCookie, version, children }: Props) {
   const path = usePathname();
   const [now, setNow] = useState(0);
   const [rail, setRail] = useState(railCookieOn);
@@ -108,7 +108,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, w
           </button>
           <nav className="sb-nav" aria-label="Sections">
             <div className="sb-h">You</div>
-            <Item href="/" icon="home" label="Home" />
+            <Item href="/" icon="home" label="Home" count={needs || undefined} />
             <Item href="/today" icon="today" label="Today" count={todayLeft || undefined} />
             <Item href="/week" icon="week" label="Week" />
             <Item href="/timeline" icon="timeline" label="Timeline" />
@@ -130,7 +130,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, w
       {open && <div className="sb-scrim" onClick={close} aria-hidden="true" />}
       <main className="shell">{children}</main>
       <nav className="bbar" aria-label="Quick sections">
-        <Link href="/" aria-current={on("/")}><Icon n="home" /><span>Home</span></Link>
+        <Link href="/" aria-current={on("/")}><Icon n="home" /><span>Home</span>{needs > 0 && <b>{needs}</b>}</Link>
         <Link href="/today" aria-current={on("/today")}><Icon n="today" /><span>Today</span>{todayLeft > 0 && <b>{todayLeft}</b>}</Link>
         <Link href="/week" aria-current={on("/week")}><Icon n="week" /><span>Week</span></Link>
         <Link href="/inbox" aria-current={on("/inbox")}><Icon n="inbox" /><span>Inbox</span>{(waiting || fresh) > 0 && <b className="hot">{waiting || fresh}</b>}</Link>

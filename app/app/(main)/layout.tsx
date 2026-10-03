@@ -6,6 +6,9 @@ import { Suspense } from "react";
 import Sidebar, { type NavProject } from "@/components/Sidebar";
 import UsageTracker from "@/components/UsageTracker";
 import { trackingEnabled } from "@/lib/usage";
+import { needsYou } from "@/lib/needs";
+import CommandPalette from "@/components/CommandPalette";
+import Shortcuts from "@/components/Shortcuts";
 
 // Remembers the collapsed (icon rail) sidebar so the server renders it right, without a flash.
 const RAIL_COOKIE = "jarvis_rail";
@@ -13,8 +16,8 @@ const RAIL_COOKIE = "jarvis_rail";
 export default async function MainLayout({ children }: { children: React.ReactNode }) {
   await requireSession();
   const t = today();
-  const [projects, msgs, hb, counts, todos, jar] = await Promise.all([
-    getProjects(), getMessages({ limit: 100 }), kvGet<{ at: string }>("worker.heartbeat"), openCounts(t), getTodos(t, t), cookies(),
+  const [projects, msgs, hb, counts, todos, jar, needs] = await Promise.all([
+    getProjects(), getMessages({ limit: 100 }), kvGet<{ at: string }>("worker.heartbeat"), openCounts(t), getTodos(t, t), cookies(), needsYou(),
   ]);
   const { featured, others } = splitFeatured(projects);
   // Top-3 keep their colour slot; every other project shares "other", as in the charts.
@@ -24,9 +27,11 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   const fresh = msgs.filter((m) => ["answered", "done", "needs_you", "error"].includes(m.status) && !m.opened_at && !m.treated_at).length;
   return (
     <Sidebar pinned={featured.map((p) => nav(p, true))} projects={others.map((p) => nav(p, false))} waiting={waiting} fresh={fresh}
-      todayLeft={todos.filter((x) => !x.done).length} workerAt={hb?.value?.at || null} rail={jar.get(RAIL_COOKIE)?.value === "1"} railCookie={RAIL_COOKIE}
+      todayLeft={todos.filter((x) => !x.done).length} needs={needs.count} workerAt={hb?.value?.at || null} rail={jar.get(RAIL_COOKIE)?.value === "1"} railCookie={RAIL_COOKIE}
       version={process.env.NEXT_PUBLIC_JARVIS_VERSION || "dev"}>
       {children}
+      <CommandPalette />
+      <Shortcuts />
       {/* Page views and clicks for the Monday Jarvis review (first-party, labels only); usage.track_clicks: false turns it off. */}
       {trackingEnabled() && <Suspense fallback={null}><UsageTracker /></Suspense>}
     </Sidebar>
