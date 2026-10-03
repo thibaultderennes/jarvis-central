@@ -51,6 +51,12 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   API filter); the build queue filters client-side too; `POST /api/agent/heartbeat` returns the site version and the
   worker pauses its build and merge passes when the agent and site differ in major.minor; repeated identical log lines
   are written once per state change.
+- **Timeline drag**: drag a milestone diamond or a due-date tick to another day (mouse, touch hold, or ←/→ with Shift for
+  a week, then Enter). A ghost pin shows "Oct 9 → Oct 14 (+5 d)" and a confirm popover saves only on Confirm (Esc or
+  clicking away cancels); a tick with several items lists them so you pick which move. No dates before today. Items
+  change due date through the logged path (a later date still shows as a slip in the Monday review). A milestone moves
+  the project deadline at once, and the Mac worker writes the new date into that row of the project's PRD.md on its next
+  pass (file only, no commit; `agent/milestones.mjs`); sync and plans do it first, so they no longer revert a move.
 - **Timeline** (new top-level page and a "Timeline" view in each project's left menu): last week to 8 weeks out, one
   lane per project (per section on a project page). PRD milestones are diamonds, open items are due-date ticks per day
   (red overdue, amber critical, taller when more), this and next week's Sunday-plan blocks are bars, calendar events

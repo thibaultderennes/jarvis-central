@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { timelineData } from "@/lib/timeline";
 import { fmtDate } from "@/lib/time";
 import Timeline, { MilestoneList } from "@/components/Timeline";
+import { Glyph, HeaderVec } from "@/components/brand";
 
 export default async function TimelinePage() {
   await requireSession();
@@ -12,9 +13,10 @@ export default async function TimelinePage() {
     <>
       <div className="hello">
         <div>
-          <h1 className="page">Timeline</h1>
+          <h1 className="page"><Glyph n="timeline" />Timeline</h1>
           <p className="sub">Last week to eight weeks out, one lane per project: milestones from each PRD.md, checklist due dates per day, and the Sunday plan&apos;s blocks for this week and next. Hover or tap a mark for details; drag a milestone or a due-date tick to another day, then confirm.</p>
         </div>
+        <HeaderVec n="timeline" />
         <div className="when">{fmtDate(data.from)} – {fmtDate(data.to)}{next ? ` · next milestone ${fmtDate(next.date)}` : ""}</div>
       </div>
       <section className="panel">
