@@ -71,6 +71,9 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sb-a > .sb-l { flex: 1; }
 .sb-n { margin-left: auto; font-family: var(--mono); font-size: 10.5px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; flex: 0 0 auto; line-height: 17px; padding: 0 2px; }
 .sb-n.late { color: var(--bad); background: var(--bad-soft); border-radius: 9px; padding: 0 7px; font-weight: 600; }
+.sb-n.soon { color: var(--signal-ink); background: var(--signal-soft); border-radius: 9px; padding: 0 7px; font-weight: 600; }
+.sb-n.late + .sb-n.soon { margin-left: 4px; }
+.sb-dot b.soon { background: var(--signal); }
 .sb-n.hot { color: var(--signal-ink); background: var(--signal-soft); border-radius: 9px; padding: 0 7px; font-weight: 600; }
 .sb-dot { position: relative; width: 18px; height: 18px; display: grid; place-items: center; flex: 0 0 auto; }
 .sb-dot .dot { width: 9px; height: 9px; }
@@ -483,3 +486,30 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 [aria-current="page"] .ico .ac, .ico.on .ac { fill: var(--signal); }
 .mark .mark-dot { fill: var(--signal); }
 @media (prefers-reduced-motion: no-preference) { .mark.live .mark-dot { animation: markdot 2.4s ease-in-out infinite; transform-origin: 52px 17px; } @keyframes markdot { 50% { opacity: .45; transform: scale(.82); } } }
+
+/* Identity kit (components/brand.tsx): page glyph, faint header vector, section lanes, sidebar group lanes, empty art. */
+h1.page .glyph { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); vertical-align: -5px; margin-right: 12px; }
+h1.page .glyph .ac { fill: var(--signal); }
+.hvec { color: var(--ink-3); opacity: .55; flex: 0 1 212px; min-width: 0; height: auto; margin-left: auto; align-self: center; }
+.hvec path, .hvec circle { stroke: currentColor; stroke-width: 2.2; }
+.hvec .h { stroke-width: 1.2; opacity: .7; } .hvec .now { stroke: var(--signal); stroke-width: 1.2; stroke-dasharray: 2 3; }
+.hvec .dot { fill: var(--signal); stroke: none; }
+.td-ttl .hvec { flex-basis: 180px; }
+@media (max-width: 899px) { .hvec { display: none; } }
+.cat-h h2 { display: flex; align-items: center; gap: 9px; }
+.cat-h h2 .lane { width: 18px; height: 4px; border-radius: 4px; background: var(--ink-3); flex: 0 0 auto; }
+.cat-h.sec-build h2 .lane { background: var(--doing); } .cat-h.sec-decide h2 .lane { background: var(--signal); } .cat-h.sec-done h2 .lane { background: var(--done); }
+.cat-h h2 .sdot { width: 6px; height: 6px; border-radius: 50%; background: var(--signal); }
+.sb-h { display: flex; align-items: center; gap: 7px; }
+.sb-h::before { content: ""; width: 10px; height: 3px; border-radius: 3px; background: currentColor; opacity: .55; flex: 0 0 auto; }
+.sb-h.pin::after { content: ""; width: 5px; height: 5px; border-radius: 50%; background: var(--signal); }
+.empty .empty-art { display: block; margin: 4px auto 10px; color: var(--ink-3); }
+.empty-art path, .empty-art circle { stroke: currentColor; stroke-width: 2.2; } .empty-art .h { opacity: .45; } .empty-art .dot { fill: var(--signal); stroke: none; }
+.empty b { display: block; color: var(--ink); margin-bottom: 2px; }
+.td-tag, .st-doing { display: inline-flex; align-items: center; gap: 5px; }
+.td-tag .ico .ac { fill: var(--signal); }
+.empty:has(.empty-art) { text-align: center; padding: 22px 14px; }
+.sb-legend { display: flex; gap: 12px; padding: 10px 12px 2px; font-family: var(--mono); font-size: 10px; color: var(--ink-3); }
+.sb-legend span { display: inline-flex; align-items: center; gap: 5px; }
+.sb-legend i { width: 8px; height: 8px; border-radius: 3px; } .sb-legend i.late { background: var(--bad); } .sb-legend i.soon { background: var(--signal); }
+.sb-n.late + .sb-n.soon { margin-left: 3px; }

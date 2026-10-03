@@ -5,6 +5,7 @@ import { addDays, fmtDate, today } from "@/lib/time";
 import { HBars, StackedColumns, type Series } from "@/components/Charts";
 import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
 import DailyStats from "@/components/DailyStats";
+import { Glyph, HeaderVec } from "@/components/brand";
 
 /** Every cross-project chart in one place (they used to fill the bottom of Home). Per-project charts live on each project's Stats view. */
 export default async function StatsPage({ searchParams }: { searchParams: Promise<{ bucket?: string; proj?: string }> }) {
@@ -34,9 +35,10 @@ export default async function StatsPage({ searchParams }: { searchParams: Promis
     <>
       <div className="hello">
         <div>
-          <h1 className="page">Stats</h1>
+          <h1 className="page"><Glyph n="stats" />Stats</h1>
           <p className="sub">Pace, load and rhythm across your projects. Each project&apos;s own charts are on its Stats view.</p>
         </div>
+        <HeaderVec n="stats" />
         <div className="subtabs">{active.map((p) => <Link key={p.id} className="chip" href={`/p/${p.id}?v=stats`} data-c={p.color} style={{ display: "inline-flex", gap: 7, alignItems: "center" }}><i className="dot" />{p.name}</Link>)}</div>
       </div>
 

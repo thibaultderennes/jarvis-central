@@ -7,6 +7,7 @@ import { addDays, daysBetween, fmtDate, isoInTZ, today, TZ, WD, weekday } from "
 import { cap, OWNER, REVIEW_WHEN } from "@/lib/instance";
 import ProjectsBoard, { type Card } from "@/components/ProjectsBoard";
 import "./home.css";
+import { EmptyArt, Glyph, HeaderVec } from "@/components/brand";
 
 const KIND: Record<Need["kind"], [string, string]> = { decide: ["Decide", "you"], merge: ["PR ready", "go"], reply: ["Reply", ""] };
 const SHOWN = 10;
@@ -102,9 +103,10 @@ export default async function Home() {
     <>
       <div className="hello">
         <div>
-          <h1 className="page">{when}</h1>
+          <h1 className="page"><Glyph n="home" />{when}</h1>
           <div className="when">Week {isoWeek(t)} · {WD[weekday(t)]} · {open.length} open items across {projects.length} projects</div>
         </div>
+        <HeaderVec n="home" />
         <Link href="/stats" className="home-charts">All charts →</Link>
       </div>
 
@@ -154,7 +156,7 @@ export default async function Home() {
               </details>
             )}
           </>
-        ) : <div className="empty">Nothing needs you right now. Calls only you can make (the Decide section of each checklist), pull requests waiting for &ldquo;Approve &amp; merge&rdquo; and new replies from Claude land here.</div>}
+        ) : <div className="empty"><EmptyArt kind="clear" /><b>Nothing needs you right now.</b> Calls only you can make (the Decide section of each checklist), pull requests waiting for &ldquo;Approve &amp; merge&rdquo; and new replies from Claude land here.</div>}
       </section>
 
       <section id="projects" style={{ display: "flex", flexDirection: "column", gap: 10, scrollMarginTop: 110 }}>

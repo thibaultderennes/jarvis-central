@@ -4,7 +4,7 @@ import { Icon, Mark } from "./icons";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 
-export type NavProject = { id: string; name: string; color: string; open: number; late: number };
+export type NavProject = { id: string; name: string; color: string; open: number; late: number; soon: number };
 type Props = {
   pinned: NavProject[]; projects: NavProject[]; waiting: number; fresh: number; todayLeft: number; needs: number; workerAt: string | null;
   rail: boolean; railCookie: string; version: string; children: React.ReactNode;
@@ -64,9 +64,11 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
   );
   const Proj = ({ p }: { p: NavProject }) => (
     <Link href={`/p/${p.id}`} className="sb-a sb-p" aria-current={on(`/p/${p.id}`)} data-c={p.color}
-      title={iconic ? `${p.name} · ${p.late ? `${p.late} late` : `${p.open} open`}` : p.name}>
-      <span className="sb-dot" aria-hidden="true"><i className="dot" />{p.late > 0 && <b />}</span><span className="sb-l">{p.name}</span>
-      {p.late > 0 ? <span className="sb-n late" aria-label={`${p.late} late`}>{p.late} late</span> : p.open > 0 && <span className="sb-n" aria-label={`${p.open} open`}>{p.open}</span>}
+      title={iconic ? `${p.name} · ${[p.late && `${p.late} late`, p.soon && `${p.soon} due in 7 days`].filter(Boolean).join(" · ") || `${p.open} open`}` : p.name}>
+      <span className="sb-dot" aria-hidden="true"><i className="dot" />{p.late > 0 ? <b /> : p.soon > 0 && <b className="soon" />}</span><span className="sb-l">{p.name}</span>
+      {p.late > 0 && <span className="sb-n late" aria-label={`${p.late} late`} title={`${p.late} late`}>{p.late}</span>}
+      {p.soon > 0 && <span className="sb-n soon" aria-label={`${p.soon} due in the next 7 days`} title={`${p.soon} due in the next 7 days`}>{p.soon}</span>}
+      {!p.late && !p.soon && p.open > 0 && <span className="sb-n" aria-label={`${p.open} open`}>{p.open}</span>}
     </Link>
   );
 
@@ -95,12 +97,13 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
             <Item href="/inbox" icon="inbox" label="Inbox" count={inbox} tone={waiting || fresh ? "hot" : undefined} />
             <Item href="/stats" icon="stats" label="Stats" />
             <Item href="/finance" icon="finance" label="Finance" />
-            {pinned.length > 0 && <><div className="sb-h">Pinned</div>{pinned.map((p) => <Proj key={p.id} p={p} />)}</>}
+            {pinned.length > 0 && <><div className="sb-h pin">Pinned</div>{pinned.map((p) => <Proj key={p.id} p={p} />)}</>}
             {projects.length > 0 && <><div className="sb-h">Projects</div>{projects.map((p) => <Proj key={p.id} p={p} />)}</>}
             <div className="sb-h">Library</div>
             <Item href="/reviews" icon="reviews" label="Reviews" />
             <Item href="/admin" icon="admin" label="Admin" />
           </nav>
+          <div className="sb-legend sb-l" aria-hidden="true"><span><i className="late" />late</span><span><i className="soon" />due in 7 days</span></div>
           <div className="sb-foot">
             <span className="sb-ver sb-l" title="Sentient Dash version (see CHANGELOG.md in the repo)">v{version}</span>
             <form action="/api/auth/logout" method="post"><button className="sb-out" title={iconic ? "Sign out" : undefined} aria-label="Sign out"><Icon n="out" size={16} /><span className="sb-l">Sign out</span></button></form>

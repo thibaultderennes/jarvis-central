@@ -5,6 +5,27 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 ## Unreleased
 
 ## 0.6.0 — 2026-10-02
+- **Sentient Dash**: the product is renamed in the UI (sidebar, login, browser title, Home, Admin), with the Lane S mark
+  as favicon, app icon, sidebar and login logo. The repo, CLI, docs and calendar names keep "Jarvis" for now.
+- **Identity kit**: one quiet visual language from the mark (rounded lanes, hairlines, one amber "now" dot): a Lane icon
+  set for navigation (the dot turns amber on the current page), a glyph tile and a faint header drawing on every page,
+  coloured section lanes on checklists (build blue, decide amber, done green), sidebar group lanes, status stickers and
+  empty-state drawings. `components/icons.tsx`, `components/brand.tsx`.
+- **Sidebar**: Stats and Finance move to the You section; each project shows a red count of late items and a yellow count
+  of items due in the next 7 days (a legend sits at the bottom).
+- **Today redesigned** around "what do I do next, and am I on track?": one ordered list with **Next up** highlighted, a
+  header with "N of M done" and a load meter against your daily focus, a slim agenda rail (calendar + timed blocks, a
+  now-line; a one-line strip on narrow screens), and one closed "Later" section (overdue, what the plan couldn't fit,
+  the next two weeks, Someday) with counts. Quick add reads "14:00 …" as a time; Alt+↑/↓ reorders; "+ Today" and ↓
+  replace dragging between the backlog, the day and Someday.
+- **Project Stats rebuilt**: **Product** (users, active users, visitors, revenue, expenses, cost per active user, each
+  with the change against a week earlier and a sparkline, plus users and visitors over time) and **Delivery**
+  (throughput, lead time, age of open work, overdue, scope added vs finished, a 50%/85% forecast to the next milestone
+  with on/off track, the oldest open items). Day-by-day added/finished stays on Stats.
+- **Product metrics**: new `metrics_snapshots` table, `GET/POST /api/agent/metrics`, `jarvis metrics <project> [--set
+  k=v …]`, and `agent/metrics.mjs`, which reads each project's source (`metrics.sources.<id>`: a URL with a token from
+  an env var, or a command) daily through the worker. Keys in `docs/metrics.md`. The Monday project review gets the
+  last 8 weekly snapshots and the project's recurring costs.
 - **New navigation (UI Proposal A)**: a left sidebar replaces the top tab bar: You (Home, Today, Week, Timeline,
   Inbox), Pinned (your top 3), every project with open/late counts, and Library (Reviews, Finance, Stats, Admin). It
   collapses to an icon rail (remembered; automatic under 1100px) and becomes a bottom bar with a Menu drawer on phones.
@@ -65,6 +86,8 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 - This repo has a `PRD.md` draft, a "How we work" section in `CLAUDE.md`, and `docs/audits/PROMPTS.md` (the 3-day audit).
 
 **Upgrade notes**
+- Redeploy: the migration also creates `metrics_snapshots`; until then project Stats shows its Product empty state.
+- Optional: add `metrics.sources.<project id>` to `jarvis.config.json` (tokens in `~/.config/jarvis/env`), or record numbers with `jarvis metrics <id> --set …`.
 - Redeploy: the migration adds the `click_events` table (additive; tracking is silently skipped until it exists).
 - `git pull` on the Mac: the worker pauses building and merging until the agent and the site run the same release.
 - Refining a new item is now silent. To keep the Inbox note, set `"worker": { "refine_inbox_notes": true }`.

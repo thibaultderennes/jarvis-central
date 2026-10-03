@@ -21,7 +21,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   ]);
   const { featured, others } = splitFeatured(projects);
   // Top-3 keep their colour slot; every other project shares "other", as in the charts.
-  const nav = (p: (typeof projects)[number], top: boolean): NavProject => ({ id: p.id, name: p.name, color: top ? p.color : "other", open: counts[p.id]?.open || 0, late: counts[p.id]?.late || 0 });
+  const nav = (p: (typeof projects)[number], top: boolean): NavProject => ({ id: p.id, name: p.name, color: top ? p.color : "other", open: counts[p.id]?.open || 0, late: counts[p.id]?.late || 0, soon: counts[p.id]?.soon || 0 });
   const waiting = msgs.filter((m) => ["new", "seen", "working"].includes(m.status)).length;
   // "new" in the badge = replies you haven't opened yet (they move to Pending once seen in the inbox).
   const fresh = msgs.filter((m) => ["answered", "done", "needs_you", "error"].includes(m.status) && !m.opened_at && !m.treated_at).length;

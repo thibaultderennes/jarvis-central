@@ -9,6 +9,8 @@ import type { Todo } from "@/lib/data";
 import type { CalEvent } from "@/lib/calendar";
 import { EditTitle, type BItem } from "./Board";
 import { Ack, imeGuard, useSubmit } from "./Submit";
+import { Glyph, HeaderVec } from "@/components/brand";
+import { Icon } from "./icons";
 
 type P = { id: string; name: string; color: string };
 type Block = { project_id: string; item_id: string; title: string; start: string; end: string };
@@ -88,8 +90,9 @@ export default function TodayView(props: Props) {
     <div className="td">
       <header className="td-head">
         <div className="td-ttl">
-          <h1 className="page">{props.label}</h1>
+          <h1 className="page"><Glyph n="today" />{props.label}</h1>
           {isToday && <span className="td-date">{props.dateLine}</span>}
+          <HeaderVec n="today" />
         </div>
         <nav className="daynav" aria-label="Change day">
           <Link href={`/today?d=${props.prev.d}`} aria-label="Previous day">‹ {props.prev.l}</Link>
@@ -164,7 +167,7 @@ function Row({ t, p, next, late, est, onToggle, onTomorrow, onDate, onSomeday, o
       {t.done ? <span /> : <button className="grip" aria-label={`Reorder ${t.title} (drag, or Alt+↑/↓)`} {...attributes} {...listeners}>⠿</button>}
       <button className="ck" aria-label={`${t.done ? "Mark not done" : "Mark done"}: ${t.title}`} disabled={tmp} onClick={onToggle}>✓</button>
       <span className="tt" onDoubleClick={() => !tmp && setEditing(true)}>
-        {next && <span className="td-tag">Next up</span>}
+        {next && <span className="td-tag"><Icon n="start" size={13} />Next up</span>}
         {editing ? <EditTitle t={t} onDone={() => setEditing(false)} /> : <span className="ti">{t.title}</span>}
         <small>
           {t.time && <span className="tm">{t.time}</span>}
@@ -191,7 +194,7 @@ function ItemRow({ it, p, next, today, onDone, onTomorrow }: { it: BItem; p?: P;
       <span className="grip" aria-hidden="true" />
       <button className="ck" aria-label={`Mark done: ${it.title}`} onClick={onDone}>✓</button>
       <span className="tt">
-        {next && <span className="td-tag">Next up</span>}
+        {next && <span className="td-tag"><Icon n="start" size={13} />Next up</span>}
         <span className="ti">{it.title}</span>
         <small><Link href={`/p/${it.project_id}`}>{p?.name} · {it.id}</Link><span>due {it.due === today ? "today" : fmt(it.due!)}</span>{it.critical && <b className="latetag">critical</b>}{it.estimate_minutes ? <span>~{hours(it.estimate_minutes)}</span> : null}{it.owner === "claude" && <span>Claude</span>}</small>
       </span>

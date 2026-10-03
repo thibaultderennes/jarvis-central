@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { archiveMessage, markOpened, markTreated, sendMessage } from "@/lib/actions";
 import { inboxGroup, type Message } from "@/lib/data";
 import { Ack, enterSends, useSubmit } from "./Submit";
+import { EmptyArt } from "./brand";
 
 type P = { id: string; name: string; color: string };
 const ST: Record<string, [string, string]> = {
@@ -79,7 +80,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
         {GROUPS.map(([g, label, hint]) => <button key={g} role="tab" className="chip" aria-pressed={tab === g} aria-selected={tab === g} title={hint} onClick={() => setTab(g)}>{label} ({counts[g]})</button>)}
       </div>
       <div>
-        {!messages.length && <div className="empty">No messages yet.</div>}
+        {!messages.length && <div className="empty"><EmptyArt kind="inbox" /><b>No messages yet.</b></div>}
         {messages.length > 0 && !shown.length && <div className="empty">{tab === "new" ? "Nothing new. Replies you opened are under Pending." : tab === "pending" ? "Nothing pending: every reply you opened is treated." : "Nothing treated yet."}</div>}
         {shown.map(({ root, turns, last, group }) => {
           const p = root.project_id ? pmap[root.project_id] : null;

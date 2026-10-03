@@ -4,6 +4,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { approveBuild, cancelItem, commentItem, newItem, resetBuild, sendBackBuild, sendNote, setDue, setItemStatus } from "@/lib/actions";
 import { isOpen, type Item, type Section } from "@/lib/data";
 import { Ack, enterSends, imeGuard, useSubmit } from "./Submit";
+import { Icon } from "./icons";
 
 // Owner values stored in the database: "founder" is you (the dashboard's owner), "claude", or "both".
 const OWN: Record<string, string> = { founder: "you", claude: "Claude", both: "both" };
@@ -148,7 +149,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
         const hiddenClosed = all.filter((i) => !isOpen(i) && !keep(i)).length;
         return (
           <section className="cat" key={s.id}>
-            <div className="cat-h"><h2>{s.name}</h2>{s.note && <p>{s.note}</p>}</div>
+            <div className={`cat-h sec-${s.id}`}><h2><i className="lane" aria-hidden="true" />{s.name}{s.id === "decide" && <i className="sdot" aria-hidden="true" />}</h2>{s.note && <p>{s.note}</p>}</div>
             <div className="list">
               {!its.length && (
                 <div className="empty">
@@ -216,7 +217,7 @@ function Row({ i, s, today, fresh, onStatus, run, projectId }: { i: Item; s: Sec
         )}
         {i.status === "doing" && (
           <span className="inprog">
-            <span>◐ In progress</span>
+            <span className="st-doing"><Icon n="timeline" size={13} />In progress</span>
             {!ACTIVE_BUILD.includes(i.build_status || "") && (
               <button className="more" onClick={() => onStatus("todo")} aria-label={`Stop: ${i.title}`} title={claudeOwned && !i.build_status ? "Back to to do: the queued build won't start" : "Back to to do"}>Stop</button>
             )}
