@@ -10,6 +10,8 @@ export type Card = {
   next: { id: string; title: string; due: string }[];
   verdict: string | null; deadline: { date: string; label: string; days: number } | null;
   plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean;
+  /** Next milestone vs current pace (Home); omitted = not shown. */
+  pace?: { text: string; risk: boolean } | null;
 };
 
 const fmt = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("en-CA", { timeZone: "UTC", month: "short", day: "numeric" });
@@ -91,6 +93,7 @@ function Full({ c, today }: { c: Card; today: string }) {
           <div className="nums"><span><b>{c.done}</b> done</span><span><b>{c.doing}</b> in progress</span><span><b>{c.total - c.done - c.doing}</b> to do</span>{c.late > 0 && <span className="late"><b>{c.late}</b> overdue</span>}</div>
         </>
       ) : <div className="due">No checklist items yet — open the project to add some.</div>}
+      {c.pace && <div className={`pace${c.pace.risk ? " risk" : ""}`}><b>{c.pace.risk ? "At risk" : "On pace"}</b> {c.pace.text}</div>}
       <div className="next">
         <span className="lbl">Next up</span>
         {c.next.map((i) => <div className="r" key={i.id}><span title={i.title}>{i.title}</span><span className={`due${i.due < today ? " late" : ""}`}>{fmt(i.due)}</span></div>)}

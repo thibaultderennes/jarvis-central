@@ -114,6 +114,9 @@ Site endpoint (owner session cookie, not the agent token): `POST /api/usage` —
 `{sid, events: [{t /* ms */, k 'click'|'view', p /* page */, l /* label */, g /* element kind */, s /* section */, h /* href */}]}`,
 ≤ 100 events and 64 KB; always `204` once signed in (dropped silently when tracking is off or the table is missing),
 `401` logged out, `403` from another origin.
+Site endpoint for the ⌘K palette (owner session cookie): `GET /api/search?q=TEXT[&projects=1]` →
+`{items: [{project_id, id, title, status, due, section}], projects?: [{id, name, color, tagline}]}` — items whose id or
+title contain every word (case- and accent-insensitive, archived projects left out), open first, ≤ 20; `401` logged out.
 
 ## Worker rules
 - Answers questions, researches, edits checklists/todos through the API, plans days.
@@ -144,7 +147,12 @@ Site endpoint (owner session cookie, not the agent token): `POST /api/usage` —
 - `GET /api/cal/jarvis.ics?key=` (calendar token in the URL): iCalendar feed of planned weeks for Apple Calendar.
 
 ## Site pages
-- `/` Overview · `/today` · `/week` · `/timeline` (last week → 8 weeks out, one lane per project: PRD milestones,
+- `/` Home: four tiles (next event, today's list, overdue, next deadline), **Needs you** (`app/lib/needs.ts`
+  `needsYou()` → `{rows, count}`: open items in each project's decide section owned by you, items with a PR waiting for
+  Approve & merge, replies you haven't opened; oldest first), the top-3 project cards with pace against the next
+  milestone, this week's reviews; the charts live on `/stats`. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
+  (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
+  Inbox, Timeline, Stats and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · `/timeline` (last week → 8 weeks out, one lane per project: PRD milestones,
   open items' due dates per day, this and next week's Sunday-plan blocks, calendar events; built in `app/lib/timeline.ts`
   from existing data, no table of its own) · `/p/<id>` (left menu: Dashboard, Checklists, Timeline (one lane per section),
   Project, Reviews, Finances, Statistics; `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
