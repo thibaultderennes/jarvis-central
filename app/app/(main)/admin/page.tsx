@@ -51,7 +51,7 @@ export default async function AdminPage() {
         <dl className="kv">
           <dt>Owner</dt><dd>{OWNER || "not set"}</dd>
           <dt>Timezone</dt><dd>{TZ}</dd>
-          <dt>Jarvis Central</dt><dd>v{VERSION}</dd>
+          <dt>Sentient Dash</dt><dd>v{VERSION}</dd>
           <dt>Sign in</dt><dd>Password + authenticator app. To change them, update the site&apos;s environment variables and redeploy (see <code>docs/security.md</code> in the repo); there is no form for it here.</dd>
           <dt>Session</dt><dd><form action="/api/auth/logout" method="post"><button className="btn ghost sm">Sign out</button></form></dd>
         </dl>

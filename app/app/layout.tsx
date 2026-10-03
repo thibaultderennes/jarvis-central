@@ -6,7 +6,7 @@ const archivo = Archivo({ subsets: ["latin"], axes: ["wdth"], variable: "--font-
 const publicSans = Public_Sans({ subsets: ["latin"], variable: "--font-public" });
 const mono = JetBrains_Mono({ subsets: ["latin"], variable: "--font-mono" });
 
-export const metadata: Metadata = { title: "Jarvis Central", robots: { index: false, follow: false } };
+export const metadata: Metadata = { title: "Sentient Dash", robots: { index: false, follow: false } };
 export const viewport: Viewport = { width: "device-width", initialScale: 1, viewportFit: "cover" };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

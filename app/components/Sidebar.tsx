@@ -95,7 +95,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
       <aside ref={sb} className="sb" id="sidebar" aria-label="Jarvis" {...(open ? { role: "dialog", "aria-modal": true } : {})}>
         <div className="sb-in">
           <div className="sb-top">
-            <Link href="/" className="sb-brand" title={iconic ? "Jarvis Central · Home" : undefined}><i className="pulse" aria-hidden="true" /><span className="sb-l">Jarvis <span>Central</span></span></Link>
+            <Link href="/" className="sb-brand" title={iconic ? "Sentient Dash · Home" : undefined}><i className="pulse" aria-hidden="true" /><span className="sb-l">Sentient <span>Dash</span></span></Link>
             <button className="sb-tog" onClick={toggle} aria-label={open ? "Close the menu" : iconic ? "Expand the sidebar" : "Collapse the sidebar"} title={open ? "Close (Esc)" : iconic ? "Expand" : "Collapse"} aria-expanded={narrow ? open : !rail} aria-controls="sidebar">
               <Icon n={open ? "close" : iconic ? "expand" : "rail"} />
             </button>
@@ -113,16 +113,16 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
             <Item href="/week" icon="week" label="Week" />
             <Item href="/timeline" icon="timeline" label="Timeline" />
             <Item href="/inbox" icon="inbox" label="Inbox" count={inbox} tone={waiting || fresh ? "hot" : undefined} />
+            <Item href="/stats" icon="stats" label="Stats" />
+            <Item href="/finance" icon="finance" label="Finance" />
             {pinned.length > 0 && <><div className="sb-h">Pinned</div>{pinned.map((p) => <Proj key={p.id} p={p} />)}</>}
             {projects.length > 0 && <><div className="sb-h">Projects</div>{projects.map((p) => <Proj key={p.id} p={p} />)}</>}
             <div className="sb-h">Library</div>
             <Item href="/reviews" icon="reviews" label="Reviews" />
-            <Item href="/finance" icon="finance" label="Finance" />
-            <Item href="/stats" icon="stats" label="Stats" />
             <Item href="/admin" icon="admin" label="Admin" />
           </nav>
           <div className="sb-foot">
-            <span className="sb-ver sb-l" title="Jarvis Central version (see CHANGELOG.md in the repo)">v{version}</span>
+            <span className="sb-ver sb-l" title="Sentient Dash version (see CHANGELOG.md in the repo)">v{version}</span>
             <form action="/api/auth/logout" method="post"><button className="sb-out" title={iconic ? "Sign out" : undefined} aria-label="Sign out"><Icon n="out" size={16} /><span className="sb-l">Sign out</span></button></form>
           </div>
         </div>

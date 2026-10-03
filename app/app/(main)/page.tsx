@@ -65,7 +65,7 @@ export default async function Home() {
     <>
       <div className="hello">
         <div>
-          <h1 className="page">{OWNER ? `Welcome, ${OWNER}` : "Welcome to Jarvis Central"}</h1>
+          <h1 className="page">{OWNER ? `Welcome, ${OWNER}` : "Welcome to Sentient Dash"}</h1>
           <div className="when">{when}</div>
         </div>
       </div>
