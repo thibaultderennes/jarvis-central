@@ -8,13 +8,16 @@ import { useEffect } from "react";
  * listener, nothing per component. Never records what you type: no input values, no free text from the page.
  * A label comes from `data-track`, else aria-label / title / a short button text with any text from the
  * surrounding row (item titles, todo names…) blanked out and numbers replaced by #. Links in the content are
- * recorded by their path only. `data-track-section="…"` names a region; `data-track-off` excludes one.
+ * recorded by their path only. A page is its path plus the view keys (?v=, ?k=, ?tab=) and the checklist filter codes
+ * (?sec=, ?own=, ?due=, ?crit=, ?done=); client-side changes to those (Next syncs history.replaceState into
+ * useSearchParams) are new page views. `data-track-section="…"` names a region; `data-track-off` excludes one.
  */
 const URL_ = "/api/usage";
 const TARGETS = 'a[href], button, summary, select, [role="button"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="switch"], [role="link"], input[type="checkbox"], input[type="radio"], input[type="submit"], [data-track]';
 const REGIONS = '[role="tabpanel"], [role="dialog"], [role="tablist"], [role="menu"], [role="group"], nav, section, aside, header, form';
 const ROWS = 'li, tr, article, [role="row"], [role="listitem"]';
 const VIEW_KEYS = ["v", "k", "tab"]; // query keys that pick a view (e.g. /p/<id>?v=checklist), kept in the page name
+const FILTER_KEYS = ["sec", "own", "due", "crit", "done"]; // checklist filter chips (codes, never typed text), kept after the view keys
 const IDLE_MS = 30 * 60_000;
 
 type Ev = { t: number; k: "click" | "view"; p: string; l?: string; g?: string; s?: string; h?: string };
@@ -47,7 +50,8 @@ function push(e: Omit<Ev, "t">) {
 function pageName(pathname: string, search: string) {
   const q = new URLSearchParams(search), keep = new URLSearchParams();
   for (const k of VIEW_KEYS) { const v = q.get(k); if (v && /^[a-z][a-z0-9-]{0,24}$/.test(v)) keep.set(k, v); }
-  const s = keep.toString();
+  for (const k of FILTER_KEYS) { const v = q.get(k); if (v && /^[a-z0-9][a-z0-9,_-]{0,40}$/i.test(v)) keep.set(k, v); }
+  const s = keep.toString().replace(/%2C/gi, ",");
   return pathname + (s ? `?${s}` : "");
 }
 /** Internal destination path (no query values beyond the view keys); external links → their host only. */

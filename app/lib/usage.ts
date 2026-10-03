@@ -43,18 +43,30 @@ type Row = { at: string; session_id: string; kind: string; page: string; label: 
 const inc = <K>(m: Map<K, number>, k: K, by = 1) => m.set(k, (m.get(k) || 0) + by);
 const top = <T>(m: Map<string, number>, n: number, f: (k: string, v: number) => T) => [...m.entries()].sort((a, b) => b[1] - a[1]).slice(0, n).map(([k, v]) => f(k, v));
 const SEP = "\u0000";
+const FILTER_KEYS = new Set(["sec", "own", "due", "crit", "done"]);
+/** "/p/x?v=checklist&sec=build&crit=1" → ["/p/x?v=checklist", "sec=build&crit=1"]: pages group by view; filters are counted apart. */
+export function splitPage(page: string): [string, string] {
+  const i = page.indexOf("?");
+  if (i < 0) return [page, ""];
+  const view: string[] = [], filters: string[] = [];
+  for (const [k, v] of new URLSearchParams(page.slice(i + 1))) (FILTER_KEYS.has(k) ? filters : view).push(`${k}=${v}`);
+  return [page.slice(0, i) + (view.length ? `?${view.join("&")}` : ""), filters.join("&")];
+}
 
 /**
- * The weekly aggregate the Jarvis review reads: top clicks, pages (views, clicks, dead ends, exits), page-to-page
- * sequences and backtracks, and features used before but rarely this period. No raw events leave the database.
+ * The weekly aggregate the Jarvis review reads: top clicks, pages (visits, clicks, dead ends, exits), page-to-page
+ * sequences and backtracks, checklist filters used, and features used before but rarely this period. A page is its
+ * path plus the view (?v=, ?k=, ?tab=); consecutive views of the same page (a filter change, a reload) are one visit.
+ * No raw events leave the database.
  */
 export async function usageSummary(since: string, until: string) {
-  const rows = (await sql()`select at, session_id, kind, page, label, target, section, href from click_events
+  const raw = (await sql()`select at, session_id, kind, page, label, target, section, href from click_events
     where at >= ${since} and at < ${until} order by session_id, at limit 50000`) as Row[];
+  const rows = raw.map((r) => { const [page, filters] = splitPage(r.page); return { ...r, page, filters }; });
   const clicks = new Map<string, number>(), views = new Map<string, number>(), pageClicks = new Map<string, number>();
   const deadEnds = new Map<string, number>(), exits = new Map<string, number>(), moves = new Map<string, number>();
-  const backtracks = new Map<string, number>(), chains = new Map<string, number>(), days = new Set<string>();
-  const sessions = new Map<string, Row[]>();
+  const backtracks = new Map<string, number>(), chains = new Map<string, number>(), filterUse = new Map<string, number>(), days = new Set<string>();
+  const sessions = new Map<string, typeof rows>();
   for (const r of rows) {
     days.add(new Date(r.at).toISOString().slice(0, 10));
     if (!sessions.has(r.session_id)) sessions.set(r.session_id, []);
@@ -62,32 +74,36 @@ export async function usageSummary(since: string, until: string) {
     if (r.kind === "click") {
       inc(clicks, [r.page, r.label || (r.href ? `→ ${r.href}` : `(${r.target || "unlabelled"})`), r.target, r.section].join(SEP));
       inc(pageClicks, r.page);
-    } else inc(views, r.page);
+    }
   }
   for (const evs of sessions.values()) {
-    const vs = evs.filter((e) => e.kind === "view");
-    // A view with no click before the next view (or the end of the session) is a dead end; the last view is an exit.
-    evs.forEach((e, i) => {
-      if (e.kind !== "view") return;
-      const nxt = evs[i + 1];
-      if (!nxt || nxt.kind === "view") inc(deadEnds, e.page);
-    });
+    // Visits: a view of a different page than the last one starts a visit; a visit with no click is a dead end.
+    const vs: { page: string; clicked: boolean }[] = [];
+    let lastFilters = "";
+    for (const e of evs) {
+      const cur = vs[vs.length - 1];
+      if (e.kind === "click") { if (cur) cur.clicked = true; continue; }
+      if (cur?.page !== e.page) { vs.push({ page: e.page, clicked: false }); lastFilters = ""; }
+      if (e.filters && e.filters !== lastFilters) inc(filterUse, e.page + SEP + e.filters);
+      lastFilters = e.filters;
+    }
+    for (const v of vs) { inc(views, v.page); if (!v.clicked) inc(deadEnds, v.page); }
     if (vs.length) inc(exits, vs[vs.length - 1].page);
     for (let i = 1; i < vs.length; i++) {
-      if (vs[i].page === vs[i - 1].page) continue;
       inc(moves, vs[i - 1].page + SEP + vs[i].page);
       if (i >= 2 && vs[i].page === vs[i - 2].page) inc(backtracks, vs[i - 2].page + SEP + vs[i - 1].page);
-      if (i >= 2 && vs[i - 1].page !== vs[i - 2].page) inc(chains, [vs[i - 2].page, vs[i - 1].page, vs[i].page].join(SEP));
+      if (i >= 2) inc(chains, [vs[i - 2].page, vs[i - 1].page, vs[i].page].join(SEP));
     }
   }
   // Rarely used: elements clicked in the retained history before this period, at most once during it.
   let rare: { page: string; label: string; before: number; now: number }[] = [];
   try {
     const hist = await sql()`select page, label, count(*)::int as n from click_events where kind = 'click' and at < ${since} and label <> ''
-      group by 1, 2 order by n desc limit 300`;
-    const nowBy = new Map<string, number>();
+      group by 1, 2 order by n desc limit 500`;
+    const nowBy = new Map<string, number>(), before = new Map<string, number>();
     for (const [k, v] of clicks) { const [page, label] = k.split(SEP); inc(nowBy, page + SEP + label, v); }
-    rare = hist.map((h) => ({ page: h.page as string, label: h.label as string, before: h.n as number, now: nowBy.get(`${h.page}${SEP}${h.label}`) || 0 }))
+    for (const h of hist) inc(before, splitPage(h.page as string)[0] + SEP + h.label, h.n as number);
+    rare = [...before.entries()].sort((a, b) => b[1] - a[1]).map(([k, n]) => { const [page, label] = k.split(SEP); return { page, label, before: n, now: nowBy.get(k) || 0 }; })
       .filter((h) => h.now <= 1).slice(0, 25);
   } catch { /* history is optional */ }
   const pages = [...new Set([...views.keys(), ...pageClicks.keys()])].map((p) => ({
@@ -101,6 +117,7 @@ export async function usageSummary(since: string, until: string) {
     dead_end_pages: pages.filter((p) => p.views >= 2 && p.dead_ends / p.views >= 0.5).sort((a, b) => b.dead_ends - a.dead_ends).slice(0, 10),
     sequences: top(moves, 25, (k, n) => { const [from, to] = k.split(SEP); return { from, to, n }; }),
     paths: top(chains, 15, (k, n) => ({ path: k.split(SEP), n })),
+    filters: top(filterUse, 20, (k, n) => { const [page, filters] = k.split(SEP); return { page, filters, n }; }), // checklist filter combinations applied
     backtracks: top(backtracks, 15, (k, n) => { const [page, via] = k.split(SEP); return { page, via, n }; }), // page → via → straight back to page
     rarely_used: rare,
   };

@@ -67,7 +67,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, added?, archived?, total?, error?}`).
 - `login_attempts(ip, at, ok)`.
-- `click_events(id bigserial, at, session_id /* random per browser tab, new after 30 idle min */, kind 'click'|'view', page /* path + ?v=/?k=/?tab= */, label, target /* link, button, tab, checkbox… */, section /* the region's aria-label or heading */, href null /* a link's destination path */)` —
+- `click_events(id bigserial, at, session_id /* random per browser tab, new after 30 idle min */, kind 'click'|'view', page /* path + ?v=/?k=/?tab= + checklist filter codes ?sec=/?own=/?due=/?crit=/?done= */, label, target /* link, button, tab, checkbox… */, section /* the region's aria-label or heading */, href null /* a link's destination path */)` —
   first-party usage tracking for the Monday Jarvis review. `components/UsageTracker.tsx` (mounted once in the `(main)`
   layout, one delegated click listener) batches events to `POST /api/usage` (owner session cookie, same origin;
   sendBeacon, at most every 15 s or 25 events, and when the tab is hidden). Labels come from `data-track`, else
@@ -107,7 +107,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | POST | `/api/agent/import` | `{projects?:[], items?:[], reviews?:[]}` bulk upsert (migration) | `{counts}` |
 | GET | `/api/agent/calendar` | `?from=DATE&to=DATE` | `[{start, end, allDay, title, location}]` |
 | GET | `/api/agent/activity` | `?since=ISO` | `[{at, kind, page, detail}]` server-side action log |
-| GET | `/api/agent/usage` | `?since=ISO&until=ISO` (default: the last 7 days) | `{totals: {events, clicks, views, sessions, active_days}, top_clicks: [{page, label, target, section, n}], pages: [{page, views, clicks, dead_ends, exits}], dead_end_pages, sequences: [{from, to, n}], paths: [{path, n}], backtracks: [{page, via, n}], rarely_used: [{page, label, before, now}], truncated}` aggregate of `click_events`; 503 when the table is missing |
+| GET | `/api/agent/usage` | `?since=ISO&until=ISO` (default: the last 7 days) | `{totals: {events, clicks, views, sessions, active_days}, top_clicks: [{page, label, target, section, n}], pages: [{page, views, clicks, dead_ends, exits}], dead_end_pages, sequences: [{from, to, n}], paths: [{path, n}], filters: [{page, filters, n}], backtracks: [{page, via, n}], rarely_used: [{page, label, before, now}], truncated}` aggregate of `click_events`: pages group by path + view (filter codes counted apart in `filters`), and consecutive views of one page count as one visit; 503 when the table is missing |
 | DELETE | `/api/agent/usage` | `?days=90` | `{deleted}` raw click events older than that (retention) |
 
 Site endpoint (owner session cookie, not the agent token): `POST /api/usage` — body (text/plain JSON)

@@ -129,13 +129,15 @@ function usageLines(u) {
   const t = u.totals || {};
   const L = ["## Clicks and page views (first-party tracking on the site)",
     `${t.views || 0} page views and ${t.clicks || 0} clicks in ${t.sessions || 0} browser sessions on ${t.active_days || 0} days${u.truncated ? " (truncated at 50,000 events)" : ""}.`,
-    "Labels are the tool's own button/link/tab names; … stands for text the owner wrote (an item or todo title); # for a number.", ""];
+    "Labels are the tool's own button/link/tab names; … stands for text the owner wrote (an item or todo title); # for a number.",
+    "A page is its path plus the view picked in the query (/p/<id> is a project's dashboard, /p/<id>?v=checklist its checklist…).", ""];
   if (!t.events) return [...L, ""];
   L.push("### Top clicks (page · label · element · region · count)", ...(u.top_clicks || []).map((c) => `- ${c.page} · ${c.label || "(no label)"} · ${c.target || "—"} · ${c.section || "—"} · ${c.n}`), "");
   L.push("### Pages (views · clicks · dead ends = views with no click before leaving · exits = last page of a session)", ...(u.pages || []).map((p) => `- ${p.page}: ${p.views} views, ${p.clicks} clicks, ${p.dead_ends} dead ends, ${p.exits} exits`), "");
   if ((u.dead_end_pages || []).length) L.push("### Dead-end pages (half or more of the views had no click)", ...u.dead_end_pages.map((p) => `- ${p.page}: ${p.dead_ends} of ${p.views} views`), "");
   L.push("### Most common page-to-page moves", ...(u.sequences || []).map((m) => `- ${m.from} → ${m.to}: ${m.n}`), "");
   if ((u.paths || []).length) L.push("### Most common three-page paths", ...u.paths.map((x) => `- ${x.path.join(" → ")}: ${x.n}`), "");
+  if ((u.filters || []).length) L.push("### Checklist filters applied (page · filter codes: sec=section ids, own=founder|claude, due=overdue|week|2w, crit=1 critical only, done=1|0 show completed · count)", ...u.filters.map((x) => `- ${x.page} · ${x.filters} · ${x.n}`), "");
   if ((u.backtracks || []).length) L.push("### Backtracks (went to a page and straight back)", ...u.backtracks.map((b) => `- ${b.page} → ${b.via} → ${b.page}: ${b.n}`), "");
   if ((u.rarely_used || []).length) L.push("### Rarely used this week (clicked before, at most once this week)", ...u.rarely_used.map((r) => `- ${r.page} · ${r.label}: ${r.before} before, ${r.now} this week`), "");
   return L;
