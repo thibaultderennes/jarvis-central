@@ -364,7 +364,7 @@ function BacklogRow({ it, p, today, planned, onAdd, addLabel }: { it: BItem; p?:
 }
 
 /** Double-click a todo to rename it: Enter or leaving the field saves; it stays open with the text if the save fails. */
-function EditTitle({ t, onDone }: { t: Todo; onDone: () => void }) {
+export function EditTitle({ t, onDone }: { t: Todo; onDone: () => void }) {
   const [v, setV] = useState(t.title);
   const s = useSubmit();
   const save = () => { const x = v.trim(); if (s.pending) return; if (!x || x === t.title) return onDone(); s.submit(() => editTodo(t.id, { title: x }), { onOk: onDone }); };

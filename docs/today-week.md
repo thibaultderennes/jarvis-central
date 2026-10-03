@@ -28,13 +28,20 @@ and calendar events in the same column as the work (Things, Sunsama).
 
 **Today**
 1. *Single column agenda*: calendar events and todos interleaved by time, backlog in a drawer. Rejected: most
-   todos have no time, so the interleaving is mostly noise, and the backlog drawer hides the "pull work in" step.
-2. *Three panels with a decision strip* (built): Calendar | Today's list with a "Decide now" strip on top |
-   Backlog. The strip holds checklist items that are overdue or due today and not yet on the list, overdue and
-   critical first, with ✓ Done · + Today · → Tomorrow. Below it, undone todos first (overdue-linked ones flagged),
-   done at the bottom, each with complete, move to next day, someday, any date, delete. The panel header shows
-   "N left · ~H h" against the focus capacity (`JARVIS_FOCUS_MINUTES`, default 360) as a bar that turns red when
-   over.
+   todos have no time, so the interleaving is mostly noise.
+2. *Three panels with a decision strip* (0.5.0): Calendar | list with a "Decide now" strip | Backlog. Replaced in
+   0.6.0: the owner found it too busy to tell what to do next (three panels open at once, the same item in the
+   strip and the backlog, a paragraph of instructions).
+3. *One list, an agenda rail, "Later" folded* (0.6.0, built). The page answers "what do I do next, and am I on
+   track today?". Header: day, "N of M done", a load meter "~H h of C h focus" (`JARVIS_FOCUS_MINUTES`, default
+   360) that turns red when over. One ordered list: the day's todos (drag or Alt+↑/↓ to reorder) followed by
+   checklist items due that day that aren't on the list yet; the first open row is "Next up". One click ticks;
+   →, a date, ↓ (someday) and × sit on the row (behind ⋯ on a phone); done rows fold into "Done (N)". Quick add:
+   Enter saves, "14:00 call the bank" sets the time, time and project also behind "More". The agenda rail shows
+   calendar events and timed todos (the Sunday plan's blocks) on an hour grid with a now-line; below 1060 px it
+   becomes a one-line strip under the list that opens on tap. Everything else is in a closed "Later" disclosure
+   with counts: overdue (✓ Done · + Today · → Tomorrow), what the week's plan couldn't fit (+ Today), coming up
+   in two weeks or in progress (project chips, + Today), and Someday todos.
 
 **Week**
 1. *Day columns only*, with due items and todos, as before. Rejected: what was already late was invisible unless
@@ -49,10 +56,9 @@ linked item count as zero minutes: they have no estimate, and inventing one woul
 
 ## What each page shows and leaves out
 
-Today shows: the day's appointments; the decision strip; the day's list with load; the backlog (overdue, due
-today, in progress, next 7 and 14 days; cancelled items never appear) and the Someday list. It leaves out: time
-blocking inside the day (the Sunday plan writes blocks to the calendar instead), habits, and anything without a
-due date that is not in progress.
+Today shows: the list with its load, the agenda, and (folded) overdue, plan leftovers, the next two weeks and
+Someday. It leaves out: dragging backlog items onto the list (use + Today), dragging todos into Someday (use ↓),
+habits, and anything without a due date that is not in progress.
 
 Week shows: the Sunday plan summary; the overdue strip; seven days with events, due items, todos and load; the
 backlog. It leaves out: multi-week views, and a re-flow of the plan when a day is over capacity (the planner
