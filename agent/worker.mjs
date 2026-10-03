@@ -14,6 +14,7 @@ import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
 import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
+import { syncMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
@@ -148,6 +149,7 @@ ${CLI_CMD} todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project 
 ${CLI_CMD} todos [--from D] [--to D]
 ${CLI_CMD} reviews [--type project|recap|coaching|jarvis|doc|security] [--project P] [--limit N] [--full]
 ${CLI_CMD} audits <project>                 security audit reports synced from the project folder (date, verdict, headline)
+${CLI_CMD} metrics <project> [--days N]     product numbers (users, active users, visits, revenue…) per snapshot
 Do not use the CLI's inbox or reply commands: the worker posts your final message as the reply.
 
 ## Projects
@@ -327,6 +329,8 @@ async function pass() {
     await syncAuditsDue(projects, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
     // Unit-economics model files in project folders → evaluated here, results on the project's Finances tab; hourly.
     await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
+    // Product metrics (users, visits, revenue…) from each project's source in the config → the project's Stats view; daily.
+    await syncMetricsDue(projects, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.

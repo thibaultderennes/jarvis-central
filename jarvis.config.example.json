@@ -52,6 +52,15 @@
     "timeout_seconds": 30
   },
 
+  "metrics": {
+    "sync_minutes": 1440,
+    "timeout_seconds": 30,
+    "sources": {
+      "example-project": { "url": "https://example.com/api/metrics", "token_env": "EXAMPLE_METRICS_TOKEN" },
+      "other-project": { "command": "node scripts/metrics.mjs", "map": { "visits": "traffic.visitors", "users": "accounts.total" } }
+    }
+  },
+
   "guard": {
     "deny": []
   },

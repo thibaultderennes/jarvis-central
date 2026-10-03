@@ -53,6 +53,20 @@ async function projectBundle(p, W, turnsAll, sessions, events) {
     const open = items.filter(isOpen).sort((a, b) => (a.due || "9").localeCompare(b.due || "9"));
     L.push(`### Open items (${open.length})`, ...open.map((i) => `- [${i.id}] ${i.title} | ${i.section} | ${i.status} | due ${i.due || "—"} | ${i.owner || "—"}${i.critical ? " | critical" : ""}${i.note ? ` | founder note: ${trunc(i.note.replace(/\n/g, " "), 300)}` : ""}`), "");
   }
+  // Product numbers (agent/metrics.mjs or typed by hand): the last snapshot of each of the last 8 weeks, so advice can cite them.
+  const snaps = await get("/api/agent/metrics" + qs({ project: p.id, since: addDays(W.startDate, -49) }), []);
+  const byWeek = new Map(); for (const s of snaps) if (s.date < W.endDate) byWeek.set(mondayOf(s.date), s);
+  const weekly = [...byWeek.values()];
+  if (weekly.length) {
+    L.push(`## Product metrics (last snapshot per week; users, active_users, paying_users, mrr are levels on the day; signups, activated, visits, revenue, churned are totals over the 7 days before it; see docs/metrics.md)`);
+    L.push(...weekly.map((s) => `- ${s.date} (${s.source}): ${Object.entries(s.metrics).map(([k, v]) => `${k}=${v}`).join(", ")}`), "");
+  } else L.push("## Product metrics", "None recorded: no source connected and nothing typed by hand. Don't guess numbers; say which ones would change a decision.", "");
+  const costs = await get("/api/agent/costs" + qs({ project: p.id }), []);
+  if (costs.length) {
+    const mo = (c) => (c.period === "week" ? (c.amount * 52) / 12 : c.period === "year" ? c.amount / 12 : c.amount);
+    const tot = {}; for (const c of costs) tot[c.currency] = (tot[c.currency] || 0) + mo(c);
+    L.push(`## Recurring costs: ${Object.entries(tot).map(([k, v]) => `${v.toFixed(2)} ${k}`).join(" + ")} per month`, ...costs.map((c) => `- ${c.name}: ${c.amount} ${c.currency}/${c.period}`), "");
+  }
   let commits = [], prs = [], audit = null;
   if (isRepoRoot(p.dir)) {
     const g = sh("git", ["-C", p.dir, "log", "--all", `--since=${W.start.toISOString()}`, `--until=${W.end.toISOString()}`, "--format=%h %ad %an %s", "--date=short", "-n", "200"], p.dir);
@@ -83,7 +97,7 @@ async function projectBundle(p, W, turnsAll, sessions, events) {
   if (prev) L.push(`## Last review (${prev.week_start}, ${prev.verdict || "—"}): ${prev.headline || ""}`, prev.body_md, "");
   const prsMerged = prs.filter((r) => r.mergedAt && inWeek(r.mergedAt, W.start, W.end)).length;
   const activity = commits.length + prs.length + st.sessions + ev.length + doneWeek.length;
-  return { text: L.join("\n"), activity, meta: { commits: commits.length, prs: prs.length, prs_merged: prsMerged, sessions: st.sessions, active_minutes: st.activeMinutes, done: doneWeek.length, slipped: slips.length, overdue: overdue.length } };
+  return { text: L.join("\n"), activity, meta: { metrics: weekly.at(-1)?.metrics || null, commits: commits.length, prs: prs.length, prs_merged: prsMerged, sessions: st.sessions, active_minutes: st.activeMinutes, done: doneWeek.length, slipped: slips.length, overdue: overdue.length } };
 }
 
 // ---------- prompts ----------

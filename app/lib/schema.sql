@@ -206,3 +206,15 @@ create table if not exists click_events (
   href text
 );
 create index if not exists click_events_at on click_events (at);
+-- 0.6.0. Product metrics per project (users, active users, visits, revenue…): one row per project per day, written by
+-- agent/metrics.mjs from each project's source in jarvis.config.json, or by hand (`jarvis metrics <project> --set k=v`).
+-- POST /api/agent/metrics merges keys into the day's row. Keys are documented in docs/metrics.md; extra keys are kept.
+create table if not exists metrics_snapshots (
+  project_id text not null,
+  date date not null,
+  metrics jsonb not null default '{}',
+  source text not null default 'manual',
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  primary key (project_id, date)
+);

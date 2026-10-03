@@ -33,6 +33,8 @@ function defaults() {
   if (ex.projects) ex.projects = { ...ex.projects, overrides: {} };
   // Unit-economics models: a project opts in with a model file; `models` maps a project id to a non-default path.
   ex.economics = { files: ["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"], sync_minutes: 60, timeout_seconds: 30, ...(ex.economics || {}), models: {} };
+  // Product metrics: a project opts in with a source (url or command) under metrics.sources.<id>; daily by default.
+  ex.metrics = { sync_minutes: 1440, timeout_seconds: 30, ...(ex.metrics || {}), sources: {} };
   if (ex.planner) ex.planner = { ...ex.planner, project_caps: {} };
   // Page-view/click tracking for the Monday Jarvis review: on unless the owner's config says false.
   ex.usage = { track_clicks: true, retention_days: 90, ...(ex.usage || {}) };
