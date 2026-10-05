@@ -20,7 +20,10 @@
      var, or a command run in the project folder, giving JSON numbers), posts the day's product-metrics snapshot for
      the project's **Stats** view and the Monday review; daily (`metrics.sync_minutes`). Keys: [`metrics.md`](metrics.md).
    - `rescan.mjs`: runs a project-folder scan when "Refresh project folders" was pressed on the Admin page (kv
-     `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand.
+     `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand. It updates
+     registered projects but never registers a new folder: new folders come back as `proposed` payloads that the owner
+     approves (the site inserts the payload) or declines (added to `projects.ignored`). `projects.mjs sync` from the
+     command line still registers new folders, since the owner runs it on purpose. Both skip `projects.ignored`.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
@@ -70,7 +73,10 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
-  `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, added?, archived?, total?, error?}`).
+  `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, proposed?: [project payload + folder], archived?, total?, error?}`;
+  approving or declining a proposal removes it from `proposed`),
+  `projects.ignored` (`[{id, folder?, name, reason 'removed'|'declined', at}]`: folders the scan skips. **Remove** on the
+  Admin page archives the project, keeping its items and history, and adds it here; **Restore** takes it off and un-archives a removed project).
 - `login_attempts(ip, at, ok)`.
 - `click_events(id bigserial, at, session_id /* random per browser tab, new after 30 idle min */, kind 'click'|'view', page /* path + ?v=/?k=/?tab= + checklist filter codes ?sec=/?own=/?due=/?crit=/?done= */, label, target /* link, button, tab, checkbox… */, section /* the region's aria-label or heading */, href null /* a link's destination path */)` —
   first-party usage tracking for the Monday Jarvis review. `components/UsageTracker.tsx` (mounted once in the `(main)`
@@ -163,7 +169,8 @@ title contain every word (case- and accent-insensitive, archived projects left o
   open items' due dates per day, this and next week's Sunday-plan blocks, calendar events; built in `app/lib/timeline.ts`
   from existing data, no table of its own) · `/p/<id>` (left menu: Dashboard, Checklists, Timeline (one lane per section),
   Project, Reviews, Finances, Statistics; `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
-  `/inbox` (New / Pending / Treated) · `/admin` (projects + "Refresh project folders", account, subscriptions, preferences).
+  `/inbox` (New / Pending / Treated) · `/admin` (projects: "Refresh project folders" with Approve / Decline for new folders, Remove per project, removed and declined
+  folders with Restore; account, subscriptions, preferences).
 - Env vars the site reads beyond the secrets: `JARVIS_TZ`, `JARVIS_OWNER`, `JARVIS_REVIEW_WHEN`, `JARVIS_PLAN_WHEN`,
   `JARVIS_FOCUS_MINUTES` (a day of focus for the Today/Week load bars; written from `planner.max_focus_minutes_per_day`
   by `node app/scripts/setup.mjs secrets`), `JARVIS_TRACK_CLICKS` (`on`/`off`, from `usage.track_clicks`; missing = on;

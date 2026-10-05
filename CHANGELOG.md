@@ -3,6 +3,12 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Admin: approve new projects, remove old ones.** "Refresh project folders" no longer registers new folders on its
+  own: each one is listed with **Approve** / **Decline**, and a declined folder isn't proposed again. Each project has
+  **Remove** (two clicks), which archives it, keeps its checklist history and keeps it out of every future scan.
+  **Restore** undoes either. The ignore list is kv `projects.ignored`, and `projects.mjs sync` honours it too.
+  Upgrade notes: deploy the site together with the agent update. An older site doesn't show the proposals, so a refresh
+  would find new folders and nothing would let you approve them.
 
 ## 0.6.0 — 2026-10-03
 - **Sentient Dash**: the product is renamed in the UI (sidebar, login, browser title, Home, Admin), with the Lane S mark

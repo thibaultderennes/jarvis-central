@@ -111,14 +111,23 @@ async function scaffold() {
 }
 
 /* ---------------- sync ---------------- */
+/** Folders the owner removed or declined on the Admin page (kv `projects.ignored`): never registered or proposed again. */
+export async function ignoredProjects() {
+  try { const v = (await api("GET", "/api/agent/kv?key=projects.ignored")).value; return Array.isArray(v) ? v : []; }
+  catch (e) { if (e.status === 404) return []; throw e; }
+}
+
 /**
  * Register / update every project folder on the dashboard. Never deletes: a project whose folder is gone is archived.
- * Returns the ids it upserted, the ones that weren't registered before (`added`) and the ones it archived.
+ * Folders on the ignore list are skipped. With `addNew: false` (the Admin page's refresh) a folder that isn't
+ * registered yet is only proposed: its payload comes back in `proposed` for the owner to approve or decline.
+ * Returns the ids it upserted, the ones that weren't registered before (`added`), the proposals and the ones it archived.
  */
-export async function syncProjects({ dry = false, print = console.log } = {}) {
-  const ps = scanProjects();
-  let existing = [];
-  try { existing = await api("GET", "/api/agent/projects?all=1"); } catch (e) { if (!dry) throw e; print(`(dry run: API unavailable — ${e.message})`); }
+export async function syncProjects({ dry = false, print = console.log, addNew = true } = {}) {
+  let existing = [], ignored = [];
+  try { [existing, ignored] = await Promise.all([api("GET", "/api/agent/projects?all=1"), ignoredProjects()]); } catch (e) { if (!dry) throw e; print(`(dry run: API unavailable — ${e.message})`); }
+  const skip = new Set(ignored.flatMap((x) => [x.id, x.folder].filter(Boolean)));
+  const ps = scanProjects().filter((p) => !skip.has(p.id) && !skip.has(p.folder));
   // Milestones moved on the Timeline go into PRD.md first, so the parse below keeps them instead of reverting.
   if (!dry) await applyMilestoneMoves(existing, (...a) => print(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ")));
   const byId = Object.fromEntries(existing.map((p) => [p.id, p]));
@@ -143,16 +152,20 @@ export async function syncProjects({ dry = false, print = console.log } = {}) {
     return body;
   });
   const gone = existing.filter((e) => !e.archived && e.dir && path.resolve(e.dir).startsWith(path.resolve(PROJECTS_ROOT) + path.sep) && !ps.some((p) => p.id === e.id));
-  const added = payloads.filter((b) => !byId[b.id]).map((b) => b.id);
+  const fresh = payloads.filter((b) => !byId[b.id]);
+  const proposed = addNew ? [] : fresh.map((b) => ({ ...b, folder: ps.find((p) => p.id === b.id)?.folder }));
+  const toUpsert = addNew ? payloads : payloads.filter((b) => byId[b.id]);
+  const added = addNew ? fresh.map((b) => b.id) : [];
   if (dry) {
-    print(JSON.stringify({ upsert: payloads, archive: gone.map((g) => g.id) }, null, 2));
-    return { upserted: [], added, archived: [] };
+    print(JSON.stringify({ upsert: toUpsert, propose: proposed.map((b) => b.id), archive: gone.map((g) => g.id) }, null, 2));
+    return { upserted: [], added, proposed, archived: [] };
   }
-  for (const b of payloads) { await api("PUT", "/api/agent/projects", b); print(`✓ ${b.id} (${b.kind}, ${b.color}${b.deadlines.length ? `, ${b.deadlines.length} deadline(s)` : ""})${byId[b.id] ? "" : "  new"}`); }
+  for (const b of toUpsert) { await api("PUT", "/api/agent/projects", b); print(`✓ ${b.id} (${b.kind}, ${b.color}${b.deadlines.length ? `, ${b.deadlines.length} deadline(s)` : ""})${byId[b.id] ? "" : "  new"}`); }
   for (const g of gone) { await api("PUT", "/api/agent/projects", { id: g.id, name: g.name, archived: true }); print(`archived ${g.id} (folder gone)`); }
   const noPrd = ps.filter((p) => !p.hasPrd).map((p) => p.id);
   if (noPrd.length) print(`\nNo PRD.md yet: ${noPrd.join(", ")}. Their deadlines on the site are unchanged; add a PRD with a milestones table to manage them from the file (node agent/projects.mjs scaffold).`);
-  return { upserted: payloads.map((b) => b.id), added, archived: gone.map((g) => g.id) };
+  if (proposed.length) print(`\nNew folders waiting for your approval on the Admin page: ${proposed.map((b) => b.id).join(", ")}`);
+  return { upserted: toUpsert.map((b) => b.id), added, proposed, archived: gone.map((g) => g.id) };
 }
 const sync = () => syncProjects({ dry: DRY });
 

@@ -303,6 +303,60 @@ export async function requestRescan() {
   await D.logActivity("projects_rescan", "/admin");
   done();
 }
+/** Folders removed or declined on the Admin page (kv `projects.ignored`): the Mac scan never registers or proposes them again. */
+export type Ignored = { id: string; folder?: string; name: string; reason: "removed" | "declined"; at: string };
+type Proposal = Partial<D.Project> & { id: string; name: string; folder?: string };
+const getIgnored = async () => { const v = (await D.kvGet<Ignored[]>("projects.ignored"))?.value; return Array.isArray(v) ? v : []; };
+const setIgnored = (list: Ignored[]) => D.kvSet("projects.ignored", list);
+/** Drops one proposal from the last scan's result, so it leaves the Admin page. */
+async function takeProposal(id: string): Promise<Proposal | null> {
+  const cur = await D.kvGet<{ proposed?: Proposal[] }>("projects.rescan");
+  const list = cur?.value?.proposed || [];
+  const hit = list.find((p) => p.id === id) || null;
+  if (hit) await D.kvSet("projects.rescan", { ...cur!.value, proposed: list.filter((p) => p.id !== id) });
+  return hit;
+}
+/** Remove a project from Jarvis: archived (its checklist and history are kept) and ignored by every future scan. */
+export async function removeProject(id: string) {
+  await requireSession();
+  const p = await D.getProject(id);
+  if (!p) return;
+  await D.upsertProject({ id, name: p.name, archived: true, featured_rank: null });
+  const dir = p.dir ? p.dir.replace(/\/+$/, "") : "";
+  const folder = dir ? dir.slice(dir.lastIndexOf("/") + 1) : undefined;
+  await setIgnored([...(await getIgnored()).filter((x) => x.id !== id), { id, folder, name: p.name, reason: "removed", at: new Date().toISOString() }]);
+  await D.logActivity("project_remove", "/admin", { project: id });
+  done();
+}
+/** Undo a remove or a decline: the folder is scanned again. A removed project comes back as it was; a declined one is proposed on the next refresh. */
+export async function restoreProject(id: string) {
+  await requireSession();
+  const list = await getIgnored();
+  const hit = list.find((x) => x.id === id);
+  await setIgnored(list.filter((x) => x.id !== id));
+  const p = await D.getProject(id);
+  if (p && hit?.reason === "removed") await D.upsertProject({ id, name: p.name, archived: false });
+  await D.logActivity("project_restore", "/admin", { project: id });
+  done();
+}
+/** A new folder found by "Refresh project folders" joins the dashboard only when the owner approves it. */
+export async function approveProject(id: string) {
+  await requireSession();
+  const p = await takeProposal(id);
+  if (!p) return;
+  const { folder: _folder, ...project } = p;
+  await D.upsertProject({ ...project, archived: false });
+  await D.logActivity("project_approve", "/admin", { project: id });
+  done();
+}
+export async function declineProject(id: string) {
+  await requireSession();
+  const p = await takeProposal(id);
+  if (!p) return;
+  await setIgnored([...(await getIgnored()).filter((x) => x.id !== id), { id, folder: p.folder, name: p.name, reason: "declined", at: new Date().toISOString() }]);
+  await D.logActivity("project_decline", "/admin", { project: id });
+  done();
+}
 export type Prefs = { show_done_default?: boolean; finance_currency?: string };
 export async function savePrefs(p: Prefs) {
   await requireSession();
