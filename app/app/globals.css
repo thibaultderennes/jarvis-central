@@ -1,9 +1,9 @@
 :root {
-  --ground: #ECEEF1; --surface: #FFFFFF; --surface-2: #F5F6F8; --ink: #12151B; --ink-2: #464D5A; --ink-3: #737B8B;
+  --ground: #ECEEF1; --surface: #FFFFFF; --surface-2: #F5F6F8; --ink: #12151B; --ink-2: #464D5A; --ink-3: #5F6674;
   --line: #D5D9E0; --line-2: #E7EAEE; --signal: #E9A100; --signal-ink: #8F5F00; --signal-soft: #FCF1D6;
   /* project slots p1…p7 = the dataviz reference categorical palette, in its fixed order (validated light + dark);
      magenta is reserved for personal (life) todos. Projects take slots in order; see docs/conventions.md. */
-  --p1: #2a78d6; --p2: #eb6834; --p3: #1baf7a; --p4: #eda100; --p5: #008300; --p6: #4a3aa7; --p7: #e34948;
+  --p1: #2B5FC7; --p2: #C2551B; --p3: #00968A; --p4: #8E44AD; --p5: #7A8A00; --p6: #C23F78; --p7: #2E9BD6;
   --life: #e87ba4; --other: #7A8292;
   --sb-bg: #E4E7EB; --sb-hover: #D9DDE3;
   --doing: #2F6F9F; --doing-soft: #E1EDF6; --done: #2E7D52; --done-soft: #E0F1E6; --bad: #BF3328; --bad-soft: #FBE9E7;
@@ -17,7 +17,7 @@
     color-scheme: dark;
     --ground: #0D1015; --surface: #151920; --surface-2: #1B2029; --ink: #E8EBF0; --ink-2: #AEB5C2; --ink-3: #828A9A;
     --line: #29303B; --line-2: #1F242D; --signal: #F5B82E; --signal-ink: #F5B82E; --signal-soft: #3A2E12;
-    --p1: #3987e5; --p2: #d95926; --p3: #199e70; --p4: #c98500; --p5: #008300; --p6: #9085e9; --p7: #e66767;
+    --p1: #5A84E2; --p2: #CF6A39; --p3: #14A091; --p4: #A468C2; --p5: #8C9B18; --p6: #D45E8A; --p7: #3C9BD0;
     --life: #d55181; --other: #8C93A1;
     --sb-bg: #10141A; --sb-hover: #1B2029;
     --doing: #7FB6E0; --doing-soft: #18303F; --done: #6FCB94; --done-soft: #173226; --bad: #F2877D; --bad-soft: #3A1C19;
@@ -58,7 +58,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sb-jump .sb-l:not(kbd) { flex: 1; }
 .sb-jump kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; line-height: 16px; color: var(--ink-3); background: var(--surface-2); }
 .sb-nav { display: flex; flex-direction: column; gap: 1px; }
-.sb-h { font-family: var(--mono); font-size: 10px; letter-spacing: .12em; text-transform: uppercase; color: var(--ink-3); padding: 14px 10px 5px; white-space: nowrap; }
+.sb-h { font-family: var(--body); font-size: 10px; letter-spacing: 0; color: var(--ink-3); padding: 14px 10px 5px; white-space: nowrap; }
 .sb-nav .sb-h:first-child { padding-top: 6px; }
 .sb-a { position: relative; display: flex; align-items: center; gap: 10px; min-height: 32px; padding: 0 8px 0 9px; border-radius: 6px; text-decoration: none; color: var(--ink-2); font-size: 13.5px; white-space: nowrap; }
 .sb-a .ico { color: var(--ink-3); }
@@ -120,9 +120,9 @@ html.noscroll { overflow: hidden; }
 @media (prefers-reduced-motion: reduce) { .sb { transition: none !important; } }
 
 /* type + panels */
-.lbl { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); font-weight: 400; }
+.lbl { font-family: var(--body); font-size: 11px; letter-spacing: 0; color: var(--ink-3); font-weight: 400; }
 h1.page { font-family: var(--display); font-weight: 800; font-size: clamp(24px, 3.4vw, 32px); letter-spacing: .01em; margin: 18px 0 0; text-wrap: balance; }
-h2.ph-t { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: .07em; text-transform: uppercase; margin: 0; }
+h2.ph-t { font-family: var(--display); font-weight: 700; font-size: 14px; letter-spacing: 0; margin: 0; }
 .sub { color: var(--ink-2); margin: 4px 0 0; max-width: 70ch; }
 .panel { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; min-width: 0; }
 .ph { display: flex; align-items: center; gap: 10px; padding: 11px 14px; border-bottom: 1px solid var(--line-2); flex-wrap: wrap; }
@@ -156,7 +156,7 @@ h2.ph-t { font-family: var(--display); font-weight: 700; font-size: 14px; letter
 .when { font-family: var(--mono); font-size: 12.5px; color: var(--ink-2); margin-top: 4px; }
 .clocks { display: flex; gap: 8px; flex-wrap: wrap; }
 .clk { display: flex; flex-direction: column; gap: 1px; padding: 7px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--surface); min-width: 116px; text-decoration: none; }
-.clk .p { font-family: var(--mono); font-size: 10px; letter-spacing: .08em; text-transform: uppercase; display: flex; gap: 6px; align-items: center; color: var(--ink-2); }
+.clk .p { font-family: var(--body); font-size: 10px; letter-spacing: 0; display: flex; gap: 6px; align-items: center; color: var(--ink-2); }
 .clk .d { font-family: var(--mono); font-weight: 600; font-size: 18px; font-variant-numeric: tabular-nums; line-height: 1.15; }
 .clk .d small { font-size: 11px; font-weight: 400; color: var(--ink-3); }
 .clk .n { font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
@@ -307,7 +307,7 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 .wday.today { background: linear-gradient(var(--signal), var(--signal)) top / 100% 3px no-repeat; }
 .wday.past { background-color: var(--surface-2); }
 .wdh { padding: 9px 10px 4px; display: flex; align-items: baseline; gap: 6px; }
-.wdh .wd { font-family: var(--mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--ink-3); }
+.wdh .wd { font-family: var(--body); font-size: 11px; letter-spacing: 0; color: var(--ink-3); }
 .wdh .dn { font-family: var(--display); font-weight: 700; font-size: 20px; text-decoration: none; }
 .wday.today .dn { color: var(--signal-ink); }
 .wdh .ld { margin-left: auto; font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); }
@@ -473,7 +473,7 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 .dpanel-h { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 6px; font-size: 13.5px; }
 .dpanel-h .sp { flex: 1; }
 .dpanel-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 8px 18px; }
-.dpanel h3 { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-2); margin: 0 0 4px; }
+.dpanel h3 { font-size: 12px; letter-spacing: 0; color: var(--ink-2); margin: 0 0 4px; }
 .dpanel ul { list-style: none; margin: 0; padding: 0; max-height: 280px; overflow-y: auto; }
 .dpanel li { display: flex; gap: 7px; align-items: center; padding: 4px 0; border-bottom: 1px solid var(--line-2); font-size: 13px; min-width: 0; }
 .dpanel li a { color: var(--ink); text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1 1 auto; min-width: 0; }
@@ -487,7 +487,7 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 @media (prefers-reduced-motion: no-preference) { .mark.live .mark-dot { animation: markdot 2.4s ease-in-out infinite; transform-origin: 52px 17px; } @keyframes markdot { 50% { opacity: .45; transform: scale(.82); } } }
 
 /* Identity kit (components/brand.tsx): page glyph, faint header vector, section lanes, sidebar group lanes, empty art. */
-h1.page .glyph { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: var(--surface); border: 1px solid var(--line); color: var(--ink); vertical-align: -5px; margin-right: 12px; }
+h1.page .glyph { display: inline-grid; place-items: center; width: 26px; height: 26px; color: var(--ink); vertical-align: -3px; margin-right: 10px; }
 h1.page .glyph .ac { fill: var(--signal); }
 .hvec { color: var(--ink-3); opacity: .55; flex: 0 1 212px; min-width: 0; height: auto; margin-left: auto; align-self: center; }
 .hvec path, .hvec circle { stroke: currentColor; stroke-width: 2.2; }
@@ -540,3 +540,14 @@ a.pill.blocked { text-decoration: none; }
 .screen-card { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .screen-card b { font-family: var(--display); }
 .screen-card p { margin: 0; font-size: 12.5px; color: var(--ink-2); flex: 1; }
+
+/* 0.7.3 (VibeCoded Screening): designed hover and pressed states instead of none. Ink buttons lift a step, ghost
+   buttons and chips take the surface-2 fill; pressing settles 1px. Motion stays off under reduced motion. */
+.btn { transition: background-color .12s, border-color .12s, transform .06s; }
+.btn:hover:not(:disabled) { background: var(--ink-2); border-color: var(--ink-2); }
+.btn.ghost:hover:not(:disabled) { background: var(--surface-2); border-color: var(--ink-3); color: var(--ink); }
+.btn:active:not(:disabled) { transform: translateY(1px); }
+.chip { transition: background-color .12s, border-color .12s; }
+.chip:hover:not([aria-pressed="true"]) { background: var(--surface-2); border-color: var(--ink-3); }
+.chip:active { transform: translateY(1px); }
+@media (prefers-reduced-motion: reduce) { .btn, .chip { transition: none; } .btn:active, .chip:active { transform: none; } }

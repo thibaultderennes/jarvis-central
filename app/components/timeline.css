@@ -10,7 +10,7 @@
 .tl-in { position: relative; }
 .tl svg { display: block; overflow: visible; }
 .tl text { font-family: var(--mono); font-size: 10.5px; fill: var(--ink-3); }
-.tl .tl-mo { fill: var(--ink-2); font-weight: 600; letter-spacing: .06em; text-transform: uppercase; font-size: 10px; }
+.tl .tl-mo { fill: var(--ink-2); font-weight: 600; letter-spacing: 0; font-size: 10px; }
 .tl .tl-mlab { fill: var(--ink-2); font-family: var(--body); font-size: 11px; }
 .tl .tl-late { fill: var(--bad); font-weight: 600; }
 .tl .tl-todayl { fill: var(--signal-ink); font-weight: 600; }
@@ -63,7 +63,7 @@
 .tl-msr:first-child { border-top: 0; }
 .tl-days { display: flex; flex-direction: column; align-items: flex-start; line-height: 1.1; }
 .tl-days b { font-family: var(--display); font-size: 20px; font-variant-numeric: tabular-nums; }
-.tl-days small { font-family: var(--mono); font-size: 10px; color: var(--ink-3); text-transform: uppercase; letter-spacing: .06em; }
+.tl-days small { font-family: var(--body); font-size: 10px; color: var(--ink-3); letter-spacing: 0; }
 .tl-days.soon b { color: var(--signal-ink); } .tl-days.past b { color: var(--ink-3); }
 .tl-mst { display: flex; flex-direction: column; min-width: 0; }
 .tl-mst > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; }

@@ -3,6 +3,16 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Design pass from the first VibeCoded Screening** (`DESIGN.md`, new): the rules the site follows (tokens, type
+  roles, a 4px spacing scale, radii, motion, copy) and a CLAUDE.md rule to run the screening before shipping UI.
+  - Muted text (`--ink-3`) darkened to 4.96:1 on the light page background (was 3.6:1).
+  - Labels and panel titles in sentence case; caps stay only on pills, verdicts and table headers.
+  - IBM Plex Mono replaces JetBrains Mono (numbers, times, codes).
+  - New project palette `--p1`…`--p7` (blue, rust, teal, plum, olive, magenta, sky), validated for adjacent slots in
+    light and dark, avoiding the amber, red and green the site reserves for "now" and status.
+  - Page-title icons without the tile; designed hover and pressed states for buttons and chips.
+  - Removed the create-next-app SVGs from `app/public`.
+  - `docs/landing-copy.md` rewritten: the decided headline, and sections that follow the week around real screenshots.
 
 ## 0.7.2 — 2026-10-05
 - **Screenings: three new reviews you run on demand** (a project's Reviews → **Screenings** → Run). Claude checks the

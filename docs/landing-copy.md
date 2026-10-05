@@ -1,63 +1,78 @@
 # Landing page copy (draft for approval)
 
-_Draft for the one-page site. Grounded in `PRD.md` and `README.md`. No numbers, users or testimonials until they exist._
+_Draft for the one-page site, rewritten after the VibeCoded Screening (5 Oct 2026). Grounded in `PRD.md`, `README.md`
+and `DESIGN.md`. No numbers, users or testimonials until they exist. Every section is built around a real screenshot
+from the demo instance (checklist item `demo-instance-with-no`); the brackets name the shot._
 
-## Headline options
+## Headline (decided: option 2, sharpened)
 
-1. **Every project you run, in one place that plans your week.**
-   Sub: A self-hosted command centre for solo founders who build with Claude Code: checklists, deadlines, your
-   calendar and an agent that turns ready items into pull requests.
-2. **Run five projects without losing the thread.**
-   Sub: See them all, pick what deserves this week, and let Claude plan it, review it on Monday and build the parts you approve.
-3. **Your projects, your calendar, your Claude. One dashboard.**
-   Sub: An open-source command centre that runs on your own accounts and works the way you already work in Claude Code.
+**Keep all five side projects moving in the same week.**
+Sub: Sentient Dash plans your week across every project you run with Claude Code, reviews each one on Monday, and
+builds the checklist items you mark ready. It runs on your own Mac and accounts.
 
-**Recommended: 1.** It names the problem the PRD is built on, "which project deserves this week, and what do I do
-next?", and the one thing nobody else combines: a portfolio of projects plus planning plus an agent. Option 2 is
-punchier but promises a number of projects. Option 3 leans on ownership, which is a reason to trust it, not a reason to want it.
+Why this one: it names who it's for (someone with several projects) and the job (keeping them all moving in the same
+week), in one plain sentence: no "in one place", no staccato fragments, no list of three. "Five" is an example, not a claim.
 
-## Three benefits
+Primary button: **Install from GitHub** · secondary link: **Watch the demo**
 
-**See every project at once.**
-Each project's checklist, deadlines from its PRD, finances and metrics sit on one private site, with a timeline across all of them. You stop opening ten folders to find out where things stand.
+[Screenshot: the dashboard on a Monday morning, demo data, light mode]
 
-**A week that fits your calendar.**
-On Sunday it plans next week's work around your real appointments and writes the blocks into Google or Apple
-Calendar. On Monday, an advisor review per project tells you what shipped, what slipped and what to do next.
+## The section order follows your week, not a template
 
-**Claude builds what you mark ready.**
-Set a checklist item to in progress and Claude builds it on its own branch and opens a pull request. You approve and merge it from the same page, or send it back with a note. Nothing merges without you.
+### Sunday: the week is planned before it starts
+[Screenshot: Week view with the planned blocks next to calendar events]
 
-## How it works
+Sentient Dash reads every project's checklist and deadlines, looks at your calendar, and writes focus blocks into
+Google or Apple Calendar for the week ahead. It sizes the plan from what you actually finished in the last two weeks,
+and tells you when the hours you plan in don't match the hours you work.
 
-1. **Clone the repo** and open it in Claude Code.
-2. **Say "Set up Jarvis Central."** Claude walks you through it: it finds your projects, drafts a plan file for each,
-   deploys your private site to your own Vercel and database accounts, and connects your calendar. You type every password and secret yourself.
-3. **Run your week from it.** Sunday: a plan in your calendar. Monday: a review of each project. Any day: message
-   Claude from the site, or mark an item ready to build.
-4. **Approve what comes back.** Pull requests wait for your "Approve & merge". Answers wait in your inbox.
+### Monday: each project gets an honest review
+[Screenshot: a project review with its verdict and the top fixes]
+
+A short review per project: what shipped, what slipped, whether the next deadline still holds, and what to do this
+week. Screenings check a project before launch: generic AI-made design and copy, launch blockers, and legal and
+consent gaps. Their fixes land on the checklist.
+
+### Any day: Claude builds what you mark ready
+[Screenshot: a checklist item with "PR ready for you" and the Approve & merge button]
+
+Set an item to in progress. Claude builds it on its own branch in the project's folder and opens a pull request.
+You approve and merge it from the same page, or send it back with a note. Nothing merges without you.
+
+### Across all of it: one timeline
+[Screenshot: the Timeline with milestones, sprints and today's line]
+
+Milestones come from each project's PRD, due dates from the checklists, sprints from what you grouped. Drag a
+milestone to move it; the PRD file is updated for you.
+
+## Set up in one conversation
+[Short clip: Claude Code running "Set up Jarvis Central", sped up]
+
+Clone the repo, open it in Claude Code and say "Set up Jarvis Central." Claude finds your projects, drafts a plan file
+for each, deploys your private site to your own Vercel and Neon accounts and connects your calendar. You type every
+password and secret yourself.
 
 ## Calls to action
 
 | | Button | Supporting line |
 |---|---|---|
 | Primary | **Install from GitHub** | Free and open source. Runs on your Mac with your Claude plan, plus free Vercel and Neon accounts. |
-| Secondary note under the primary button | **Hosted version: join the waitlist** | A hosted plan is coming. It will run on your own Anthropic API key, so you never hand over your Claude account. |
+| Under the primary button | **Hosted version: join the waitlist** | A hosted plan is coming. It will run on your own Anthropic API key, so you never hand over your Claude account. |
 | Waitlist (its own section) | **Join the waitlist** | Want it without running anything? Leave your email and we'll write once, when the hosted version opens. |
-| Demo | **Watch the demo** | A short walk-through, recorded on a demo instance with sample projects and no private data. |
+| Demo | **Watch the demo** | A walk-through recorded on a demo instance with sample projects and no private data. |
 
 ## What it is not
 
-- **Not hosted yet.** Today you install it on your own accounts. That's the point (your data stays with you), and it takes setup time.
-- **Mac + Claude Code required.** The background worker runs on your Mac and uses your Claude plan. Linux works with cron; Windows doesn't.
+- **Not hosted yet.** Today you install it on your own accounts. Your data stays with you, and setup takes time.
+- **Needs a Mac and Claude Code.** The background worker runs on your Mac and uses your Claude plan. Linux works with cron; Windows doesn't.
 - **Not for teams yet.** It's built for one person running several projects. Sharing and roles aren't there.
 - **Not an autopilot.** Claude plans, reviews and builds on branches. You decide, approve and merge.
 
 ## How it compares
 
-Agent boards such as Vibe Kanban and Linear's coding sessions are great at running one task through an agent.
-Calendar planners such as Motion and Reclaim are great at fitting tasks into your day. Sentient Dash puts the two
-together for a single person across all their projects, adds a weekly review of each one, and runs on your own accounts.
+Agent boards such as Vibe Kanban and Linear's coding sessions run one task through an agent well. Calendar planners
+such as Motion and Reclaim fit tasks into your day well. Sentient Dash joins the two for one person across all their
+projects, adds a weekly review of each, and runs on your own accounts.
 
 ## FAQ
 
@@ -65,12 +80,11 @@ together for a single person across all their projects, adds a weekly review of 
 Yes. The self-hosted version is open source (MIT). You use your existing Claude plan, and Vercel's and Neon's free tiers are enough for one person.
 
 **What do I need?**
-A Mac, Node 20+, git, Claude Code signed in, and a Vercel account. The GitHub CLI is optional; you need it for the "build it" pull requests.
+A Mac, Node 20+, git, Claude Code signed in, and a Vercel account. The GitHub CLI is optional; you need it for the pull requests Claude opens.
 
 **Does my data leave my accounts?**
 Your checklists, plans and reviews live in your own Vercel site and database. Claude runs through your own Claude
-plan, and your session transcripts are read on your Mac only. Nothing is sent to us, because there is no "us"
-server in the self-hosted version.
+plan, and your session transcripts are read on your Mac only. There is no server of ours in the self-hosted version.
 
 **What does Claude get access to?**
 Your project folders on your Mac, through a worker with a fixed list of allowed tools. It works on throwaway

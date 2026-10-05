@@ -40,6 +40,8 @@ If the owner asks to set up Jarvis Central, follow [`SETUP.md`](SETUP.md) phase 
 8. Releases: bump `VERSION` **and** `app/package.json` `version` (Vercel builds `app/` alone and shows that version in the top bar) (semver: patch = fixes, minor = features/new config keys, major = anything that needs
    a manual migration), move `Unreleased` into a dated section, tag `vX.Y.Z`.
 9. The stored owner value `founder` means "the owner" — UI copy says "you". Don't rename stored values without a migration.
+10. **UI follows [`DESIGN.md`](DESIGN.md)**: tokens only (colour, the 4px spacing scale, radii), sentence case, the copy rules.
+    Run the VibeCoded Screening on this project (Reviews → Screenings) before shipping UI and fix what it marks fail.
 
 ## How we work
 These rules are for the maintainer's sessions in this repo; someone who only installed Jarvis can skip them.
