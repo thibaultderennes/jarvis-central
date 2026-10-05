@@ -46,6 +46,8 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   - **blocked_by**: an open item with an open blocker shows "blocked by …" on the checklist; nothing is enforced. The site refuses
     unknown codes, the item itself and loops; the API and CLI take an array or `"a,b"` (`""` clears) and only normalise it.
   - **open** = `todo` or `doing`; `done` and `cancelled` are closed and leave every count, deadline, load and top-3 card.
+  - Items and todos of an **archived** project are kept but leave every cross-project view and count (sidebar, Home,
+    Needs you, Today/Week, Stats, Timeline, `GET /api/agent/items` without `project`); its own page still lists them.
   - Creating an item (site, API, CLI, plan) refuses an exact duplicate of a title in the same project (normalised: case,
     punctuation and filler words ignored; cancelled items don't count) → API 409 `{error, duplicate}`, `allow_duplicate: true`
     overrides; a near match (most words shared) is created but flagged (`refine: 'flagged'`).

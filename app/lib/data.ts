@@ -84,8 +84,10 @@ export function splitFeatured(projects: Project[]): { featured: Project[]; other
 export const displayColor = (p: Project, featuredIds: Set<string>) => (featuredIds.has(p.id) ? p.color : "other");
 
 /* ---------- items ---------- */
-export async function getItems(opts: { project?: string; open?: boolean; refine?: string; build?: string } = {}): Promise<Item[]> {
+/** Items. Without `project`, items of archived (removed or gone) projects are left out unless `includeArchived`. */
+export async function getItems(opts: { project?: string; open?: boolean; refine?: string; build?: string; includeArchived?: boolean } = {}): Promise<Item[]> {
   const where: string[] = [], params: unknown[] = [];
+  if (!opts.project && !opts.includeArchived) where.push(`project_id not in (select id from projects where archived)`);
   if (opts.refine) { params.push(opts.refine); where.push(`refine = $${params.length}`); }
   if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
   if (opts.open) where.push(`status in ('todo', 'doing')`);
@@ -100,7 +102,7 @@ export async function getItems(opts: { project?: string; open?: boolean; refine?
 export async function openCounts(day: string): Promise<Record<string, { open: number; late: number; soon: number }>> {
   const rows = await sql()`select project_id, count(*)::int as open, count(*) filter (where due < ${day}::date)::int as late,
       count(*) filter (where due >= ${day}::date and due <= ${day}::date + 7)::int as soon
-    from items where status in ('todo', 'doing') group by 1`;
+    from items where status in ('todo', 'doing') and project_id not in (select id from projects where archived) group by 1`;
   return Object.fromEntries(rows.map((r) => [r.project_id as string, { open: r.open as number, late: r.late as number, soon: r.soon as number }]));
 }
 export function slugify(s: string, max = 4): string {
@@ -206,9 +208,10 @@ export async function setSprintItems(project_id: string, sprint_id: string | nul
 
 /* ---------- todos ---------- */
 export async function getTodos(from: string | null, to: string | null, includeSomeday = false): Promise<Todo[]> {
+  // Todos of archived (removed) projects stay in the database but leave every day view.
   const rows = includeSomeday
-    ? await sql()`select * from todos where (date between ${from} and ${to}) or date is null order by date nulls last, sort, created_at`
-    : await sql()`select * from todos where date between ${from} and ${to} order by date, sort, created_at`;
+    ? await sql()`select * from todos where ((date between ${from} and ${to}) or date is null) and (project_id is null or project_id not in (select id from projects where archived)) order by date nulls last, sort, created_at`
+    : await sql()`select * from todos where date between ${from} and ${to} and (project_id is null or project_id not in (select id from projects where archived)) order by date, sort, created_at`;
   return rows.map(normTodo);
 }
 export async function addTodo(t: { date: string | null; title: string; kind?: string; project_id?: string | null; item_id?: string | null; time?: string | null }): Promise<Todo> {
@@ -326,13 +329,13 @@ export async function getActivity(since: string) {
 export async function doneByWeek(weeks = 8) {
   const start = addDays(mondayOf(today()), -7 * (weeks - 1));
   const rows = await sql()`select project_id, date_trunc('week', done_at at time zone ${TZ})::date as wk, count(*)::int as n
-    from items where done_at is not null and done_at >= ${start}::date group by 1, 2`;
+    from items where done_at is not null and done_at >= ${start}::date and project_id not in (select id from projects where archived) group by 1, 2`;
   return { start, rows: rows.map((r) => ({ project_id: r.project_id as string, week: d10(r.wk)!, n: r.n as number })) };
 }
 /** Open items by due week, next `weeks` weeks (overdue folded into the first week). */
 export async function openByDueWeek(weeks = 6) {
   const start = mondayOf(today()), end = addDays(start, 7 * weeks - 1);
-  const rows = await sql()`select project_id, greatest(due, ${start}::date) as d from items where status in ('todo', 'doing') and due is not null and due <= ${end}`;
+  const rows = await sql()`select project_id, greatest(due, ${start}::date) as d from items where status in ('todo', 'doing') and due is not null and due <= ${end} and project_id not in (select id from projects where archived)`;
   return { start, rows: rows.map((r) => ({ project_id: r.project_id as string, week: mondayOf(d10(r.d)!) })) };
 }
 /** Todos per day for the last `days` days: planned vs done, split life/work. */
@@ -414,9 +417,9 @@ export async function dailyStats(n?: number, project?: string, opts: { bucket?: 
   const from = step(start(t), -(count - 1));
   const p = project || null;
   const [rows, [first], [od]] = await Promise.all([
-    sql()`select id, project_id, title, created_at, done_at, updated_at, due, status from items where (${p}::text is null or project_id = ${p}) and (created_at >= ${from}::date - 1 or done_at >= ${from}::date - 1 or (status = 'cancelled' and updated_at >= ${from}::date - 1)) order by created_at`,
-    sql()`select min(created_at) as first from items where ${p}::text is null or project_id = ${p}`,
-    sql()`select count(*)::int as n from items where (${p}::text is null or project_id = ${p}) and status in ('todo', 'doing') and due is not null and due < ${t}`,
+    sql()`select id, project_id, title, created_at, done_at, updated_at, due, status from items where ((${p}::text is null and project_id not in (select id from projects where archived)) or project_id = ${p}) and (created_at >= ${from}::date - 1 or done_at >= ${from}::date - 1 or (status = 'cancelled' and updated_at >= ${from}::date - 1)) order by created_at`,
+    sql()`select min(created_at) as first from items where (${p}::text is null and project_id not in (select id from projects where archived)) or project_id = ${p}`,
+    sql()`select count(*)::int as n from items where ((${p}::text is null and project_id not in (select id from projects where archived)) or project_id = ${p}) and status in ('todo', 'doing') and due is not null and due < ${t}`,
   ]);
   const day = (v: unknown) => (v == null ? null : isoInTZ(v instanceof Date ? v : new Date(String(v))));
   const out: DayStat[] = Array.from({ length: count }, (_, i) => ({ date: step(from, i), added: 0, done: 0, done_late: 0, cancelled: 0, ...(opts.items ? { items: { added: [], done: [] } } : {}) }));
