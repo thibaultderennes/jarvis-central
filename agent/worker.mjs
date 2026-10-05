@@ -12,6 +12,7 @@ import { api, qs, makeLog, makeLogOnce, acquireLock, todayTZ, hostName, JARVIS_R
 import { runClaude } from "./claude.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
+import { screenProject } from "./screen.mjs";
 import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
 import { syncMetricsDue } from "./metrics.mjs";
@@ -191,6 +192,7 @@ async function handle(message, projects) {
   const project = projects.find((p) => p.id === message.project_id) || null;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "seen" });
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
+  if (message.mode === "screen") return screenProject(message, project, log); // Reviews → Screenings → Run
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : JARVIS_ROOT;
   const repo = project ? repoInfo(dir) : null;
   // The build run of an in-progress item (queued by queueBuilds): one branch per item, so a PR sent back continues there.

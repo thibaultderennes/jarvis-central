@@ -4,6 +4,21 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.2 — 2026-10-05
+- **Screenings: three new reviews you run on demand** (a project's Reviews → **Screenings** → Run). Claude checks the
+  project folder, read-only, against a researched check list in `screenings/`, marks every check fail / warn / pass /
+  n/a / needs the live site with file evidence, writes the report there, and adds what to fix to the checklist
+  (blockers critical, the owner's choices in decide), scheduled like "Plan this project".
+  - **VibeCoded Screening** (`screenings/vibecoded.md`, 68 checks): the tells of a generic AI-made site: default
+    gradients, fonts and UI kits, stock motion, buzzword and em-dash copy, placeholder proof, builder leftovers.
+  - **Website pre-launch** (`screenings/prelaunch.md`, 90 checks, 45 core): legal pages, HTTPS and security headers,
+    secrets, SEO and social cards, Core Web Vitals, accessibility, 404/500, forms and spam, email authentication,
+    analytics and monitoring, domains, one clear call to action.
+  - **Pre-launch rights & compliance** (`screenings/rights.md`, 68 checks across Canada/Québec, the US, the EU and the
+    UK): policies, consent and cookies, data minimisation, user rights, children, marketing consent, subscriptions and
+    cancellation, fake reviews and claims, accessibility, licences, AI disclosure. Not legal advice.
+  New message mode `screen`, review type `screening` (the type check is widened by the migration), `agent/screen.mjs`.
+
 ## 0.7.1 — 2026-10-05
 - **Checklist: today + overdue in one go.** The Due filter gets **Due today** (combines with Overdue and the date
   ranges), and Select mode gets **Select all shown**: filter Overdue + Due today, select them all, then Create sprint,

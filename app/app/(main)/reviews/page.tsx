@@ -7,8 +7,8 @@ import Thread from "@/components/Thread";
 import { cap, REVIEW_WHEN } from "@/lib/instance";
 import { Glyph, HeaderVec } from "@/components/brand";
 
-const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document", security: "Security audit" };
-const PROJECT_TAB: Record<string, string> = { doc: "strategy", security: "security" };
+const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document", security: "Security audit", screening: "Screening" };
+const PROJECT_TAB: Record<string, string> = { doc: "strategy", security: "security", screening: "screenings" };
 const ORDER = ["recap", "coaching", "jarvis", "project"];
 
 export default async function Reviews({ searchParams }: { searchParams: Promise<{ id?: string; type?: string }> }) {
