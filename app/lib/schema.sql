@@ -234,3 +234,7 @@ create table if not exists sprints (
 create index if not exists sprints_project on sprints (project_id, start_date);
 alter table items add column if not exists sprint_id uuid;
 create index if not exists items_sprint on items (sprint_id) where sprint_id is not null;
+-- 0.7.2. Screenings (agent/screen.mjs, check lists in screenings/): on-demand reviews of type 'screening',
+-- meta.kind = vibecoded | prelaunch | rights. The type check is widened in place (drop + add, same end state every run).
+alter table reviews drop constraint if exists reviews_type_check;
+alter table reviews add constraint reviews_type_check check (type in ('project','recap','coaching','jarvis','doc','security','screening'));

@@ -4,6 +4,7 @@ import { requireSession } from "@/lib/auth";
 import * as D from "@/lib/data";
 import { addDays, daysBetween, fmtDate, today } from "@/lib/time";
 import Checklist from "@/components/Checklist";
+import Screenings, { type ScreenCard } from "@/components/Screenings";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
 import ProjectSettings from "@/components/ProjectSettings";
@@ -23,7 +24,7 @@ type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; w?
 const VIEWS = ["checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
 type View = (typeof VIEWS)[number];
 // Older links keep working: ?tab=… (before the 0.5.0 menu) and ?v=dashboard (its summary now sits beside the checklist).
-const LEGACY: Record<string, { v: View; k?: string }> = { checklist: { v: "checklist" }, reviews: { v: "reviews" }, strategy: { v: "project" }, security: { v: "reviews", k: "security" }, dashboard: { v: "checklist" } };
+const LEGACY: Record<string, { v: View; k?: string }> = { checklist: { v: "checklist" }, reviews: { v: "reviews" }, strategy: { v: "project" }, security: { v: "reviews", k: "security" }, screenings: { v: "reviews", k: "screenings" }, dashboard: { v: "checklist" } };
 
 export default async function ProjectPage({ params, searchParams }: { params: Promise<{ id: string }>; searchParams: Promise<Search> }) {
   await requireSession();
@@ -34,13 +35,25 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const view: View = (VIEWS as readonly string[]).includes(sp.v || "") ? (sp.v as View) : legacy?.v || "checklist";
   const kind = sp.k || legacy?.k || "weekly";
   const t = today();
-  const [items, weekly, docs, audits, msgs, all, prefs, costs, economics, sprints] = await Promise.all([
+  const [items, weekly, docs, audits, msgs, all, prefs, costs, economics, sprints, screenings] = await Promise.all([
     D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 }),
     D.getReviews({ type: "security", project: id, limit: 100 }).then((l) => l.sort(D.newestFileFirst)),
     D.getMessages({ limit: 50 }), D.getProjects(), D.getPrefs(), D.getCosts({ project: id, all: true }),
     view === "finance" ? D.getEconomics(id) : null, // the model grid is large: only the Finances view needs it
     view === "checklist" ? D.getSprints({ project: id }).catch(() => []) : [], // [] until the sprints table exists
+    D.getReviews({ type: "screening", project: id, limit: 60 }).catch(() => [] as D.Review[]),
   ]);
+  const SCREENS: [string, string, string][] = [
+    ["vibecoded", "VibeCoded Screening", "The tells that make a site look AI-generated: default gradients and fonts, untouched UI kits, stock motion, buzzword copy, placeholder proof."],
+    ["prelaunch", "Website pre-launch", "What breaks or leaks at launch: legal pages, HTTPS and headers, secrets, SEO and social cards, speed, accessibility, forms, email, analytics, one clear call to action."],
+    ["rights", "Pre-launch rights & compliance", "Policies, consent and cookies, data you don't need, third-party SDKs, dark patterns and hidden fees, claims and reviews, licences, deletion requests. Not legal advice."],
+  ];
+  const cards: ScreenCard[] = SCREENS.map(([kind, title, what]) => {
+    const last = screenings.find((r) => r.meta?.kind === kind);
+    const c = (last?.meta?.counts || {}) as Record<string, number>;
+    return { kind, title, what, running: msgs.some((m) => m.project_id === id && m.mode === "screen" && m.meta?.kind === kind && ["new", "seen", "working"].includes(m.status)),
+      last: last ? { date: last.created_at.slice(0, 10), verdict: last.verdict, fail: c.fail || 0, live: c.live || 0 } : null };
+  });
   const open = items.filter(D.isOpen), dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
   const planning = msgs.some((m) => m.project_id === id && m.mode === "plan" && ["new", "seen", "working"].includes(m.status));
@@ -50,7 +63,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     { v: "checklist", label: "Checklist", count: open.length },
     { v: "timeline", label: "Timeline" },
     { v: "project", label: "Docs", count: docs.length || undefined },
-    { v: "reviews", label: "Reviews", count: weekly.length + audits.length || undefined },
+    { v: "reviews", label: "Reviews", count: weekly.length + audits.length + screenings.length || undefined },
     { v: "finance", label: "Finances", count: costs.filter((c) => c.active).length || undefined },
     { v: "stats", label: "Stats" },
   ];
@@ -111,10 +124,16 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         {view === "reviews" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <div className="chips" role="group" aria-label="Kind of review">
-              <Link className="chip" aria-pressed={kind !== "security"} href={href({ v: "reviews" })}>Weekly reviews{weekly.length > 0 && ` (${weekly.length})`}</Link>
+              <Link className="chip" aria-pressed={kind !== "security" && kind !== "screenings"} href={href({ v: "reviews" })}>Weekly reviews{weekly.length > 0 && ` (${weekly.length})`}</Link>
               <Link className="chip" aria-pressed={kind === "security"} href={href({ v: "reviews", k: "security" })}>Security audits{audits.length > 0 && ` (${audits.length})`}</Link>
+              <Link className="chip" aria-pressed={kind === "screenings"} href={href({ v: "reviews", k: "screenings" })}>Screenings{screenings.length > 0 && ` (${screenings.length})`}</Link>
             </div>
-            {kind !== "security" && (weekly.length ? <ReviewPicker list={weekly} sel={sp.r} base={{ v: "reviews" }} href={href} />
+            {kind === "screenings" && <>
+              <Screenings projectId={id} cards={cards} />
+              {screenings.length ? <ReviewPicker list={screenings} sel={sp.r} base={{ v: "reviews", k: "screenings" }} href={href} />
+                : <div className="panel empty">No screening yet. Run one above: Claude checks the folder against a researched check list, writes the report here and adds what to fix to the checklist.</div>}
+            </>}
+            {kind !== "security" && kind !== "screenings" && (weekly.length ? <ReviewPicker list={weekly} sel={sp.r} base={{ v: "reviews" }} href={href} />
               : <div className="panel empty">The first weekly review for {p.name} arrives {REVIEW_WHEN}. It covers what shipped, what slipped, an audit of the week&apos;s work, risks, and your top 3 for the week.</div>)}
             {kind === "security" && (audits.length ? <ReviewPicker list={audits} sel={sp.r} base={{ v: "reviews", k: "security" }} href={href} />
               : <div className="panel empty">No audit reports yet. Markdown reports in the project folder&apos;s audits directory (<code>docs/audits</code> unless <code>audits.dir</code> says otherwise) appear here after the next sync, within an hour of landing.</div>)}

@@ -25,6 +25,11 @@
      registered projects but never registers a new folder: new folders come back as `proposed` payloads that the owner
      approves (the site inserts the payload) or declines (added to `projects.ignored`). `projects.mjs sync` from the
      command line still registers new folders, since the owner runs it on purpose. Both skip `projects.ignored`.
+   - `screen.mjs`: **screenings**, on-demand reviews run from a project's Reviews → Screenings (message `mode: 'screen'`,
+     `meta.kind` = `vibecoded` | `prelaunch` | `rights`). Claude reads the folder read-only against the researched check list in
+     `screenings/<kind>.md`, marks every check fail / warn / pass / n/a / live (needs the deployed site) with file evidence, and
+     proposes items; they are validated and scheduled like "Plan this project" (blockers critical, owner choices in decide). The report
+     is a review of type `screening` (`meta: {kind, counts, added}`). `node agent/screen.mjs <id> <kind> --dry-run` prints the prompt.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
@@ -68,7 +73,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     once the reply was on screen) → **Treated** (`treated_at`, "Mark treated"; hidden = `archived`). `item_id` = the
     build run of a checklist item.
   - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'}`
-- `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at)`
+- `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at)`
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - `doc` = long-lived documents (strategy reviews). `meta.tabs` may hold `[{key, label, body_md}]`.
   - `security` = one audit report file, mirrored by `agent/audits.mjs`; `week_start` is null and

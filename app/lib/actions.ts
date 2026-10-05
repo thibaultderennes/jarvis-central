@@ -329,6 +329,18 @@ export async function requestPlanning(project_id: string) {
   done();
 }
 
+/** Reviews → Screenings → Run: the Mac worker checks the folder against screenings/<kind>.md and adds the fixes to the checklist. */
+const SCREEN_KINDS = ["vibecoded", "prelaunch", "rights"];
+export async function requestScreening(project_id: string, kind: string) {
+  await requireSession();
+  if (!SCREEN_KINDS.includes(kind)) return;
+  const busy = await sql()`select id from messages where project_id = ${project_id} and mode = 'screen' and meta->>'kind' = ${kind} and status in ('new', 'seen', 'working') limit 1`;
+  if (busy.length) return;
+  await D.insertMessage({ text: `Run the ${kind} screening on this project and add what to fix to the checklist.`, project_id, status: "new", mode: "screen", meta: { kind } });
+  await D.logActivity("project_screening", `/p/${project_id}`, { project_id, kind });
+  done();
+}
+
 /* ---------- finance: recurring costs ---------- */
 export async function createCost(c: { project_id?: string | null; name: string; amount: number; currency?: string; period?: string; next_renewal?: string | null; notes?: string }) {
   await requireSession();
