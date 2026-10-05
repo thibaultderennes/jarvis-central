@@ -6,7 +6,8 @@
    secret iCal links; publishes the week plan for Google (Apps Script) and Apple (subscription feed).
 2. **Mac agent** `agent/` — Node scripts run by launchd (or cron) on the owner's machine:
    - `worker.mjs` every minute: picks up inbox messages, runs `claude -p` in the project, replies.
-   - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar.
+   - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar, sized from the last 2 weeks
+     (`planner.adapt`, `agent/adapt.mjs`: planned vs done per project and an hours check in the plan notes; `apply` caps idle projects).
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
      (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.

@@ -21,6 +21,8 @@ re-run it and redeploy after changing those.
 | `planner.buffer_minutes` | `15` | Gap kept around appointments and between blocks. |
 | `planner.weekends` | `"overflow"` | `never`, `overflow` (only when the week doesn't fit) or `always`. |
 | `planner.project_caps.<id>` | — | Weekly minutes cap for a project (e.g. a side project). The "Hours per week" setting on the project's page overrides it. |
+| `planner.adapt` | `"suggest"` | Sizes the week from the last 2 weeks. `suggest` adds "planned X, done Y" per project and an hours check (when most of your site actions and typed Claude Code messages fall outside `planner.hours`, it proposes the hours you really work) to the plan notes. `apply` does that and also caps a project where nothing moved in 2 weeks (no planned task done, no item closed, no Claude Code time) at `adapt_min_todos` tasks. `off` plans as before. An explicit `project_caps` entry or "Hours per week" always wins. |
+| `planner.adapt_min_todos` | `3` | Most tasks an idle project gets under `planner.adapt: "apply"`. |
 | `reviews.run` | Monday 05:00 | When the weekly reviews start. |
 | `reviews.advisors` | `["ceo","cmo","po"]` | Which advisors review each active project. |
 | `reviews.stance` | sceptical | Instruction given to every advisor about how hard to push back. |

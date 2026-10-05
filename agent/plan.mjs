@@ -7,12 +7,16 @@
 //   node plan.mjs                         plan next week (Sunday → tomorrow's week; other days → next Monday)
 //   node plan.mjs --week 2026-10-05       plan the week starting that Monday
 //   node plan.mjs --dry-run               print the plan, don't POST
-//   node plan.mjs --fixture FILE          read {projects, items, events?, todos?} from a JSON file instead of the API
+//   node plan.mjs --fixture FILE          read {projects, items, events?, todos?, history?} from a JSON file instead of the API
+//
+// planner.adapt (agent/adapt.mjs): before packing, the last 2 weeks per project (planned vs done) and a check that
+// planner.hours match when you actually work go into the plan notes; "apply" also caps projects where nothing moved.
 //   node plan.mjs --no-ai                 skip step A (60 min / priority 3 for everything)
 import fs from "node:fs";
 import path from "node:path";
 import { api, qs, makeLog, acquireLock, todayTZ, addDays, mondayOf, parseModelJSON, HOME, JARVIS_ROOT, TZ, CONFIG, OWNER } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
+import { adaptDecision, applyCaps, hoursCheck, loadHistory, normMode, projectHistory } from "./adapt.mjs";
 
 const log = makeLog("plan");
 const argv = process.argv.slice(2);
@@ -37,6 +41,8 @@ export const DEFAULTS = {
   weekends: normWeekends(P.weekends),
   project_caps: P.project_caps || {}, // minutes per week, per project id
   max_chunk_minutes: P.max_chunk_minutes ?? 120,
+  adapt: normMode(P.adapt), // "suggest" | "apply" | "off"
+  adapt_min_todos: P.adapt_min_todos ?? 3,
 };
 
 // ---------- time helpers (the configured timezone) ----------
@@ -162,10 +168,13 @@ export function pack({ candidates, weekStart, settings, busy }) {
 }
 
 // ---------- data ----------
-/** Offline fixture: a JSON file shaped like the API ({projects, items, events?, todos?, settings?}). */
+/**
+ * Offline fixture: a JSON file shaped like the API ({projects, items, events?, todos?, settings?}), plus an optional
+ * `history` for planner.adapt: {todos, itemsDone, minutes, hoursOfDay} (see agent/adapt.mjs loadHistory).
+ */
 function loadFixture(file) {
   const d = JSON.parse(fs.readFileSync(file, "utf8"));
-  return { projects: d.projects || [], items: (d.items || []).filter((i) => i.status === "todo" || i.status === "doing"), events: d.events || [], todos: d.todos || [], settings: d.settings || {} };
+  return { projects: d.projects || [], items: (d.items || []).filter((i) => i.status === "todo" || i.status === "doing"), events: d.events || [], todos: d.todos || [], settings: d.settings || {}, history: d.history || null };
 }
 
 async function loadLive(weekStart) {
@@ -262,10 +271,12 @@ async function main() {
   const data = FIXTURE ? loadFixture(FIXTURE) : await loadLive(weekStart);
   const S = { ...DEFAULTS, ...data.settings, project_caps: { ...DEFAULTS.project_caps, ...(data.settings.project_caps || {}) } };
   S.weekends = normWeekends(S.weekends);
+  S.adapt = normMode(S.adapt);
+  const explicitCaps = new Set(Object.keys(S.project_caps));
   // Per-project settings from the site win over jarvis.config.json: "Plan into my calendar" off → skip the
   // project; "Hours per week" → its weekly cap.
   const planOff = new Set(data.projects.filter((p) => p.plan_enabled === false).map((p) => p.id));
-  for (const p of data.projects) if (Number.isFinite(p.weekly_minutes) && p.weekly_minutes !== null) S.project_caps[p.id] = p.weekly_minutes;
+  for (const p of data.projects) if (Number.isFinite(p.weekly_minutes) && p.weekly_minutes !== null) { S.project_caps[p.id] = p.weekly_minutes; explicitCaps.add(p.id); }
   if (planOff.size) data.items = data.items.filter((i) => !planOff.has(i.project_id));
   const days = Array.from({ length: 7 }, (_, i) => addDays(weekStart, i));
   const busy = busyByDay(data.events, data.todos, days);
@@ -283,14 +294,36 @@ async function main() {
       log("estimates", { n: est.estimates?.length, cost_usd: cost, s: res.duration_s });
     } catch (e) { log("estimate step failed, using defaults", e.message); }
   }
-  const { candidates, missing } = applyEstimates(founder, est);
-  const { blocks, unscheduled, usedWeekend, projUsed } = pack({ candidates, weekStart, settings: S, busy });
+  const estimated = applyEstimates(founder, est), missing = estimated.missing;
+  // Adaptive sizing: what got done in the last 2 weeks, and whether the working hours match reality.
+  const adaptLines = [];
+  let candidates = estimated.candidates, capped = [];
+  if (S.adapt !== "off") {
+    let h = data.history;
+    if (!h && !FIXTURE) h = await loadHistory({ weekStart, projects: data.projects, log }).catch((e) => { log("adapt: history unavailable", e.message); return null; });
+    if (h) {
+      const history = projectHistory(h);
+      for (const p of planOff) delete history[p];
+      const names = Object.fromEntries(data.projects.map((p) => [p.id, p.name]));
+      const d = adaptDecision({ history, mode: S.adapt, minTodos: S.adapt_min_todos, explicit: explicitCaps, names });
+      adaptLines.push(...d.lines);
+      if (Object.keys(d.caps).length) {
+        const byImportance = [...candidates].sort((a, b) => (a.due || "9999").localeCompare(b.due || "9999") || (a.priority ?? 3) - (b.priority ?? 3) || (b.critical === true) - (a.critical === true));
+        ({ keep: candidates, dropped: capped } = applyCaps(byImportance, d.caps));
+      }
+      const hc = hoursCheck({ hours: S.hours, hoursOfDay: h.hoursOfDay || [] });
+      if (hc) adaptLines.push(hc.line);
+      log("adapt", { mode: S.adapt, projects: Object.keys(history).length, capped: Object.keys(d.caps), hours_mismatch: !!hc });
+    }
+  }
+  const packed = pack({ candidates, weekStart, settings: S, busy });
+  const { blocks, usedWeekend, projUsed } = packed, unscheduled = [...packed.unscheduled, ...capped];
   const extra = [];
   if (missing && est) extra.push(`- ${missing} task(s) had no estimate; planned at 60 min, priority 3.`);
   if (!est && founder.length) extra.push(`- Time estimates weren't available; every task is planned at 60 min.`);
   if (usedWeekend) extra.push(`- The weekdays overflowed, so some blocks landed on the weekend.`);
   if (claude.length) extra.push(`- Claude's own items due this week (not on your calendar): ${claude.map((i) => `\`${i.id}\` (${i.project_id})`).join(", ")}.`);
-  const notes_md = [est?.notes_md?.trim(), ...extra].filter(Boolean).join("\n");
+  const notes_md = [est?.notes_md?.trim(), ...extra, ...adaptLines].filter(Boolean).join("\n");
   const body = { week_start: weekStart, blocks, unscheduled: unscheduled.map(({ minutes, ...u }) => u), notes_md };
 
   console.log(summary({ weekStart, blocks, unscheduled, claude, notes: notes_md, projUsed }));

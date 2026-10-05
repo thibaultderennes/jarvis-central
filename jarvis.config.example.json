@@ -20,7 +20,9 @@
     "max_focus_minutes_per_day": 360,
     "buffer_minutes": 15,
     "weekends": "overflow",
-    "project_caps": { "example-project": 360 }
+    "project_caps": { "example-project": 360 },
+    "adapt": "suggest",
+    "adapt_min_todos": 3
   },
 
   "reviews": {
