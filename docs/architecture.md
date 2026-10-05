@@ -42,7 +42,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
   - `deadlines`: `[{date, label, prd?}]` (`prd`: a milestone moved on the Timeline; the date PRD.md still has until the Mac worker writes the new date into that row, `agent/milestones.mjs`), `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
-- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at, blocked_by text[] /* codes of items in the same project it waits on */)` pk `(project_id, id)`
+- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at, blocked_by text[] /* codes of items in the same project it waits on */, sprint_id uuid null)` pk `(project_id, id)`
   - **blocked_by**: an open item with an open blocker shows "blocked by …" on the checklist; nothing is enforced. The site refuses
     unknown codes, the item itself and loops; the API and CLI take an array or `"a,b"` (`""` clears) and only normalise it.
   - **open** = `todo` or `doing`; `done` and `cancelled` are closed and leave every count, deadline, load and top-3 card.
@@ -54,6 +54,10 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     the owner) → `merge_requested` (Approve & merge on the site) → `merged` (the worker ran `gh pr merge --squash`, item
     `done`); or `failed` (`build_note` says why; Retry clears it); or `sent_back` (the owner's note in `build_note`; the
     next run continues on the same branch and PR). One new run per worker pass, none while another is `working`.
+- `sprints(id uuid, project_id /* required: a sprint never crosses projects */, name, start_date, end_date, created_at)` —
+  a dated batch of one project's items (`items.sprint_id`). Deleting a sprint only detaches its items. The checklist's
+  Select mode creates one or adds to it; its card shows done %, and the open estimate against the project's `weekly_minutes`
+  for the sprint's length; the Timeline draws it as a band (its project's lane, or every section lane on the project page).
 - `item_events(id bigserial, project_id, item_id, field, old, new, actor 'founder'|'agent', at)` — every status/due/section change
 - `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at)`
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool, opened_at, treated_at, item_id null)`
@@ -102,6 +106,10 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/duplicates` | `?project=ID` (optional) | `[[{item}, …]]` groups of exact duplicates, oldest first |
 | PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`, `blocked_by`; fields outside `ITEM_FIELDS` in `app/lib/sqlbuild.ts` are ignored) | `{item}` (logs item_events with actor 'agent') |
 | DELETE | `/api/agent/items` | `?project=ID&id=ITEM` | `{ok}` |
+| GET | `/api/agent/sprints` | `?project=ID&from=DATE&to=DATE` (overlapping the range) | `[{sprint}]` (`{id, project_id, name, start, end, created_at}`) |
+| POST | `/api/agent/sprints` | `{project_id, name, start, end, items?: [ids]}` | `{sprint, items /* how many joined */}` 201 |
+| PATCH | `/api/agent/sprints` | `{id, name?, start?, end?, add?: [ids], remove?: [ids]}` | `{sprint}` |
+| DELETE | `/api/agent/sprints` | `?id=UUID` (items stay, just leave it) | `{ok}` |
 | GET | `/api/agent/events` | `?since=ISO` | `[{event}]` |
 | GET | `/api/agent/todos` | `?from=DATE&to=DATE` | `[{todo}]` |
 | POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?}` | `{todo}` |
