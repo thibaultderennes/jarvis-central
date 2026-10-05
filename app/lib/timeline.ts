@@ -2,9 +2,14 @@ import * as D from "./data";
 import { getPlan, type Block } from "./plan";
 import { getEvents, calendarConfigured } from "./calendar";
 import { addDays, mondayOf, today } from "./time";
+import { parseShift } from "./timelineRange";
 
 /** One item on the timeline (open work only: done and cancelled are closed). */
-export type TItem = { project_id: string; id: string; title: string; critical: boolean; late: boolean; status: string };
+export type TItem = { project_id: string; id: string; title: string; critical: boolean; late: boolean; status: string;
+  start: string | null; // where its bar begins: its sprint's start, else its due date minus its estimate (≈ 4 h a day); null = no bar
+};
+/** A sprint as a band: on its project's lane (overview) or across every section lane (project page). */
+export type TSprint = { id: string; project_id: string; name: string; start: string; end: string; color: string; open: number; done: number };
 /** Open items due on one day, clustered. */
 export type TDay = { date: string; items: TItem[] };
 export type TMilestone = { date: string; label: string; project_id: string; name: string; color: string; openBefore: number; criticalBefore: number; lateBefore: number;
@@ -21,11 +26,15 @@ export type TLane = {
 export type TCal = { date: string; events: { title: string; time: string | null; allDay: boolean }[] };
 export type TimelineData = {
   from: string; to: string; today: string; lanes: TLane[]; guides: TMilestone[];
+  shift: number; // weeks the window is moved from the default (?w=)
   calendar: TCal[] | null; calendarError: string | null; upcoming: TMilestone[]; undated: { id: string; name: string }[];
+  sprints: TSprint[];
+  unscheduled: TItem[]; // project page only: open items with no due date, for the Unscheduled panel
 };
 
 const mins = (a: string, b: string) => (+b.slice(0, 2) * 60 + +b.slice(3)) - (+a.slice(0, 2) * 60 + +a.slice(3));
 const WEEKS_BEFORE = 1, WEEKS_AFTER = 8;
+
 
 function byDay(list: TItem[], due: (i: TItem) => string): TDay[] {
   const m = new Map<string, TItem[]>();
@@ -44,21 +53,31 @@ function planDays(blocks: Block[]): TPlanDay[] {
 
 /**
  * Timeline from data that already exists: PRD milestones (project deadlines), checklist due dates,
- * this week's and next week's Sunday-plan blocks, and (overview only) calendar events.
+ * the Sunday-plan blocks of every planned week in range, and (overview only) calendar events.
  * Overview: one lane per project with something dated. Project: one lane per checklist section.
+ * `shift` moves the window by whole weeks (last week → 8 weeks out by default), clamped to SHIFT_MIN…SHIFT_MAX.
  */
-export async function timelineData(opts: { project?: string } = {}): Promise<TimelineData> {
-  const t = today();
-  const from = addDays(mondayOf(t), -7 * WEEKS_BEFORE), to = addDays(mondayOf(t), 7 * WEEKS_AFTER + 6);
-  const thisWeek = mondayOf(t), nextWeek = addDays(thisWeek, 7);
-  const [projects, items, p1, p2, cal] = await Promise.all([
-    D.getProjects(), D.getItems({ project: opts.project, open: true }), getPlan(thisWeek), getPlan(nextWeek),
+export async function timelineData(opts: { project?: string; shift?: number } = {}): Promise<TimelineData> {
+  const t = today(), shift = parseShift(opts.shift ?? 0);
+  const base = addDays(mondayOf(t), 7 * shift);
+  const from = addDays(base, -7 * WEEKS_BEFORE), to = addDays(base, 7 * WEEKS_AFTER + 6);
+  const weeks = Array.from({ length: WEEKS_BEFORE + WEEKS_AFTER + 1 }, (_, i) => addDays(from, 7 * i));
+  const [projects, items, plans, cal, sprintRows] = await Promise.all([
+    D.getProjects(), D.getItems({ project: opts.project, open: true }), Promise.all(weeks.map((w) => getPlan(w).catch(() => null))),
     opts.project ? Promise.resolve(null) : getEvents(from, to),
+    D.getSprints({ project: opts.project, from, to }).catch(() => [] as D.Sprint[]), // [] until the table exists
   ]);
+  const sprintOf = new Map(sprintRows.map((s) => [s.id, s]));
   const topIds = new Set(D.splitFeatured(projects).featured.map((p) => p.id));
   const color = (p: D.Project) => (opts.project ? p.color : D.displayColor(p, topIds));
-  const blocks = [...(p1?.blocks || []), ...(p2?.blocks || [])].filter((b) => b.date >= from && b.date <= to);
-  const toT = (i: D.Item): TItem => ({ project_id: i.project_id, id: i.id, title: i.title, critical: i.critical, late: !!i.due && i.due < t, status: i.status });
+  const blocks = plans.flatMap((p) => p?.blocks || []).filter((b) => b.date >= from && b.date <= to);
+  const leadIn = (i: D.Item) => {
+    const sp = i.sprint_id ? sprintOf.get(i.sprint_id) : undefined;
+    if (sp && i.due && sp.start < i.due) return sp.start;
+    if (i.due && i.estimate_minutes && i.estimate_minutes > 240) return addDays(i.due, -(Math.ceil(i.estimate_minutes / 240) - 1));
+    return null;
+  };
+  const toT = (i: D.Item): TItem => ({ project_id: i.project_id, id: i.id, title: i.title, critical: i.critical, late: !!i.due && i.due < t, status: i.status, start: leadIn(i) });
   const dated = items.filter((i) => i.due);
 
   const scope = opts.project ? projects.filter((p) => p.id === opts.project) : projects;
@@ -113,8 +132,16 @@ export async function timelineData(opts: { project?: string } = {}): Promise<Tim
     return [...m.values()];
   })() : null;
 
+  // Sprints are counted on all of their items, done ones too (the open-items query above leaves those out).
+  const sprintItems = sprintRows.length ? (await D.getItems({ project: opts.project })).filter((i) => i.sprint_id && sprintOf.has(i.sprint_id) && i.status !== "cancelled") : [];
+  const byProject = new Map(projects.map((p) => [p.id, p]));
+  const sprints: TSprint[] = sprintRows.filter((s) => byProject.has(s.project_id)).map((s) => {
+    const its = sprintItems.filter((i) => i.sprint_id === s.id);
+    return { id: s.id, project_id: s.project_id, name: s.name, start: s.start, end: s.end, color: color(byProject.get(s.project_id)!), open: its.filter(D.isOpen).length, done: its.filter((i) => i.status === "done").length };
+  });
+
   return {
-    from, to, today: t, lanes, guides: opts.project ? allMilestones.filter((m) => inRange(m.date)) : [],
+    from, to, today: t, shift, lanes, sprints, unscheduled: opts.project ? items.filter((i) => !i.due).map(toT) : [], guides: opts.project ? allMilestones.filter((m) => inRange(m.date)) : [],
     calendar, calendarError: cal?.error || null,
     upcoming: allMilestones.filter((m) => m.date >= addDays(t, -7)).slice(0, 12), undated,
   };

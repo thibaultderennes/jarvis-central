@@ -35,7 +35,7 @@ If the owner asks to set up Jarvis Central, follow [`SETUP.md`](SETUP.md) phase 
 5. **API changes** update the table in `docs/architecture.md`; keep the agent CLI and the API in step.
 6. **Record it**: add a line under `## Unreleased` in `CHANGELOG.md`; if an existing install must do something
    (re-run `agent/install.sh`, a new env var, a new setup step), add an **Upgrade notes** line.
-7. **Check before a PR**: `cd app && npx tsc --noEmit && npx next build`, `node --check agent/*.mjs`,
+7. **Check before a PR**: `cd app && npm test && npx tsc --noEmit && npx next build` (`npm test` needs Node ≥ 22.18 or 23.6), `node --check agent/*.mjs`,
    `node agent/security-check.mjs` against a test deployment, the generic-ness grep above.
 8. Releases: bump `VERSION` **and** `app/package.json` `version` (Vercel builds `app/` alone and shows that version in the top bar) (semver: patch = fixes, minor = features/new config keys, major = anything that needs
    a manual migration), move `Unreleased` into a dated section, tag `vX.Y.Z`.

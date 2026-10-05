@@ -6,7 +6,8 @@
    secret iCal links; publishes the week plan for Google (Apps Script) and Apple (subscription feed).
 2. **Mac agent** `agent/` — Node scripts run by launchd (or cron) on the owner's machine:
    - `worker.mjs` every minute: picks up inbox messages, runs `claude -p` in the project, replies.
-   - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar.
+   - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar, sized from the last 2 weeks
+     (`planner.adapt`, `agent/adapt.mjs`: planned vs done per project and an hours check in the plan notes; `apply` caps idle projects).
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
      (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.
@@ -20,7 +21,10 @@
      var, or a command run in the project folder, giving JSON numbers), posts the day's product-metrics snapshot for
      the project's **Stats** view and the Monday review; daily (`metrics.sync_minutes`). Keys: [`metrics.md`](metrics.md).
    - `rescan.mjs`: runs a project-folder scan when "Refresh project folders" was pressed on the Admin page (kv
-     `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand.
+     `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand. It updates
+     registered projects but never registers a new folder: new folders come back as `proposed` payloads that the owner
+     approves (the site inserts the payload) or declines (added to `projects.ignored`). `projects.mjs sync` from the
+     command line still registers new folders, since the owner runs it on purpose. Both skip `projects.ignored`.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
@@ -38,7 +42,9 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
   - `deadlines`: `[{date, label, prd?}]` (`prd`: a milestone moved on the Timeline; the date PRD.md still has until the Mac worker writes the new date into that row, `agent/milestones.mjs`), `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
-- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at)` pk `(project_id, id)`
+- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at, blocked_by text[] /* codes of items in the same project it waits on */, sprint_id uuid null)` pk `(project_id, id)`
+  - **blocked_by**: an open item with an open blocker shows "blocked by …" on the checklist; nothing is enforced. The site refuses
+    unknown codes, the item itself and loops; the API and CLI take an array or `"a,b"` (`""` clears) and only normalise it.
   - **open** = `todo` or `doing`; `done` and `cancelled` are closed and leave every count, deadline, load and top-3 card.
   - Creating an item (site, API, CLI, plan) refuses an exact duplicate of a title in the same project (normalised: case,
     punctuation and filler words ignored; cancelled items don't count) → API 409 `{error, duplicate}`, `allow_duplicate: true`
@@ -48,6 +54,10 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     the owner) → `merge_requested` (Approve & merge on the site) → `merged` (the worker ran `gh pr merge --squash`, item
     `done`); or `failed` (`build_note` says why; Retry clears it); or `sent_back` (the owner's note in `build_note`; the
     next run continues on the same branch and PR). One new run per worker pass, none while another is `working`.
+- `sprints(id uuid, project_id /* required: a sprint never crosses projects */, name, start_date, end_date, created_at)` —
+  a dated batch of one project's items (`items.sprint_id`). Deleting a sprint only detaches its items. The checklist's
+  Select mode creates one or adds to it; its card shows done %, and the open estimate against the project's `weekly_minutes`
+  for the sprint's length; the Timeline draws it as a band (its project's lane, or every section lane on the project page).
 - `item_events(id bigserial, project_id, item_id, field, old, new, actor 'founder'|'agent', at)` — every status/due/section change
 - `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at)`
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool, opened_at, treated_at, item_id null)`
@@ -70,7 +80,10 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
-  `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, added?, archived?, total?, error?}`).
+  `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, proposed?: [project payload + folder], archived?, total?, error?}`;
+  approving or declining a proposal removes it from `proposed`),
+  `projects.ignored` (`[{id, folder?, name, reason 'removed'|'declined', at}]`: folders the scan skips. **Remove** on the
+  Admin page archives the project, keeping its items and history, and adds it here; **Restore** takes it off and un-archives a removed project).
 - `login_attempts(ip, at, ok)`.
 - `click_events(id bigserial, at, session_id /* random per browser tab, new after 30 idle min */, kind 'click'|'view', page /* path + ?v=/?k=/?tab= + checklist filter codes ?sec=/?own=/?due=/?crit=/?done= */, label, target /* link, button, tab, checkbox… */, section /* the region's aria-label or heading */, href null /* a link's destination path */)` —
   first-party usage tracking for the Monday Jarvis review. `components/UsageTracker.tsx` (mounted once in the `(main)`
@@ -91,8 +104,12 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/items` | `?project=ID` (optional; all when absent) `&open=1` (todo/doing only) `&refine=pending` `&build=queue|working|pr_open|merge_requested|sent_back|…` | `[{item}]` |
 | POST | `/api/agent/items` | `{project_id, section, title, id?, detail?, due?, owner?, critical?, allow_duplicate?}` | `{item}` (id = slug of title if absent); 409 `{error, duplicate}` on an exact duplicate title |
 | GET | `/api/agent/duplicates` | `?project=ID` (optional) | `[[{item}, …]]` groups of exact duplicates, oldest first |
-| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`) | `{item}` (logs item_events with actor 'agent') |
+| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`, `blocked_by`; fields outside `ITEM_FIELDS` in `app/lib/sqlbuild.ts` are ignored) | `{item}` (logs item_events with actor 'agent') |
 | DELETE | `/api/agent/items` | `?project=ID&id=ITEM` | `{ok}` |
+| GET | `/api/agent/sprints` | `?project=ID&from=DATE&to=DATE` (overlapping the range) | `[{sprint}]` (`{id, project_id, name, start, end, created_at}`) |
+| POST | `/api/agent/sprints` | `{project_id, name, start, end, items?: [ids]}` | `{sprint, items /* how many joined */}` 201 |
+| PATCH | `/api/agent/sprints` | `{id, name?, start?, end?, add?: [ids], remove?: [ids]}` | `{sprint}` |
+| DELETE | `/api/agent/sprints` | `?id=UUID` (items stay, just leave it) | `{ok}` |
 | GET | `/api/agent/events` | `?since=ISO` | `[{event}]` |
 | GET | `/api/agent/todos` | `?from=DATE&to=DATE` | `[{todo}]` |
 | POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?}` | `{todo}` |
@@ -159,11 +176,12 @@ title contain every word (case- and accent-insensitive, archived projects left o
   Approve & merge, replies you haven't opened; oldest first), the top-3 project cards with pace against the next
   milestone, this week's reviews; the charts live on `/stats`. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
-  Inbox, Timeline, Stats and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · `/timeline` (last week → 8 weeks out, one lane per project: PRD milestones,
-  open items' due dates per day, this and next week's Sunday-plan blocks, calendar events; built in `app/lib/timeline.ts`
+  Inbox, Timeline, Stats and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · `/timeline` (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,
+  open items' due dates per day, the Sunday-plan blocks of every planned week in range, calendar events; built in `app/lib/timeline.ts`
   from existing data, no table of its own) · `/p/<id>` (left menu: Dashboard, Checklists, Timeline (one lane per section),
   Project, Reviews, Finances, Statistics; `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
-  `/inbox` (New / Pending / Treated) · `/admin` (projects + "Refresh project folders", account, subscriptions, preferences).
+  `/inbox` (New / Pending / Treated) · `/admin` (projects: "Refresh project folders" with Approve / Decline for new folders, Remove per project, removed and declined
+  folders with Restore; account, subscriptions, preferences).
 - Env vars the site reads beyond the secrets: `JARVIS_TZ`, `JARVIS_OWNER`, `JARVIS_REVIEW_WHEN`, `JARVIS_PLAN_WHEN`,
   `JARVIS_FOCUS_MINUTES` (a day of focus for the Today/Week load bars; written from `planner.max_focus_minutes_per_day`
   by `node app/scripts/setup.mjs secrets`), `JARVIS_TRACK_CLICKS` (`on`/`off`, from `usage.track_clicks`; missing = on;

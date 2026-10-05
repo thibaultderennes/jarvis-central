@@ -1,5 +1,6 @@
 import { q, sql } from "./db";
 import { addDays, mondayOf, today, TZ } from "./time";
+import { itemUpdate, projectUpsert } from "./sqlbuild";
 
 export type Section = { id: string; name: string; note?: string; notes?: boolean; owner_default?: string };
 export type Project = {
@@ -17,8 +18,12 @@ export type Item = {
   sort: number; note: string; created_at: string; updated_at: string; done_at: string | null;
   estimate_minutes: number | null; priority: number | null; refine: string | null; refine_note: string; refine_request: string;
   cancel_reason: string; duplicate_of: string | null; note_sent_at: string | null;
+  blocked_by: string[]; // codes of items in the same project this one waits on (open ones show a "blocked" badge)
+  sprint_id: string | null; // the sprint (same project) it is planned in
   build_status: BuildStatus | null; build_note: string; pr_url: string | null; build_updated_at: string | null;
 };
+/** A dated batch of one project's items. `start`/`end` are inclusive YYYY-MM-DD. */
+export type Sprint = { id: string; project_id: string; name: string; start: string; end: string; created_at: string };
 /** Open = still to be worked on. Done and cancelled items are closed: out of every count, deadline and load. */
 export const isOpen = (i: { status: string }) => i.status === "todo" || i.status === "doing";
 export const isClosed = (i: { status: string }) => !isOpen(i);
@@ -43,7 +48,8 @@ export type Review = {
 // Postgres `date` comes back as a Date or string depending on driver settings; normalise to YYYY-MM-DD.
 const d10 = (v: unknown): string | null => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
 const ts = (v: unknown): string | null => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
-const normItem = (r: Record<string, unknown>) => ({ ...r, due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at), note_sent_at: ts(r.note_sent_at), build_updated_at: ts(r.build_updated_at) }) as Item;
+const normItem = (r: Record<string, unknown>) => ({ ...r, blocked_by: Array.isArray(r.blocked_by) ? r.blocked_by : [], due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at), note_sent_at: ts(r.note_sent_at), build_updated_at: ts(r.build_updated_at) }) as Item;
+const normSprint = (r: Record<string, unknown>) => ({ id: r.id, project_id: r.project_id, name: r.name, start: d10(r.start_date), end: d10(r.end_date), created_at: ts(r.created_at) }) as Sprint;
 const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
 const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at) }) as Todo;
 const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at), opened_at: ts(r.opened_at), treated_at: ts(r.treated_at) }) as Message;
@@ -61,17 +67,9 @@ export async function getProject(id: string): Promise<Project | null> {
   const rows = await sql()`select * from projects where id = ${id}`;
   return rows[0] ? normProject(rows[0]) : null;
 }
-const PROJECT_FIELDS = ["name", "kind", "color", "tagline", "state", "status", "dir", "sections", "deadlines", "links", "sort", "archived", "featured_rank", "plan_enabled", "weekly_minutes", "reviews_enabled"] as const;
 export async function upsertProject(p: Partial<Project> & { id: string }): Promise<Project> {
-  const cols = PROJECT_FIELDS.filter((k) => p[k] !== undefined);
-  const vals = cols.map((k) => (["sections", "deadlines", "links"].includes(k) ? JSON.stringify(p[k]) : p[k]));
-  const insertCols = ["id", ...cols].join(", ");
-  const ph = ["$1", ...cols.map((_, i) => `$${i + 2}`)].join(", ");
-  const upd = cols.map((k, i) => `${k} = $${i + 2}`).concat("updated_at = now()").join(", ");
-  const rows = await q(
-    `insert into projects (${insertCols}) values (${ph}) on conflict (id) do update set ${upd} returning *`,
-    [p.id, ...vals],
-  );
+  const { text, params } = projectUpsert(p);
+  const rows = await q(text, params);
   return normProject(rows[0]);
 }
 
@@ -145,22 +143,17 @@ export async function addItem(i: { project_id: string; section: string; title: s
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${i.project_id}, ${id}, 'created', null, ${i.section}, ${actor})`;
   return normItem(rows[0]);
 }
-const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note", "refine_request", "cancel_reason", "duplicate_of", "build_status", "build_note", "pr_url"] as const;
-const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical", "build_status", "pr_url"]);
+const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical", "build_status", "pr_url", "blocked_by"]);
 export async function updateItem(project_id: string, id: string, patch: Partial<Item>, actor = "founder"): Promise<Item | null> {
   const [cur] = (await sql()`select * from items where project_id = ${project_id} and id = ${id}`).map(normItem);
   if (!cur) return null;
-  const cols = ITEM_FIELDS.filter((k) => patch[k] !== undefined && patch[k] !== cur[k]);
-  if (!cols.length) return cur;
-  const params: unknown[] = [project_id, id];
-  const sets = cols.map((k) => { params.push(k === "due" ? patch.due || null : patch[k]); return `${k} = $${params.length}`; });
-  sets.push("updated_at = now()");
-  if (patch.status && patch.status !== cur.status) sets.push(patch.status === "done" ? "done_at = now()" : "done_at = null");
-  if (patch.build_status !== undefined && patch.build_status !== cur.build_status) sets.push("build_updated_at = now()");
-  const rows = await q(`update items set ${sets.join(", ")} where project_id = $1 and id = $2 returning *`, params);
-  for (const k of cols) if (LOGGED.has(k)) {
+  const u = itemUpdate(cur as unknown as Record<string, unknown>, patch as Record<string, unknown>);
+  if (!u) return cur;
+  const rows = await q(u.text, u.params);
+  const str = (v: unknown) => (v == null ? null : Array.isArray(v) ? v.join(",") : String(v));
+  for (const k of u.cols) if (LOGGED.has(k)) {
     await sql()`insert into item_events (project_id, item_id, field, old, new, actor)
-      values (${project_id}, ${id}, ${k}, ${cur[k] == null ? null : String(cur[k])}, ${patch[k] == null ? null : String(patch[k])}, ${actor})`;
+      values (${project_id}, ${id}, ${k}, ${str(cur[k])}, ${str(u.values[k])}, ${actor})`;
   }
   return normItem(rows[0]);
 }
@@ -170,6 +163,45 @@ export async function deleteItem(project_id: string, id: string) {
 }
 export async function getEvents(since: string) {
   return sql()`select * from item_events where at >= ${since} order by at`;
+}
+
+/* ---------- sprints ---------- */
+/** Sprints of one project (or all), optionally only those overlapping [from, to]. */
+export async function getSprints(opts: { project?: string; from?: string; to?: string } = {}): Promise<Sprint[]> {
+  const where: string[] = [], params: unknown[] = [];
+  if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
+  if (opts.to) { params.push(opts.to); where.push(`start_date <= $${params.length}`); }
+  if (opts.from) { params.push(opts.from); where.push(`end_date >= $${params.length}`); }
+  const rows = await q(`select * from sprints ${where.length ? `where ${where.join(" and ")}` : ""} order by start_date, created_at`, params);
+  return rows.map(normSprint);
+}
+export async function getSprint(id: string): Promise<Sprint | null> {
+  const rows = await sql()`select * from sprints where id = ${id}`;
+  return rows[0] ? normSprint(rows[0]) : null;
+}
+export async function addSprint(s: { project_id: string; name: string; start: string; end: string }): Promise<Sprint> {
+  const rows = await sql()`insert into sprints (project_id, name, start_date, end_date) values (${s.project_id}, ${s.name}, ${s.start}, ${s.end}) returning *`;
+  return normSprint(rows[0]);
+}
+export async function updateSprint(id: string, p: { name?: string; start?: string; end?: string }): Promise<Sprint | null> {
+  const cur = await getSprint(id);
+  if (!cur) return null;
+  const n = { ...cur, ...Object.fromEntries(Object.entries(p).filter(([, v]) => v !== undefined)) };
+  const rows = await sql()`update sprints set name = ${n.name}, start_date = ${n.start}, end_date = ${n.end} where id = ${id} returning *`;
+  return normSprint(rows[0]);
+}
+/** Deleting a sprint keeps its items: they only leave it. */
+export async function deleteSprint(id: string) {
+  await sql()`update items set sprint_id = null, updated_at = now() where sprint_id = ${id}`;
+  await sql()`delete from sprints where id = ${id}`;
+}
+/** Put items of one project in a sprint (or take them out with null). Returns how many changed. */
+export async function setSprintItems(project_id: string, sprint_id: string | null, ids: string[]): Promise<number> {
+  if (!ids.length) return 0;
+  const rows = await sql()`update items set sprint_id = ${sprint_id}, updated_at = now()
+    where project_id = ${project_id} and id = any(${ids}) and sprint_id is distinct from ${sprint_id} returning id`;
+  for (const r of rows) await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${project_id}, ${r.id}, 'sprint_id', null, ${sprint_id}, 'founder')`;
+  return rows.length;
 }
 
 /* ---------- todos ---------- */

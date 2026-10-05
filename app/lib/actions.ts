@@ -5,6 +5,7 @@ import { requireSession } from "./auth";
 import { sql } from "./db";
 import * as D from "./data";
 import { isDate, today } from "./time";
+import { normBlockedBy, wouldCycle } from "./sqlbuild";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -36,6 +37,61 @@ export async function commentItem(project_id: string, id: string, text: string) 
   if (!it) return;
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${project_id}, ${id}, 'comment', null, ${t}, 'founder')`;
   await D.logActivity("item_comment", `/p/${project_id}`, { id });
+  done();
+}
+/** "Blocked by": item codes in the same project. Unknown codes, the item itself and loops are refused with a reason. */
+export async function setBlockedBy(project_id: string, id: string, codes: string[]): Promise<{ error?: string }> {
+  await requireSession();
+  const want = normBlockedBy(codes);
+  if (want.includes(id)) return { error: "An item can't wait on itself." };
+  const items = await D.getItems({ project: project_id });
+  const known = new Set(items.map((i) => i.id));
+  const missing = want.filter((c) => !known.has(c));
+  if (missing.length) return { error: `No item ${missing.join(", ")} in this project.` };
+  if (wouldCycle(Object.fromEntries(items.map((i) => [i.id, i.blocked_by])), id, want)) return { error: "That makes a loop: one of those items already waits on this one." };
+  if (!(await D.updateItem(project_id, id, { blocked_by: want }))) return { error: "That item is gone." };
+  await D.logActivity("item_blocked_by", `/p/${project_id}`, { id, n: want.length });
+  done();
+  return {};
+}
+/* ---------- sprints (one project each) ---------- */
+const sprintDates = (start: string, end: string) => (!isDate(start) || !isDate(end) ? "Pick a start and an end date." : end < start ? "The sprint ends before it starts." : "");
+/** "Create sprint" from the checklist's selection: a dated batch of this project's items. */
+export async function createSprint(project_id: string, name: string, start: string, end: string, ids: string[]): Promise<{ error?: string; id?: string }> {
+  await requireSession();
+  const bad = sprintDates(start, end);
+  if (bad) return { error: bad };
+  const nm = name.trim().slice(0, 80) || `Sprint ${start}`;
+  const sprint = await D.addSprint({ project_id, name: nm, start, end });
+  await D.setSprintItems(project_id, sprint.id, ids.filter(ID_OK).slice(0, 200));
+  await D.logActivity("sprint_create", `/p/${project_id}`, { n: ids.length });
+  done();
+  return { id: sprint.id };
+}
+/** Add the selection to an existing sprint of the same project, or take it out (sprint null). */
+export async function moveToSprint(project_id: string, sprint_id: string | null, ids: string[]): Promise<{ error?: string }> {
+  await requireSession();
+  if (sprint_id) { const s = await D.getSprint(sprint_id); if (!s || s.project_id !== project_id) return { error: "That sprint is gone." }; }
+  await D.setSprintItems(project_id, sprint_id, ids.filter(ID_OK).slice(0, 200));
+  await D.logActivity("sprint_items", `/p/${project_id}`, { n: ids.length, out: !sprint_id });
+  done();
+  return {};
+}
+export async function editSprint(id: string, p: { name?: string; start?: string; end?: string }): Promise<{ error?: string }> {
+  await requireSession();
+  const cur = await D.getSprint(id);
+  if (!cur) return { error: "That sprint is gone." };
+  const bad = sprintDates(p.start ?? cur.start, p.end ?? cur.end);
+  if (bad) return { error: bad };
+  await D.updateSprint(id, { name: p.name?.trim().slice(0, 80) || undefined, start: p.start, end: p.end });
+  done();
+  return {};
+}
+/** Deleting a sprint keeps its items; they only leave it. */
+export async function removeSprint(id: string) {
+  await requireSession();
+  await D.deleteSprint(id);
+  await D.logActivity("sprint_delete", null, {});
   done();
 }
 export async function setDue(project_id: string, id: string, due: string | null) {
@@ -301,6 +357,60 @@ export async function requestRescan() {
   if (cur?.value?.status === "queued" || cur?.value?.status === "running") return;
   await D.kvSet("projects.rescan", { status: "queued", requested_at: new Date().toISOString() });
   await D.logActivity("projects_rescan", "/admin");
+  done();
+}
+/** Folders removed or declined on the Admin page (kv `projects.ignored`): the Mac scan never registers or proposes them again. */
+export type Ignored = { id: string; folder?: string; name: string; reason: "removed" | "declined"; at: string };
+type Proposal = Partial<D.Project> & { id: string; name: string; folder?: string };
+const getIgnored = async () => { const v = (await D.kvGet<Ignored[]>("projects.ignored"))?.value; return Array.isArray(v) ? v : []; };
+const setIgnored = (list: Ignored[]) => D.kvSet("projects.ignored", list);
+/** Drops one proposal from the last scan's result, so it leaves the Admin page. */
+async function takeProposal(id: string): Promise<Proposal | null> {
+  const cur = await D.kvGet<{ proposed?: Proposal[] }>("projects.rescan");
+  const list = cur?.value?.proposed || [];
+  const hit = list.find((p) => p.id === id) || null;
+  if (hit) await D.kvSet("projects.rescan", { ...cur!.value, proposed: list.filter((p) => p.id !== id) });
+  return hit;
+}
+/** Remove a project from Jarvis: archived (its checklist and history are kept) and ignored by every future scan. */
+export async function removeProject(id: string) {
+  await requireSession();
+  const p = await D.getProject(id);
+  if (!p) return;
+  await D.upsertProject({ id, name: p.name, archived: true, featured_rank: null });
+  const dir = p.dir ? p.dir.replace(/\/+$/, "") : "";
+  const folder = dir ? dir.slice(dir.lastIndexOf("/") + 1) : undefined;
+  await setIgnored([...(await getIgnored()).filter((x) => x.id !== id), { id, folder, name: p.name, reason: "removed", at: new Date().toISOString() }]);
+  await D.logActivity("project_remove", "/admin", { project: id });
+  done();
+}
+/** Undo a remove or a decline: the folder is scanned again. A removed project comes back as it was; a declined one is proposed on the next refresh. */
+export async function restoreProject(id: string) {
+  await requireSession();
+  const list = await getIgnored();
+  const hit = list.find((x) => x.id === id);
+  await setIgnored(list.filter((x) => x.id !== id));
+  const p = await D.getProject(id);
+  if (p && hit?.reason === "removed") await D.upsertProject({ id, name: p.name, archived: false });
+  await D.logActivity("project_restore", "/admin", { project: id });
+  done();
+}
+/** A new folder found by "Refresh project folders" joins the dashboard only when the owner approves it. */
+export async function approveProject(id: string) {
+  await requireSession();
+  const p = await takeProposal(id);
+  if (!p) return;
+  const { folder: _folder, ...project } = p;
+  await D.upsertProject({ ...project, archived: false });
+  await D.logActivity("project_approve", "/admin", { project: id });
+  done();
+}
+export async function declineProject(id: string) {
+  await requireSession();
+  const p = await takeProposal(id);
+  if (!p) return;
+  await setIgnored([...(await getIgnored()).filter((x) => x.id !== id), { id, folder: p.folder, name: p.name, reason: "declined", at: new Date().toISOString() }]);
+  await D.logActivity("project_decline", "/admin", { project: id });
   done();
 }
 export type Prefs = { show_done_default?: boolean; finance_currency?: string };

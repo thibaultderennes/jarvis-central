@@ -4,6 +4,36 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.0 — 2026-10-05
+- **Admin: approve new projects, remove old ones.** "Refresh project folders" no longer registers new folders on its
+  own: each one is listed with **Approve** / **Decline**, and a declined folder isn't proposed again. Each project has
+  **Remove** (two clicks), which archives it, keeps its checklist history and keeps it out of every future scan.
+  **Restore** undoes either. The ignore list is kv `projects.ignored`, and `projects.mjs sync` honours it too.
+  Upgrade notes: deploy the site together with the agent update. An older site doesn't show the proposals, so a refresh
+  would find new folders and nothing would let you approve them.
+- **Timeline moves**: ← 4 weeks / Today / 4 weeks → shift the window (`?w=`, from half a year back to a year ahead) on the
+  Timeline page and a project's Timeline view. Days are at least 22 px wide, so the chart scrolls sideways on desktop too
+  (before, it squeezed to fit and never scrolled). Sunday-plan blocks load for every week in range.
+- **Item dependencies**: "Blocked by" in an item's comment bar takes item codes from the same project. While a blocker
+  is open, the item shows a "blocked by …" badge that links to it. Loops and unknown codes are refused, and nothing is
+  enforced. New column `items.blocked_by` (additive); the API and CLI accept it (`jarvis set <p> <id> blocked_by=a,b`).
+- **Sprints** (one project each, per the 5 Oct decision): on a checklist, **Select** → tick items → **Create sprint**
+  (name, start, end), **Add to sprint** or **Take out**. Sprint cards above the sections show the dates, done %, and the
+  open estimate against the project's weekly hours; a Sprint filter chip narrows the list. On the Timeline, sprints are
+  bands, items get a lead-in bar (from their sprint's start, or from their estimate), and a project's Timeline has an
+  **Unscheduled** panel: drag an undated item onto a day, or pick a date. New table `sprints` and column
+  `items.sprint_id` (additive); `GET/POST/PATCH/DELETE /api/agent/sprints`; CLI `sprints <p>`, `sprint add|set|rm`.
+- **Planner sizes the week from what got done** (`planner.adapt`, `agent/adapt.mjs`): the plan notes show the last
+  2 weeks per project (planned vs done, items closed, Claude Code minutes) and, when most of your activity falls
+  outside `planner.hours`, the hours you actually work. `"apply"` also caps a project where nothing moved at
+  `planner.adapt_min_todos` (3) tasks; explicit caps win. Default `"suggest"` only adds notes; `"off"` plans as before.
+- **PRD.md filled in** (audience, the market gap, 1.0 = a stranger installs it in 45 min or less on 15 Nov, the north-star
+  metric, dated milestones, risks) and **`docs/landing-copy.md`**: the one-page site's copy draft, with three calls to action.
+- **Sidebar**: the project badge reads "within 7d" (it counts everything due in the next 7 days).
+- **Tests**: `cd app && npm test` (Node's built-in runner, no new dependency) covers the query builders behind item and
+  project writes (placeholder numbering, the #8 regression, the PATCH field whitelist, blocked_by) and the agent
+  API's bearer check. They moved to `app/lib/sqlbuild.ts` and `app/lib/bearer.ts`. CLAUDE.md rule 7 now runs it.
+
 ## 0.6.0 — 2026-10-03
 - **Sentient Dash**: the product is renamed in the UI (sidebar, login, browser title, Home, Admin), with the Lane S mark
   as favicon, app icon, sidebar and login logo. The repo, CLI, docs and calendar names keep "Jarvis" for now.

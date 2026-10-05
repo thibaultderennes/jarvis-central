@@ -19,7 +19,7 @@ import { REVIEW_WHEN } from "@/lib/instance";
 import "./project.css";
 import "../../finance/finance.css";
 
-type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string };
+type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; w?: string };
 const VIEWS = ["checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
 type View = (typeof VIEWS)[number];
 // Older links keep working: ?tab=… (before the 0.5.0 menu) and ?v=dashboard (its summary now sits beside the checklist).
@@ -34,11 +34,12 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const view: View = (VIEWS as readonly string[]).includes(sp.v || "") ? (sp.v as View) : legacy?.v || "checklist";
   const kind = sp.k || legacy?.k || "weekly";
   const t = today();
-  const [items, weekly, docs, audits, msgs, all, prefs, costs, economics] = await Promise.all([
+  const [items, weekly, docs, audits, msgs, all, prefs, costs, economics, sprints] = await Promise.all([
     D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 }),
     D.getReviews({ type: "security", project: id, limit: 100 }).then((l) => l.sort(D.newestFileFirst)),
     D.getMessages({ limit: 50 }), D.getProjects(), D.getPrefs(), D.getCosts({ project: id, all: true }),
     view === "finance" ? D.getEconomics(id) : null, // the model grid is large: only the Finances view needs it
+    view === "checklist" ? D.getSprints({ project: id }).catch(() => []) : [], // [] until the sprints table exists
   ]);
   const open = items.filter(D.isOpen), dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
@@ -79,11 +80,11 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         {view === "checklist" && (
           <div className="pchk">
             <Glance p={p} items={items} weekly={weekly} costs={costs} today={t} href={href} rank={rank} />
-            <div className="pchk-list"><Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} /></div>
+            <div className="pchk-list"><Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} sprints={sprints} weeklyMinutes={p.weekly_minutes ?? null} /></div>
           </div>
         )}
 
-        {view === "timeline" && <ProjectTimeline id={id} />}
+        {view === "timeline" && <ProjectTimeline id={id} shift={Number(sp.w) || 0} />}
 
         {view === "project" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -176,8 +177,8 @@ function Glance({ p, items, weekly, costs, today: t, href, rank }: { p: D.Projec
   );
 }
 
-async function ProjectTimeline({ id }: { id: string }) {
-  const data = await timelineData({ project: id });
+async function ProjectTimeline({ id, shift }: { id: string; shift: number }) {
+  const data = await timelineData({ project: id, shift });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <section className="panel">
