@@ -81,7 +81,7 @@ create index if not exists messages_status on messages (status, created_at);
 
 create table if not exists reviews (
   id uuid primary key default gen_random_uuid(),
-  type text not null check (type in ('project','recap','coaching','jarvis','doc','security')),
+  type text not null check (type in ('project','recap','coaching','jarvis','doc','security','screening')),
   project_id text,
   week_start date,
   title text not null,
@@ -155,7 +155,7 @@ create index if not exists messages_thread on messages (thread_id, created_at);
 -- file, keyed by meta.file. The type check is widened in place (drop + add is the only way; every run ends in the
 -- same state); the partial unique index turns the re-sync into an upsert.
 alter table reviews drop constraint if exists reviews_type_check;
-alter table reviews add constraint reviews_type_check check (type in ('project','recap','coaching','jarvis','doc','security'));
+alter table reviews add constraint reviews_type_check check (type in ('project','recap','coaching','jarvis','doc','security','screening'));
 create unique index if not exists reviews_file_unique on reviews (type, coalesce(project_id, ''), (meta->>'file')) where meta->>'file' is not null;
 -- 0.5.0. Items can be cancelled (kept, but out of every open count) and point at the item they duplicated; a decision
 -- typed in the note box is sent to Claude explicitly (note_sent_at); an in-progress item owned by Claude is built by

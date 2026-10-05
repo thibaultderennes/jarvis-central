@@ -13,6 +13,9 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   resize); boxes never overlap. The layout is saved per tab on the site (kv `dashboard.layout`), so it follows you
   across devices. New boxes: Sprints this week, Inbox, the next 7 days. The sidebar drops Timeline and Stats (they are
   tabs now); `g l` and `g s` and the ⌘K palette open those tabs. Tests cover the layout cleaning and collision rules.
+- **Fix: deploys failed once a screening existed.** Every deploy runs the whole `schema.sql`, and the 0.5.0 block
+  re-created the review-type check without `screening`, which the first screening row then violated. Every copy of
+  the check now lists `screening`; a test fails if any copy of a check is narrower than the last one.
 - **Design pass from the first VibeCoded Screening** (`DESIGN.md`, new): the rules the site follows (tokens, type
   roles, a 4px spacing scale, radii, motion, copy) and a CLAUDE.md rule to run the screening before shipping UI.
   - Muted text (`--ink-3`) darkened to 4.96:1 on the light page background (was 3.6:1).
