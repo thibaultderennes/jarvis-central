@@ -18,10 +18,10 @@ const fmtWhen = (iso: string) => new Date(iso).toLocaleString("en-CA", { month: 
  * cancelled items are hidden until "Show completed" is on. "Today" comes from the server, in the configured timezone.
  */
 type Own = "founder" | "claude";
-type When = "overdue" | "week" | "2w";
+type When = "overdue" | "today" | "week" | "2w";
 type Filters = { sec: string[]; own: Own[]; due: When[]; crit: boolean; showDone: boolean; spr: string[] };
 const KEYS = ["sec", "own", "due", "crit", "done", "spr"];
-const WHEN: [When, string, string][] = [["overdue", "Overdue", "Open items due before today"], ["week", "Next 7 days", "Open items due today through 7 days from now"], ["2w", "Next 14 days", "Open items due today through 14 days from now"]];
+const WHEN: [When, string, string][] = [["overdue", "Overdue", "Open items due before today"], ["today", "Due today", "Open items due today"], ["week", "Next 7 days", "Open items due today through 7 days from now"], ["2w", "Next 14 days", "Open items due today through 14 days from now"]];
 const csv = (v: string | null) => (v || "").split(",").map((x) => x.trim()).filter(Boolean);
 function parse(q: URLSearchParams, showDoneDefault: boolean): Filters {
   const d = q.get("done");
@@ -86,7 +86,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   useEffect(() => { if (target) { document.getElementById(`item-${target}`)?.scrollIntoView({ block: "center" }); setTarget(""); } }, [target]);
   const run = (fn: () => Promise<unknown>) => start(async () => { try { setErr(""); await fn(); } catch { setErr("Couldn't save that. Try again."); } });
   const in7 = addDays(today, 7), in14 = addDays(today, 14);
-  const dated = (i: Item) => !!i.due && isOpen(i) && f.due.some((w) => (w === "overdue" ? i.due! < today : i.due! >= today && i.due! <= (w === "week" ? in7 : in14)));
+  const dated = (i: Item) => !!i.due && isOpen(i) && f.due.some((w) => (w === "overdue" ? i.due! < today : w === "today" ? i.due === today : i.due! >= today && i.due! <= (w === "week" ? in7 : in14)));
   const keep = (i: Item) => {
     if (f.sec.length && !f.sec.includes(i.section)) return false;
     if (f.crit && !i.critical) return false;
@@ -159,7 +159,8 @@ export default function Checklist({ projectId, sections: given, items, today, sh
       </div>
       {err && <div className="due late" role="alert">{err}</div>}
       <Sprints sprints={sprints} items={list} today={today} weeklyMinutes={weeklyMinutes} focus={f.spr} onFocus={(id) => setFilters({ ...f, spr: f.spr.length === 1 && f.spr[0] === id ? [] : [id] })} />
-      {selecting && <SelectBar projectId={projectId} sel={sel} sprints={sprints.filter((s) => s.end >= today)} today={today} onDone={endSelect} onClear={() => setSel([])} />}
+      {selecting && <SelectBar projectId={projectId} sel={sel} sprints={sprints.filter((s) => s.end >= today)} today={today} onDone={endSelect} onClear={() => setSel([])}
+        shown={list.filter((i) => keep(i) && isOpen(i)).map((i) => i.id)} onSelectAll={(ids) => setSel((x) => [...new Set([...x, ...ids])])} />}
       {added && !keep(added) && <div className="due" role="status">Added &ldquo;{added.title}&rdquo; ({added.id}): your filters hide it. <button className="more" onClick={clear}>Clear filters</button></div>}
       {active && !shown && list.length > 0 && <div className="panel empty">No items match these filters. <button className="more" onClick={clear}>Clear filters</button></div>}
       {sections.filter((s) => !f.sec.length || f.sec.includes(s.id)).map((s) => {
@@ -377,13 +378,14 @@ function SprintCard({ s, items, today, weeklyMinutes, on, onFocus }: { s: Sprint
 }
 
 /** Shown in select mode: what to do with the ticked items. A new sprint defaults to today through 6 days later. */
-function SelectBar({ projectId, sel, sprints, today, onDone, onClear }: { projectId: string; sel: string[]; sprints: Sprint[]; today: string; onDone: () => void; onClear: () => void }) {
+function SelectBar({ projectId, sel, sprints, today, onDone, onClear, shown, onSelectAll }: { projectId: string; sel: string[]; sprints: Sprint[]; today: string; onDone: () => void; onClear: () => void; shown: string[]; onSelectAll: (ids: string[]) => void }) {
   const [name, setName] = useState(""), [start, setStart] = useState(today), [end, setEnd] = useState(addDays(today, 6)), [target, setTarget] = useState("");
   const s = useSubmit();
   const none = !sel.length;
   return (
     <div className="selbar" role="region" aria-label="Selected items">
-      <span className="due" role="status"><b>{sel.length}</b> selected{none ? ": tick items below" : ""}</span>
+      <span className="due" role="status"><b>{sel.length}</b> selected{none ? ": tick items below, or select everything the filters show" : ""}</span>
+      {shown.some((id) => !sel.includes(id)) && <button className="btn sm ghost" onClick={() => onSelectAll(shown)} title="Every open item the current filters show (e.g. Overdue + Due today)">Select all shown ({shown.length})</button>}
       <form className="addrow" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); if (none || s.pending) return; s.submit(() => createSprint(projectId, name, start, end, sel), { ok: "Sprint created", onOk: onDone }); }}>
         <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="New sprint name" aria-label="New sprint name" />
         <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} aria-label="Sprint start" />

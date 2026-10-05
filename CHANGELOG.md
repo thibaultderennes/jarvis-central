@@ -3,6 +3,13 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Checklist: today + overdue in one go.** The Due filter gets **Due today** (combines with Overdue and the date
+  ranges), and Select mode gets **Select all shown**: filter Overdue + Due today, select them all, then Create sprint,
+  Add to sprint or Take out.
+- **Removed projects leave every view.** Items and todos of archived projects (removed on Admin, or whose folder is
+  gone) no longer count in the sidebar, Home, Needs you, Today, Week, Stats (all projects), the Timeline or the agent
+  API's all-projects item list, so they stop showing as overdue. The project's own page still shows them, and Restore
+  brings everything back. `getItems({includeArchived: true})` keeps the old behaviour where needed.
 
 ## 0.7.0 — 2026-10-05
 - **Admin: approve new projects, remove old ones.** "Refresh project folders" no longer registers new folders on its
