@@ -10,10 +10,10 @@ export const PAGES: { href: string; label: string; key?: string; words: string }
   { href: "/", label: "Home", key: "h", words: "overview dashboard needs you" },
   { href: "/today", label: "Today", key: "t", words: "day todos list" },
   { href: "/week", label: "Week", key: "w", words: "plan calendar" },
-  { href: "/timeline", label: "Timeline", key: "l", words: "milestones deadlines gantt" },
+  { href: "/?tab=timeline", label: "Timeline", key: "l", words: "milestones deadlines gantt sprints" },
   { href: "/inbox", label: "Inbox", key: "i", words: "messages claude replies" },
   { href: "/reviews", label: "Reviews", words: "monday weekly reports audits" },
   { href: "/finance", label: "Finance", words: "costs subscriptions money" },
-  { href: "/stats", label: "Stats", key: "s", words: "charts statistics insights burn" },
+  { href: "/?tab=stats", label: "Stats", key: "s", words: "charts statistics insights burn" },
   { href: "/admin", label: "Admin", words: "settings account projects preferences" },
 ];

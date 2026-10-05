@@ -6,6 +6,7 @@ import { sql } from "./db";
 import * as D from "./data";
 import { isDate, today } from "./time";
 import { normBlockedBy, wouldCycle } from "./sqlbuild";
+import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -338,6 +339,23 @@ export async function requestScreening(project_id: string, kind: string) {
   if (busy.length) return;
   await D.insertMessage({ text: `Run the ${kind} screening on this project and add what to fix to the checklist.`, project_id, status: "new", mode: "screen", meta: { kind } });
   await D.logActivity("project_screening", `/p/${project_id}`, { project_id, kind });
+  done();
+}
+
+/** The dashboard (Home): saves one tab's box layout after Customize. Cleaned server-side; kv `dashboard.layout`. */
+export async function saveDashboardLayout(tab: string, places: unknown): Promise<{ error?: string }> {
+  await requireSession();
+  if (!isTab(tab)) return { error: "Unknown tab." };
+  const cur = sanitizeLayout((await D.kvGet("dashboard.layout"))?.value);
+  await D.kvSet("dashboard.layout", { ...cur, [tab]: sanitizeTab(tab, places) });
+  await D.logActivity("dashboard_layout", "/", { tab });
+  return {};
+}
+export async function resetDashboardTab(tab: string) {
+  await requireSession();
+  if (!isTab(tab)) return;
+  const cur = sanitizeLayout((await D.kvGet("dashboard.layout"))?.value);
+  await D.kvSet("dashboard.layout", { ...cur, [tab]: defaultTab(tab) });
   done();
 }
 

@@ -85,7 +85,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `recurring_costs(id uuid, project_id null /* null = independent */, name, amount numeric, currency, period 'week'|'month'|'year', next_renewal date null, notes, active bool, created_at, updated_at)` — the Finance page and each project's Finances view; manual entry only.
 - `metrics_snapshots(project_id, date, metrics jsonb /* {key: number}, see metrics.md */, source 'manual'|'url'|'command', created_at, updated_at)` —
   primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
-- `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
+- `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `dashboard.layout` (Home's box layout per tab), `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, proposed?: [project payload + folder], archived?, total?, error?}`;
   approving or declining a proposal removes it from `proposed`),
@@ -178,12 +178,19 @@ title contain every word (case- and accent-insensitive, archived projects left o
 - `GET /api/cal/jarvis.ics?key=` (calendar token in the URL): iCalendar feed of planned weeks for Apple Calendar.
 
 ## Site pages
-- `/` Home: four tiles (next event, today's list, overdue, next deadline), **Needs you** (`app/lib/needs.ts`
-  `needsYou()` → `{rows, count}`: open items in each project's decide section owned by you, items with a PR waiting for
-  Approve & merge, replies you haven't opened; oldest first), the top-3 project cards with pace against the next
-  milestone, this week's reviews; the charts live on `/stats`. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
+- `/` Home (0.7.3): one page, three tabs, `?tab=overview|timeline|stats` (`/timeline` and `/stats` redirect there,
+  keeping `?w=`, `?bucket=`, `?proj=`). The **Now rail** above every tab: the next thing (the oldest Needs you row,
+  else the most overdue item), today's timed events and todos with "now" among them, one summary line. Below it the tab's
+  boxes on a 12-column grid (`components/DashCanvas.tsx`, boxes rendered on the server in `app/(main)/boxes.tsx`, list
+  and defaults in `lib/dashLayout.ts`): **Customize** to drag a box by its title bar, resize from its corner, fold,
+  remove, add back from the library, arrow keys to move and Shift + arrows to resize; boxes settle so they never overlap.
+  The layout is saved per tab in kv `dashboard.layout` (`{overview|timeline|stats: [{id, x, y, w, h, min?}]}`, cleaned by
+  `sanitizeLayout`). Overview boxes: Needs you (`app/lib/needs.ts` `needsYou()` → `{rows, count}`: open items in each
+  project's decide section owned by you, items with a PR waiting for Approve & merge, replies you haven't opened; oldest
+  first), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
+  upcoming milestones, the next 7 days. Stats: every cross-project chart. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
-  Inbox, Timeline, Stats and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · `/timeline` (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,
+  Inbox, the Timeline tab, the Stats tab and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · the Timeline tab (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,
   open items' due dates per day, the Sunday-plan blocks of every planned week in range, calendar events; built in `app/lib/timeline.ts`
   from existing data, no table of its own) · `/p/<id>` (left menu: Dashboard, Checklists, Timeline (one lane per section),
   Project, Reviews, Finances, Statistics; `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·

@@ -3,6 +3,16 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+
+## 0.7.3 — 2026-10-05
+- **One dashboard: Home, Timeline and Stats are tabs of one page** (`/?tab=overview|timeline|stats`; the old `/timeline`
+  and `/stats` links redirect, filters included). The **Now rail** above every tab replaces the four tiles: the next
+  thing in one sentence with its button, today as a line with your place on it, and one summary line (late, due today,
+  next deadline). Every section is a box: **Customize** lets you drag a box anywhere on a 12-column grid by its title
+  bar, resize it from its corner, fold it, remove it and add it back from the library (arrow keys move, Shift + arrows
+  resize); boxes never overlap. The layout is saved per tab on the site (kv `dashboard.layout`), so it follows you
+  across devices. New boxes: Sprints this week, Inbox, the next 7 days. The sidebar drops Timeline and Stats (they are
+  tabs now); `g l` and `g s` and the ⌘K palette open those tabs. Tests cover the layout cleaning and collision rules.
 - **Design pass from the first VibeCoded Screening** (`DESIGN.md`, new): the rules the site follows (tokens, type
   roles, a 4px spacing scale, radii, motion, copy) and a CLAUDE.md rule to run the screening before shipping UI.
   - Muted text (`--ink-3`) darkened to 4.96:1 on the light page background (was 3.6:1).
