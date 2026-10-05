@@ -93,9 +93,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
             <Item href="/" icon="home" label="Home" count={needs || undefined} />
             <Item href="/today" icon="today" label="Today" count={todayLeft || undefined} />
             <Item href="/week" icon="week" label="Week" />
-            <Item href="/timeline" icon="timeline" label="Timeline" />
             <Item href="/inbox" icon="inbox" label="Inbox" count={inbox} tone={waiting || fresh ? "hot" : undefined} />
-            <Item href="/stats" icon="stats" label="Stats" />
             <Item href="/finance" icon="finance" label="Finance" />
             {pinned.length > 0 && <><div className="sb-h pin">Pinned</div>{pinned.map((p) => <Proj key={p.id} p={p} />)}</>}
             {projects.length > 0 && <><div className="sb-h">Projects</div>{projects.map((p) => <Proj key={p.id} p={p} />)}</>}

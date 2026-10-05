@@ -275,7 +275,7 @@ export default function ProjectStats({ project, product, delivery, today }: { pr
             )}
           </div>
           <section className="panel ps-wk">
-            <div className="ph"><h3 className="ps-h">Added vs finished per week</h3><span className="sp" /><Link className="hint" href={`/stats?proj=${encodeURIComponent(project.id)}`}>Day by day →</Link></div>
+            <div className="ph"><h3 className="ps-h">Added vs finished per week</h3><span className="sp" /><Link className="hint" href={`/?tab=stats&proj=${encodeURIComponent(project.id)}`}>Day by day →</Link></div>
             <div className="pb" style={{ paddingTop: 6 }}><WeekColumns weeks={delivery.weeks} /></div>
           </section>
         </div>

@@ -21,7 +21,8 @@ export const ICONS = {
   "out": { "d": "M8 3.5H4.3v13H8M12 6.5 15.5 10 12 13.5M15.5 10H7.5" },
   "close": { "d": "M5 5l10 10M15 5 5 15" },
   "start": { "d": "M4 10h7.6M9 6.6l3.4 3.4L9 13.4", "dot": [15.6, 10, 1.7] },
-  "plus": { "d": "M10 4.4v11.2M4.4 10h11.2" }
+  "plus": { "d": "M10 4.4v11.2M4.4 10h11.2" },
+  "drag": { "d": "M6.2 6.8h7.6M6.2 10h7.6M6.2 13.2h7.6" }
 } as const;
 
 export type IconName = keyof typeof ICONS;
