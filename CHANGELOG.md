@@ -3,6 +3,8 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+
+## 0.7.1 — 2026-10-05
 - **Checklist: today + overdue in one go.** The Due filter gets **Due today** (combines with Overdue and the date
   ranges), and Select mode gets **Select all shown**: filter Overdue + Due today, select them all, then Create sprint,
   Add to sprint or Take out.
