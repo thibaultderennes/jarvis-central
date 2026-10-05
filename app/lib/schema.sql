@@ -221,3 +221,16 @@ create table if not exists metrics_snapshots (
 -- 0.7.0. Item dependencies: the codes of items in the same project this one waits on. An item with an open blocker shows
 -- a "blocked by" badge; nothing is enforced.
 alter table items add column if not exists blocked_by text[] not null default '{}';
+-- 0.7.0. Sprints: a dated batch of one project's items (owner decision: sprints never cross projects). Deleting a
+-- sprint only detaches its items.
+create table if not exists sprints (
+  id uuid primary key default gen_random_uuid(),
+  project_id text not null references projects(id) on delete cascade,
+  name text not null,
+  start_date date not null,
+  end_date date not null,
+  created_at timestamptz not null default now()
+);
+create index if not exists sprints_project on sprints (project_id, start_date);
+alter table items add column if not exists sprint_id uuid;
+create index if not exists items_sprint on items (sprint_id) where sprint_id is not null;

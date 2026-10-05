@@ -34,11 +34,12 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const view: View = (VIEWS as readonly string[]).includes(sp.v || "") ? (sp.v as View) : legacy?.v || "checklist";
   const kind = sp.k || legacy?.k || "weekly";
   const t = today();
-  const [items, weekly, docs, audits, msgs, all, prefs, costs, economics] = await Promise.all([
+  const [items, weekly, docs, audits, msgs, all, prefs, costs, economics, sprints] = await Promise.all([
     D.getItems({ project: id }), D.getReviews({ type: "project", project: id, limit: 30 }), D.getReviews({ type: "doc", project: id, limit: 30 }),
     D.getReviews({ type: "security", project: id, limit: 100 }).then((l) => l.sort(D.newestFileFirst)),
     D.getMessages({ limit: 50 }), D.getProjects(), D.getPrefs(), D.getCosts({ project: id, all: true }),
     view === "finance" ? D.getEconomics(id) : null, // the model grid is large: only the Finances view needs it
+    view === "checklist" ? D.getSprints({ project: id }).catch(() => []) : [], // [] until the sprints table exists
   ]);
   const open = items.filter(D.isOpen), dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
@@ -79,7 +80,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         {view === "checklist" && (
           <div className="pchk">
             <Glance p={p} items={items} weekly={weekly} costs={costs} today={t} href={href} rank={rank} />
-            <div className="pchk-list"><Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} /></div>
+            <div className="pchk-list"><Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} sprints={sprints} weeklyMinutes={p.weekly_minutes ?? null} /></div>
           </div>
         )}
 

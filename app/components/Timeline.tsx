@@ -4,7 +4,7 @@ import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { TimelineData, TItem, TLane } from "@/lib/timeline";
 import { SHIFT_MAX, SHIFT_MIN, SHIFT_STEP } from "@/lib/timelineRange";
-import { moveItemsDue, moveMilestone } from "@/lib/actions";
+import { moveItemsDue, moveMilestone, setDue } from "@/lib/actions";
 import "./timeline.css";
 
 // Date helpers on YYYY-MM-DD strings (noon UTC, so no timezone drift): the server already resolved "today".
@@ -46,7 +46,7 @@ function RangeNav({ shift, from, to }: { shift: number; from: string; to: string
 }
 
 export default function Timeline({ data }: { data: TimelineData }) {
-  const { from, to, today: t, lanes, calendar, guides, shift } = data;
+  const { from, to, today: t, lanes, calendar, guides, shift, sprints = [], unscheduled = [] } = data;
   const n = diff(from, to) + 1;
   const days = Array.from({ length: n }, (_, i) => addDays(from, i));
   const box = useRef<HTMLDivElement>(null);
@@ -90,6 +90,17 @@ export default function Timeline({ data }: { data: TimelineData }) {
   const setMv = (m: Move | null) => { mvRef.current = m; setMvState(m); };
   const [pop, setPop] = useState<{ left: number; top: number; below: boolean } | null>(null);
   const [ack, setAck] = useState<{ x: number; y: number; text: string; bad?: boolean } | null>(null);
+  /* ---- Unscheduled panel (project page): drag an undated item onto a day, or pick a date in the list ---- */
+  const [drop, setDrop] = useState<string | null>(null);
+  const [placed, setPlaced] = useState<string[]>([]); // optimistically hidden from the panel until fresh data arrives
+  useEffect(() => setPlaced([]), [data]);
+  const planUnscheduled = async (pid: string, id: string, day: string, at?: { x: number; y: number }) => {
+    setPlaced((p) => [...p, id]);
+    let error: string | undefined;
+    try { ({ error } = await moveItemsDue(pid, [id], day)); } catch { error = "the save didn't reach the server."; }
+    if (error) setPlaced((p) => p.filter((x) => x !== id));
+    setAck({ ...(at || { x: Math.min(Math.max(x(day) + dw / 2, 60), W - 60), y: 8 }), text: error ? `Not scheduled: ${error}` : `Due ${fmt(day, { weekday: "short", month: "short", day: "numeric" })}`, bad: !!error });
+  };
   const clampD = (d: string) => (d < from ? from : d > to ? to : d);
   // No moving into the past: before today snaps to today (and the label says so).
   const snap = (d: string) => (clampD(d) < t ? { to: t, clamped: true } : { to: clampD(d), clamped: false });
@@ -196,7 +207,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
     .concat(its.length > 8 ? [{ text: `+${its.length - 8} more`, tone: undefined }] : []);
   const tone = (its: TItem[]) => (its.some((i) => i.late) ? "late" : its.some((i) => i.critical) ? "crit" : "");
 
-  if (!lanes.length && !calendar?.length) return <div className="tl"><RangeNav shift={shift} from={from} to={to} /><div className="empty">Nothing dated between {fmt(from)} and {fmt(to)}: no milestones, no due dates, no planned blocks.</div></div>;
+  if (!lanes.length && !calendar?.length && !unscheduled.length && !sprints.length) return <div className="tl"><RangeNav shift={shift} from={from} to={to} /><div className="empty">Nothing dated between {fmt(from)} and {fmt(to)}: no milestones, no due dates, no planned blocks.</div></div>;
 
   return (
     <div className="tl">
@@ -214,7 +225,17 @@ export default function Timeline({ data }: { data: TimelineData }) {
             ))}
         </div>
         <div className="tl-scroll" ref={box} onScroll={hide}>
-          <div className="tl-in" style={{ width: W, height: H }}>
+          <div className="tl-in" style={{ width: W, height: H }}
+            onDragOver={(e) => { if (e.dataTransfer.types.includes("text/x-jarvis-item")) { e.preventDefault(); const r = svg.current?.getBoundingClientRect(); if (r) setDrop(snap(addDays(from, Math.floor((e.clientX - r.left) / dw))).to); } }}
+            onDragLeave={() => setDrop(null)}
+            onDrop={(e) => {
+              const raw = e.dataTransfer.getData("text/x-jarvis-item"); setDrop(null);
+              const r = svg.current?.getBoundingClientRect();
+              if (!raw || !r) return;
+              e.preventDefault();
+              const [pid, id] = raw.split("\u0000"), day = snap(addDays(from, Math.floor((e.clientX - r.left) / dw))).to;
+              planUnscheduled(pid, id, day, { x: Math.min(Math.max(x(day) + dw / 2, 60), W - 60), y: e.clientY - r.top });
+            }}>
             <svg ref={svg} width={W} height={H} role="group" aria-label={`Timeline from ${fmt(from)} to ${fmt(to)}: ${lanes.length} lanes`}>
               {/* weekends and week separators */}
               {days.map((d, i) => {
@@ -229,6 +250,22 @@ export default function Timeline({ data }: { data: TimelineData }) {
                 );
               })}
               {rows.map((r) => <line key={r.y} className="tl-row" x1={0} x2={W} y1={r.y} y2={r.y} />)}
+              {/* sprints: a band over their project's lane (overview) or over every section lane (project page) */}
+              {sprints.map((sp) => {
+                const a = sp.start < from ? from : sp.start, b = sp.end > to ? to : sp.end;
+                if (a > b) return null;
+                const row = rows.find((r) => r.lane?.key === sp.project_id), y0 = row ? row.y + 1 : HEAD, h = row ? row.h - 2 : H - HEAD;
+                const bx = x(a), bw = x(b) + dw - bx, k = sp.open + sp.done;
+                return (
+                  <g key={"s" + sp.id} data-c={sp.color} className="tl-hit" {...hit(bx + Math.min(bw / 2, 80), y0 + 4, `Sprint · ${sp.name}`, [
+                    { text: `${fmt(sp.start, { weekday: "short", month: "short", day: "numeric" })} – ${fmt(sp.end, { weekday: "short", month: "short", day: "numeric" })}` },
+                    { text: `${sp.done} of ${k} done${sp.open ? ` · ${sp.open} open` : ""}`, tone: sp.end < t && sp.open ? "bad" as const : undefined },
+                  ])}>
+                    <rect className="tl-sprint" x={bx} y={y0} width={bw} height={h} rx={4} />
+                    {bw > 40 && <text className="tl-sprl" x={bx + 4} y={y0 + 10}>{short(sp.name, Math.floor((bw - 8) / 5.6))}</text>}
+                  </g>
+                );
+              })}
               {guides.map((g) => <line key={"g" + g.date + g.label} className="tl-guide" x1={x(g.date) + dw / 2} x2={x(g.date) + dw / 2} y1={HEAD} y2={H} />)}
 
               {rows.map((r) => {
@@ -267,11 +304,13 @@ export default function Timeline({ data }: { data: TimelineData }) {
                     {l.days.map((d) => {
                       const k = d.items.length, h = 7 + 3 * Math.min(k, 4), cx = x(d.date) + dw / 2, w = Math.max(4, Math.min(8, dw - 6));
                       const tn = tone(d.items);
+                      const lead = d.items.map((i) => i.start).filter((v): v is string => !!v && v < d.date).sort()[0];
                       const pin: Pin = { kind: "items", key: `i:${l.key}:${d.date}`, project_id: d.items[0].project_id, date: d.date, top, color: l.color, items: d.items };
                       return (
                         <g key={d.date} {...hit(cx, top + 44 - h, `${fmt(d.date, { weekday: "short", month: "short", day: "numeric" })} · ${k} due${d.date < t ? " (overdue)" : ""}`, itemRows(d.items))} {...drag(pin)}
                           aria-label={`${k} item${k === 1 ? "" : "s"} due ${fmt(d.date)}. Drag, or press arrow keys then Enter, to move.`}>
                           <rect x={x(d.date)} y={top + 26} width={dw} height={20} fill="transparent" />
+                          {lead && <rect className={`tl-lead ${tn}`} x={x(lead < from ? from : lead) + dw / 2} y={top + 43} width={Math.max(0, cx - (x(lead < from ? from : lead) + dw / 2))} height={2} />}
                           <rect className={`tl-tick ${tn}`} x={cx - w / 2} y={top + 45 - h} width={w} height={h} rx={2} />
                         </g>
                       );
@@ -297,6 +336,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
                   </g>
                 );
               })}
+              {drop && <rect className="tl-drop" x={x(drop)} y={HEAD} width={dw} height={H - HEAD} pointerEvents="none" />}
               {t >= from && t <= to && (
                 <g>
                   <line className="tl-today" x1={x(t) + dw / 2} x2={x(t) + dw / 2} y1={HEAD - 4} y2={H} />
@@ -359,8 +399,24 @@ export default function Timeline({ data }: { data: TimelineData }) {
         <span><i className="tl-k plan" />Planned work (Sunday plan)</span>
         {calendar && <span><i className="tl-k cal" />Calendar events</span>}
         <span><i className="tl-k today" />Today</span>
+        {sprints.length > 0 && <span><i className="tl-k sprint" />Sprint</span>}
         <span className="tl-howto">Drag a diamond or tick to move it (or focus it, ←/→, Enter); you confirm before it saves</span>
       </div>
+      {unscheduled.length > 0 && (
+        <section className="tl-uns" aria-label="Unscheduled items" data-track-section="Unscheduled">
+          <h3>Unscheduled <span className="due">{unscheduled.filter((i) => !placed.includes(i.id)).length} open items without a due date · drag one onto a day, or pick a date</span></h3>
+          <ul>
+            {unscheduled.filter((i) => !placed.includes(i.id)).map((i) => (
+              <li key={i.id} draggable onDragStart={(e) => { e.dataTransfer.setData("text/x-jarvis-item", `${i.project_id}\u0000${i.id}`); e.dataTransfer.effectAllowed = "move"; hide(); }} onDragEnd={() => setDrop(null)}
+                className={i.critical ? "crit" : undefined}>
+                <span className="grip" aria-hidden="true">⠿</span>
+                <span className="tl-uns-t">{i.title}<small>{i.id}{i.critical ? " · critical" : ""}{i.status === "doing" ? " · in progress" : ""}</small></span>
+                <input type="date" className="input" min={t} aria-label={`Due date for ${i.title}`} onChange={(e) => { const v = e.target.value; if (v) { setPlaced((p) => [...p, i.id]); setDue(i.project_id, i.id, v).catch(() => setPlaced((p) => p.filter((x) => x !== i.id))); } }} />
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
       <details className="tabletoggle">
         <summary>Show as a list</summary>
         <div style={{ overflowX: "auto" }}>

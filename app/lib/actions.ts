@@ -54,6 +54,46 @@ export async function setBlockedBy(project_id: string, id: string, codes: string
   done();
   return {};
 }
+/* ---------- sprints (one project each) ---------- */
+const sprintDates = (start: string, end: string) => (!isDate(start) || !isDate(end) ? "Pick a start and an end date." : end < start ? "The sprint ends before it starts." : "");
+/** "Create sprint" from the checklist's selection: a dated batch of this project's items. */
+export async function createSprint(project_id: string, name: string, start: string, end: string, ids: string[]): Promise<{ error?: string; id?: string }> {
+  await requireSession();
+  const bad = sprintDates(start, end);
+  if (bad) return { error: bad };
+  const nm = name.trim().slice(0, 80) || `Sprint ${start}`;
+  const sprint = await D.addSprint({ project_id, name: nm, start, end });
+  await D.setSprintItems(project_id, sprint.id, ids.filter(ID_OK).slice(0, 200));
+  await D.logActivity("sprint_create", `/p/${project_id}`, { n: ids.length });
+  done();
+  return { id: sprint.id };
+}
+/** Add the selection to an existing sprint of the same project, or take it out (sprint null). */
+export async function moveToSprint(project_id: string, sprint_id: string | null, ids: string[]): Promise<{ error?: string }> {
+  await requireSession();
+  if (sprint_id) { const s = await D.getSprint(sprint_id); if (!s || s.project_id !== project_id) return { error: "That sprint is gone." }; }
+  await D.setSprintItems(project_id, sprint_id, ids.filter(ID_OK).slice(0, 200));
+  await D.logActivity("sprint_items", `/p/${project_id}`, { n: ids.length, out: !sprint_id });
+  done();
+  return {};
+}
+export async function editSprint(id: string, p: { name?: string; start?: string; end?: string }): Promise<{ error?: string }> {
+  await requireSession();
+  const cur = await D.getSprint(id);
+  if (!cur) return { error: "That sprint is gone." };
+  const bad = sprintDates(p.start ?? cur.start, p.end ?? cur.end);
+  if (bad) return { error: bad };
+  await D.updateSprint(id, { name: p.name?.trim().slice(0, 80) || undefined, start: p.start, end: p.end });
+  done();
+  return {};
+}
+/** Deleting a sprint keeps its items; they only leave it. */
+export async function removeSprint(id: string) {
+  await requireSession();
+  await D.deleteSprint(id);
+  await D.logActivity("sprint_delete", null, {});
+  done();
+}
 export async function setDue(project_id: string, id: string, due: string | null) {
   await requireSession();
   if (due && !isDate(due)) return;

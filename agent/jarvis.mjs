@@ -26,6 +26,10 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   cost add "name" --amount N [--period week|month|year] [--currency USD] [--project P] [--renews D] [--notes T]
   cost set <id> key=value ...                     name|amount|period|currency|project|renews|notes|active=true/false
   cost rm <id>
+  sprints <project>                               the project's sprints: dates, items, done, estimate
+  sprint add <project> "name" --start D --end D [--items a,b]   a sprint (one project) with these items
+  sprint set <id> [--name T] [--start D] [--end D] [--add a,b] [--remove a,b]
+  sprint rm <id>                                  delete the sprint (its items stay, just unplanned)
 
   --json on any read command prints raw JSON. Dates are YYYY-MM-DD (${TZ}).
   owner "founder" means you, the person who owns the dashboard.`;
@@ -272,6 +276,35 @@ async function main() {
       }
       out(`\nMonthly: ${Object.entries(totals).map(([k, v]) => `${v.toFixed(2)} ${k}`).join(" + ") || "0"}`);
       return;
+    }
+    case "sprints": {
+      const project = need(rest[0], "<project>");
+      const [sprints, items] = await Promise.all([api("GET", "/api/agent/sprints" + qs({ project })), api("GET", "/api/agent/items" + qs({ project }))]);
+      if (json) return out(JSON.stringify(sprints.map((s) => ({ ...s, items: items.filter((i) => i.sprint_id === s.id).map((i) => i.id) })), null, 2));
+      if (!sprints.length) return out(`No sprints on ${project}.`);
+      for (const s of sprints) {
+        const its = items.filter((i) => i.sprint_id === s.id && i.status !== "cancelled"), d = its.filter((i) => i.status === "done").length;
+        const est = its.reduce((a, i) => a + (i.estimate_minutes || 0), 0);
+        out(`${s.start} → ${s.end}  ${s.name}  ${d}/${its.length} done${est ? ` · ~${Math.round(est / 6) / 10} h estimated` : ""}  ${s.id}`);
+        for (const i of its) out(`    [${i.id}] ${i.status.padEnd(5)} ${i.title}`);
+      }
+      return;
+    }
+    case "sprint": {
+      const sub = rest[0], list = (v) => String(v || "").split(",").map((x) => x.trim()).filter(Boolean);
+      if (sub === "add") {
+        const project = need(rest[1], "<project>"), name = need(rest[2], '"name"');
+        const { sprint, items } = await api("POST", "/api/agent/sprints", { project_id: project, name, start: date(need(flags.start, "--start")), end: date(need(flags.end, "--end")), items: list(flags.items) });
+        return out(json ? JSON.stringify(sprint, null, 2) : `Added sprint ${sprint.name} (${sprint.start} → ${sprint.end}) with ${items} item(s)  ${sprint.id}`);
+      }
+      if (sub === "set") {
+        const id = need(rest[1], "<id>");
+        const body = { id, name: flags.name, start: flags.start ? date(flags.start) : undefined, end: flags.end ? date(flags.end) : undefined, add: flags.add ? list(flags.add) : undefined, remove: flags.remove ? list(flags.remove) : undefined };
+        const { sprint } = await api("PATCH", "/api/agent/sprints", body);
+        return out(json ? JSON.stringify(sprint, null, 2) : `Updated sprint ${sprint.name} (${sprint.start} → ${sprint.end})`);
+      }
+      if (sub === "rm") { const id = need(rest[1], "<id>"); await api("DELETE", "/api/agent/sprints" + qs({ id })); return out(`Removed sprint ${id} (its items stay)`); }
+      out(HELP); process.exit(2);
     }
     case "cost": {
       const sub = rest[0];

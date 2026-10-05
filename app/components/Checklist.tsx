@@ -1,8 +1,8 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { approveBuild, cancelItem, commentItem, newItem, resetBuild, sendBackBuild, sendNote, setBlockedBy, setDue, setItemStatus } from "@/lib/actions";
-import { isOpen, type Item, type Section } from "@/lib/data";
+import { approveBuild, cancelItem, commentItem, createSprint, editSprint, moveToSprint, newItem, removeSprint, resetBuild, sendBackBuild, sendNote, setBlockedBy, setDue, setItemStatus } from "@/lib/actions";
+import { isOpen, type Item, type Section, type Sprint } from "@/lib/data";
 import { Ack, enterSends, imeGuard, useSubmit } from "./Submit";
 import { Icon } from "./icons";
 
@@ -19,8 +19,8 @@ const fmtWhen = (iso: string) => new Date(iso).toLocaleString("en-CA", { month: 
  */
 type Own = "founder" | "claude";
 type When = "overdue" | "week" | "2w";
-type Filters = { sec: string[]; own: Own[]; due: When[]; crit: boolean; showDone: boolean };
-const KEYS = ["sec", "own", "due", "crit", "done"];
+type Filters = { sec: string[]; own: Own[]; due: When[]; crit: boolean; showDone: boolean; spr: string[] };
+const KEYS = ["sec", "own", "due", "crit", "done", "spr"];
 const WHEN: [When, string, string][] = [["overdue", "Overdue", "Open items due before today"], ["week", "Next 7 days", "Open items due today through 7 days from now"], ["2w", "Next 14 days", "Open items due today through 14 days from now"]];
 const csv = (v: string | null) => (v || "").split(",").map((x) => x.trim()).filter(Boolean);
 function parse(q: URLSearchParams, showDoneDefault: boolean): Filters {
@@ -28,7 +28,7 @@ function parse(q: URLSearchParams, showDoneDefault: boolean): Filters {
   return {
     sec: csv(q.get("sec")), own: csv(q.get("own")).filter((x): x is Own => x === "founder" || x === "claude"),
     due: csv(q.get("due")).filter((x): x is When => WHEN.some(([k]) => k === x)), crit: q.get("crit") === "1",
-    showDone: d === "1" ? true : d === "0" ? false : showDoneDefault,
+    showDone: d === "1" ? true : d === "0" ? false : showDoneDefault, spr: csv(q.get("spr")),
   };
 }
 function toQuery(f: Filters, showDoneDefault: boolean, base: string): string {
@@ -38,13 +38,14 @@ function toQuery(f: Filters, showDoneDefault: boolean, base: string): string {
   if (f.own.length) q.set("own", f.own.join(","));
   if (f.due.length) q.set("due", f.due.join(","));
   if (f.crit) q.set("crit", "1");
+  if (f.spr.length) q.set("spr", f.spr.join(","));
   if (f.showDone !== showDoneDefault) q.set("done", f.showDone ? "1" : "0");
   return q.toString();
 }
 const flip = <T,>(a: T[], v: T) => (a.includes(v) ? a.filter((x) => x !== v) : [...a, v]);
 const goTo = (qs: string) => window.history.replaceState(null, "", `${window.location.pathname}${qs ? `?${qs}` : ""}`);
 
-export default function Checklist({ projectId, sections: given, items, today, showDoneDefault = false }: { projectId: string; sections: Section[]; items: Item[]; today: string; showDoneDefault?: boolean }) {
+export default function Checklist({ projectId, sections: given, items, today, showDoneDefault = false, sprints = [], weeklyMinutes = null }: { projectId: string; sections: Section[]; items: Item[]; today: string; showDoneDefault?: boolean; sprints?: Sprint[]; weeklyMinutes?: number | null }) {
   // Items can use a section the project doesn't declare (added by Claude or an import): show those too, never hide items.
   const sections = useMemo((): Section[] => {
     const known = new Set(given.map((s) => s.id));
@@ -64,7 +65,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   useEffect(() => { if (!fresh) return; const t = setTimeout(() => setFresh(""), 10000); return () => clearTimeout(t); }, [fresh]);
   const sp = useSearchParams();
   const [jumpAll, setJumpAll] = useState(false);
-  const f = useMemo((): Filters => (jumpAll ? { sec: [], own: [], due: [], crit: false, showDone: true } : parse(new URLSearchParams(sp.toString()), showDoneDefault)), [sp, showDoneDefault, jumpAll]);
+  const f = useMemo((): Filters => (jumpAll ? { sec: [], own: [], due: [], crit: false, showDone: true, spr: [] } : parse(new URLSearchParams(sp.toString()), showDoneDefault)), [sp, showDoneDefault, jumpAll]);
   const storeKey = `jarvis.filters.${projectId}`;
   const setFilters = (next: Filters) => {
     setJumpAll(false);
@@ -92,6 +93,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
     if (!f.showDone && !isOpen(i)) return false;
     if (f.own.length && !f.own.some((o) => i.owner === o || i.owner === "both" || (o === "founder" && !i.owner))) return false;
     if (f.due.length && !dated(i)) return false;
+    if (f.spr.length && !f.spr.includes(i.sprint_id || "none")) return false;
     return true;
   };
   // One explicit status per click: the checkbox is done <-> todo, Start is doing (the go signal for Claude's items), Stop is todo.
@@ -102,8 +104,14 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   const byId = useMemo(() => new Map(list.map((i) => [i.id, i])), [list]);
   const closed = list.filter((i) => !isOpen(i)).length;
   const shown = list.filter(keep).length;
-  const active = f.sec.length > 0 || f.crit || f.showDone !== showDoneDefault || f.own.length > 0 || f.due.length > 0;
-  const clear = () => setFilters({ sec: [], own: [], due: [], crit: false, showDone: showDoneDefault });
+  const active = f.sec.length > 0 || f.crit || f.showDone !== showDoneDefault || f.own.length > 0 || f.due.length > 0 || f.spr.length > 0;
+  const clear = () => setFilters({ sec: [], own: [], due: [], crit: false, showDone: showDoneDefault, spr: [] });
+  // Select mode: tick items, then Create sprint / Add to a sprint / Take out. Selection is cleared on leaving the mode.
+  const [selecting, setSelecting] = useState(false);
+  const [sel, setSel] = useState<string[]>([]);
+  const toggleSel = (id: string) => setSel((x) => flip(x, id));
+  const endSelect = () => { setSelecting(false); setSel([]); };
+  const sprintById = useMemo(() => new Map(sprints.map((s) => [s.id, s])), [sprints]);
   const added = fresh ? list.find((i) => i.id === fresh) : undefined;
   const chip = (label: string, on: boolean, click: () => void, title?: string) => <button key={label} className="chip" aria-pressed={on} onClick={click} title={title}>{label}</button>;
 
@@ -135,12 +143,23 @@ export default function Checklist({ projectId, sections: given, items, today, sh
           {chip("Any date", !f.due.length, () => setFilters({ ...f, due: [] }))}
           {WHEN.map(([k, l, t]) => chip(l, f.due.includes(k), () => setFilters({ ...f, due: flip(f.due, k) }), t))}
         </div>
+        {sprints.length > 0 && (
+          <div className="fgroup" role="group" aria-label="Sprint">
+            <span className="lbl">Sprint</span>
+            {chip("Any", !f.spr.length, () => setFilters({ ...f, spr: [] }))}
+            {sprints.filter((s) => s.end >= addDays(today, -14)).map((s) => chip(s.name, f.spr.includes(s.id), () => setFilters({ ...f, spr: flip(f.spr, s.id) }), `${s.start} → ${s.end}`))}
+            {chip("Not in a sprint", f.spr.includes("none"), () => setFilters({ ...f, spr: flip(f.spr, "none") }))}
+          </div>
+        )}
         <span className="fend">
+          <button className="chip" aria-pressed={selecting} onClick={() => (selecting ? endSelect() : setSelecting(true))} title="Tick items to put them in a sprint">{selecting ? "Done selecting" : "Select"}</button>
           {active && <button className="more" onClick={clear}>Clear filters</button>}
           <span className="due" role="status">{active ? `${shown} of ${list.length} items` : `${shown} item${shown === 1 ? "" : "s"}`}</span>
         </span>
       </div>
       {err && <div className="due late" role="alert">{err}</div>}
+      <Sprints sprints={sprints} items={list} today={today} weeklyMinutes={weeklyMinutes} focus={f.spr} onFocus={(id) => setFilters({ ...f, spr: f.spr.length === 1 && f.spr[0] === id ? [] : [id] })} />
+      {selecting && <SelectBar projectId={projectId} sel={sel} sprints={sprints.filter((s) => s.end >= today)} today={today} onDone={endSelect} onClear={() => setSel([])} />}
       {added && !keep(added) && <div className="due" role="status">Added &ldquo;{added.title}&rdquo; ({added.id}): your filters hide it. <button className="more" onClick={clear}>Clear filters</button></div>}
       {active && !shown && list.length > 0 && <div className="panel empty">No items match these filters. <button className="more" onClick={clear}>Clear filters</button></div>}
       {sections.filter((s) => !f.sec.length || f.sec.includes(s.id)).map((s) => {
@@ -157,7 +176,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
                   {!all.length ? "Nothing here yet." : hiddenClosed === all.length ? <>All {all.length} done or cancelled. <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></> : "Nothing here with these filters."}
                 </div>
               )}
-              {its.map((i) => <Row key={i.id} i={i} s={s} byId={byId} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
+              {its.map((i) => <Row key={i.id} i={i} s={s} byId={byId} sprint={i.sprint_id ? sprintById.get(i.sprint_id) : undefined} selecting={selecting} selected={sel.includes(i.id)} onSelect={() => toggleSel(i.id)} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
               {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "8px 14px" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
               <AddRow projectId={projectId} section={s} today={today} onAdded={setFresh} />
             </div>
@@ -169,7 +188,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
 }
 
 const ACTIVE_BUILD = ["working", "merge_requested", "sent_back"];
-function Row({ i, s, byId, today, fresh, onStatus, run, projectId }: { i: Item; s: Section; byId: Map<string, Item>; today: string; fresh: boolean; onStatus: (s: "todo" | "doing" | "done") => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
+function Row({ i, s, byId, sprint, selecting, selected, onSelect, today, fresh, onStatus, run, projectId }: { i: Item; s: Section; byId: Map<string, Item>; sprint?: Sprint; selecting: boolean; selected: boolean; onSelect: () => void; today: string; fresh: boolean; onStatus: (s: "todo" | "doing" | "done") => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
   const [open, setOpen] = useState(false);
   const long = i.detail.length > 170 || i.detail.includes("\n");
   const late = i.due && isOpen(i) && i.due < today, soon = i.due && isOpen(i) && !late && i.due <= addDays(today, 2);
@@ -177,7 +196,8 @@ function Row({ i, s, byId, today, fresh, onStatus, run, projectId }: { i: Item; 
   // Blockers still open (an unknown code counts as open: it may sit behind a filter or have been renamed).
   const waiting = isOpen(i) ? i.blocked_by.filter((c) => { const b = byId.get(c); return !b || isOpen(b); }) : [];
   return (
-    <div id={`item-${i.id}`} className={`row${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}${fresh ? " fresh" : ""}`}>
+    <div id={`item-${i.id}`} className={`row${selecting ? " selecting" : ""}${selected ? " selected" : ""}${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}${fresh ? " fresh" : ""}`}>
+      {selecting && <input type="checkbox" className="selbox" checked={selected} onChange={onSelect} aria-label={`Select ${i.title}`} />}
       {i.status === "cancelled"
         ? <span className="st" data-s="cancelled" role="img" aria-label={`${i.title}: cancelled`}>–</span>
         : <button className="st" data-s={i.status} role="checkbox" aria-checked={i.status === "done"} onClick={() => onStatus(i.status === "done" ? "todo" : "done")}
@@ -192,6 +212,7 @@ function Row({ i, s, byId, today, fresh, onStatus, run, projectId }: { i: Item; 
           {i.priority === 1 && !i.critical && <span className="pill crit">high</span>}
           {i.priority === 3 && <span className="pill">low</span>}
           {i.estimate_minutes ? <span className="pill" title="Estimated time">~{i.estimate_minutes >= 60 ? `${Math.round(i.estimate_minutes / 30) / 2} h` : `${i.estimate_minutes} min`}</span> : null}
+          {sprint && <span className="pill sprint" title={`${sprint.start} → ${sprint.end}`}>{sprint.name}</span>}
           {waiting.length > 0 && <a className="pill crit blocked" href={`#item-${waiting[0]}`} title={`Waits on ${waiting.map((c) => `${c}${byId.get(c) ? `: ${byId.get(c)!.title}` : ""}`).join("; ")}`}>blocked by {waiting.slice(0, 2).join(", ")}{waiting.length > 2 ? ` +${waiting.length - 2}` : ""}</a>}
           {i.status === "cancelled" && <span className="pill" title={i.cancel_reason || "Cancelled"}>cancelled{i.duplicate_of ? ` · duplicate of ${i.duplicate_of}` : ""}</span>}
           {i.refine === "pending" && <span className="pill go" title={i.refine_request ? "Claude is reading your comment and will adjust the item" : "Claude is reading this item and will add steps, a priority, an estimate and a due date that doesn't clash"}>{i.refine_request ? "reading your comment…" : "refining…"}</span>}
@@ -294,6 +315,94 @@ function Comment({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unkno
           <Ack s={c} />
         </form>
       )}
+    </div>
+  );
+}
+
+const fmtD = (d: string) => new Date(d + "T12:00:00Z").toLocaleDateString("en-CA", { timeZone: "UTC", month: "short", day: "numeric" });
+const hrs = (m: number) => `${Math.round(m / 6) / 10} h`;
+const spanDays = (a: string, b: string) => Math.round((+new Date(b + "T12:00:00Z") - +new Date(a + "T12:00:00Z")) / 864e5) + 1;
+
+/** Current and upcoming sprints (and those ended in the last 2 weeks): dates, done %, estimate against the project's weekly hours. */
+function Sprints({ sprints, items, today, weeklyMinutes, focus, onFocus }: { sprints: Sprint[]; items: Item[]; today: string; weeklyMinutes: number | null; focus: string[]; onFocus: (id: string) => void }) {
+  const shown = sprints.filter((s) => s.end >= addDays(today, -14));
+  if (!shown.length) return null;
+  return (
+    <div className="sprints" role="group" aria-label="Sprints" data-track-section="Sprints">
+      {shown.map((s) => <SprintCard key={s.id} s={s} items={items.filter((i) => i.sprint_id === s.id && i.status !== "cancelled")} today={today} weeklyMinutes={weeklyMinutes} on={focus.includes(s.id)} onFocus={() => onFocus(s.id)} />)}
+    </div>
+  );
+}
+function SprintCard({ s, items, today, weeklyMinutes, on, onFocus }: { s: Sprint; items: Item[]; today: string; weeklyMinutes: number | null; on: boolean; onFocus: () => void }) {
+  const [editing, setEditing] = useState(false), [armed, setArmed] = useState(false);
+  const [name, setName] = useState(s.name), [start, setStart] = useState(s.start), [end, setEnd] = useState(s.end);
+  const sub = useSubmit(), [pending, go] = useTransition();
+  useEffect(() => { if (!armed) return; const t = setTimeout(() => setArmed(false), 5000); return () => clearTimeout(t); }, [armed]);
+  const d = items.filter((i) => i.status === "done").length, n = items.length;
+  const est = items.filter(isOpen).reduce((a, i) => a + (i.estimate_minutes || 0), 0);
+  const days = spanDays(s.start, s.end), cap = weeklyMinutes ? Math.round((weeklyMinutes * days) / 7) : null;
+  const phase = today < s.start ? "upcoming" : today > s.end ? "ended" : "now";
+  const unestimated = items.filter((i) => isOpen(i) && !i.estimate_minutes).length;
+  return (
+    <div className={`sprint ${phase}${on ? " on" : ""}`}>
+      {editing ? (
+        <form className="addrow" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); sub.submit(() => editSprint(s.id, { name, start, end }), { ok: "Saved", onOk: () => setEditing(false) }); }}>
+          <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} aria-label="Sprint name" />
+          <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} aria-label="Sprint start" />
+          <input className="input" type="date" value={end} onChange={(e) => setEnd(e.target.value)} aria-label="Sprint end" />
+          <button className="btn sm" disabled={sub.pending}>Save</button>
+          <button type="button" className="more" onClick={() => setEditing(false)}>Cancel</button>
+          <Ack s={sub} />
+        </form>
+      ) : (
+        <>
+          <button className="sprint-t" aria-pressed={on} onClick={onFocus} title={on ? "Show every item" : "Show only this sprint's items"}>
+            <b>{s.name}</b><span>{fmtD(s.start)} – {fmtD(s.end)} · {phase === "now" ? `day ${spanDays(s.start, today)} of ${days}` : phase}</span>
+          </button>
+          <span className="bar" aria-hidden="true"><i className="d" style={{ width: `${n ? (d / n) * 100 : 0}%` }} /></span>
+          <span className="sprint-n">
+            {d}/{n} done
+            {est > 0 && <> · <span className={cap != null && est > cap ? "late" : undefined} title={cap != null ? `Open work estimated against ${hrs(weeklyMinutes!)}/week of this project's hours` : "Set the project's weekly hours to compare with capacity"}>~{hrs(est)}{cap != null ? ` of ${hrs(cap)}` : ""} left</span></>}
+            {unestimated > 0 && <span title="Open items without an estimate"> · {unestimated} unestimated</span>}
+          </span>
+          <span className="sprint-a">
+            <button className="more" onClick={() => setEditing(true)}>Edit</button>
+            {armed ? <button className="more late" disabled={pending} onClick={() => go(() => removeSprint(s.id))}>Confirm delete</button>
+              : <button className="more" onClick={() => setArmed(true)} title="Deletes the sprint; its items stay on the checklist">Delete</button>}
+          </span>
+        </>
+      )}
+    </div>
+  );
+}
+
+/** Shown in select mode: what to do with the ticked items. A new sprint defaults to today through 6 days later. */
+function SelectBar({ projectId, sel, sprints, today, onDone, onClear }: { projectId: string; sel: string[]; sprints: Sprint[]; today: string; onDone: () => void; onClear: () => void }) {
+  const [name, setName] = useState(""), [start, setStart] = useState(today), [end, setEnd] = useState(addDays(today, 6)), [target, setTarget] = useState("");
+  const s = useSubmit();
+  const none = !sel.length;
+  return (
+    <div className="selbar" role="region" aria-label="Selected items">
+      <span className="due" role="status"><b>{sel.length}</b> selected{none ? ": tick items below" : ""}</span>
+      <form className="addrow" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); if (none || s.pending) return; s.submit(() => createSprint(projectId, name, start, end, sel), { ok: "Sprint created", onOk: onDone }); }}>
+        <input className="input" value={name} onChange={(e) => setName(e.target.value)} maxLength={80} placeholder="New sprint name" aria-label="New sprint name" />
+        <input className="input" type="date" value={start} onChange={(e) => setStart(e.target.value)} aria-label="Sprint start" />
+        <input className="input" type="date" value={end} onChange={(e) => setEnd(e.target.value)} aria-label="Sprint end" />
+        <button className="btn sm" disabled={none || s.pending}>Create sprint</button>
+      </form>
+      {sprints.length > 0 && (
+        <span className="addrow">
+          <select className="input" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Existing sprint">
+            <option value="">Add to sprint…</option>
+            {sprints.map((x) => <option key={x.id} value={x.id}>{x.name} ({x.start} → {x.end})</option>)}
+          </select>
+          <button className="btn sm ghost" disabled={none || !target || s.pending} onClick={() => s.submit(() => moveToSprint(projectId, target, sel), { ok: "Added", onOk: onDone })}>Add</button>
+        </span>
+      )}
+      <button className="more" disabled={none || s.pending} onClick={() => s.submit(() => moveToSprint(projectId, null, sel), { ok: "Taken out", onOk: onDone })}>Take out of sprint</button>
+      {!none && <button className="more" onClick={onClear}>Clear selection</button>}
+      <button className="more" onClick={onDone}>Done</button>
+      <Ack s={s} />
     </div>
   );
 }

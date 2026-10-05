@@ -16,7 +16,7 @@ export function projectUpsert(p: { id: string } & Record<string, unknown>): { te
 }
 
 /** The item columns a PATCH may change: anything else in the body is ignored. */
-export const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note", "refine_request", "cancel_reason", "duplicate_of", "build_status", "build_note", "pr_url", "blocked_by"] as const;
+export const ITEM_FIELDS = ["section", "title", "detail", "status", "due", "owner", "critical", "sort", "note", "estimate_minutes", "priority", "refine", "refine_note", "refine_request", "cancel_reason", "duplicate_of", "build_status", "build_note", "pr_url", "blocked_by", "sprint_id"] as const;
 export type ItemField = (typeof ITEM_FIELDS)[number];
 
 /** blocked_by from the site (array) or the CLI ("a,b" or "" to clear): item codes, deduplicated, at most 20. */

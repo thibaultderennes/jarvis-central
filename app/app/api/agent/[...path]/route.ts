@@ -53,6 +53,26 @@ async function handle(req: NextRequest, ctx: Ctx) {
       if (!p || !id) return bad("project and id are required");
       await D.deleteItem(p, id); return J({ ok: true });
     }
+    case "GET sprints": return J(await D.getSprints({ project: sp.get("project") || undefined, from: sp.get("from") || undefined, to: sp.get("to") || undefined }));
+    case "POST sprints": {
+      if (!b.project_id || !b.name || !isDate(b.start) || !isDate(b.end) || b.end < b.start) return bad("project_id, name, start and end (YYYY-MM-DD, end ≥ start) are required");
+      if (!(await D.getProject(b.project_id))) return bad("No such project", 404);
+      const s = await D.addSprint({ project_id: b.project_id, name: String(b.name).slice(0, 80), start: b.start, end: b.end });
+      const n = Array.isArray(b.items) ? await D.setSprintItems(b.project_id, s.id, b.items.map(String)) : 0;
+      return J({ sprint: s, items: n }, 201);
+    }
+    case "PATCH sprints": {
+      if (!b.id) return bad("id required");
+      if ((b.start && !isDate(b.start)) || (b.end && !isDate(b.end))) return bad("start and end must be YYYY-MM-DD");
+      const cur = await D.getSprint(b.id);
+      if (!cur) return bad("No such sprint", 404);
+      if ((b.end ?? cur.end) < (b.start ?? cur.start)) return bad("end must be on or after start");
+      const s = await D.updateSprint(b.id, { name: b.name, start: b.start, end: b.end });
+      if (Array.isArray(b.add)) await D.setSprintItems(cur.project_id, cur.id, b.add.map(String));
+      if (Array.isArray(b.remove)) await D.setSprintItems(cur.project_id, null, (await D.getItems({ project: cur.project_id })).filter((i) => i.sprint_id === cur.id && b.remove.includes(i.id)).map((i) => i.id));
+      return J({ sprint: s });
+    }
+    case "DELETE sprints": { const id = sp.get("id"); if (!id) return bad("id required"); await D.deleteSprint(id); return J({ ok: true }); }
     case "GET events": return J(await D.getEvents(sp.get("since") || new Date(Date.now() - 7 * 864e5).toISOString()));
 
     case "GET todos": {
