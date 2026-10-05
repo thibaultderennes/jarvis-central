@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { approveBuild, cancelItem, commentItem, newItem, resetBuild, sendBackBuild, sendNote, setDue, setItemStatus } from "@/lib/actions";
+import { approveBuild, cancelItem, commentItem, newItem, resetBuild, sendBackBuild, sendNote, setBlockedBy, setDue, setItemStatus } from "@/lib/actions";
 import { isOpen, type Item, type Section } from "@/lib/data";
 import { Ack, enterSends, imeGuard, useSubmit } from "./Submit";
 import { Icon } from "./icons";
@@ -99,6 +99,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
     setList((l) => l.map((x) => (x.id === i.id ? { ...x, status } : x)));
     run(() => setItemStatus(projectId, i.id, status));
   };
+  const byId = useMemo(() => new Map(list.map((i) => [i.id, i])), [list]);
   const closed = list.filter((i) => !isOpen(i)).length;
   const shown = list.filter(keep).length;
   const active = f.sec.length > 0 || f.crit || f.showDone !== showDoneDefault || f.own.length > 0 || f.due.length > 0;
@@ -156,7 +157,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
                   {!all.length ? "Nothing here yet." : hiddenClosed === all.length ? <>All {all.length} done or cancelled. <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></> : "Nothing here with these filters."}
                 </div>
               )}
-              {its.map((i) => <Row key={i.id} i={i} s={s} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
+              {its.map((i) => <Row key={i.id} i={i} s={s} byId={byId} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
               {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "8px 14px" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
               <AddRow projectId={projectId} section={s} today={today} onAdded={setFresh} />
             </div>
@@ -168,11 +169,13 @@ export default function Checklist({ projectId, sections: given, items, today, sh
 }
 
 const ACTIVE_BUILD = ["working", "merge_requested", "sent_back"];
-function Row({ i, s, today, fresh, onStatus, run, projectId }: { i: Item; s: Section; today: string; fresh: boolean; onStatus: (s: "todo" | "doing" | "done") => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
+function Row({ i, s, byId, today, fresh, onStatus, run, projectId }: { i: Item; s: Section; byId: Map<string, Item>; today: string; fresh: boolean; onStatus: (s: "todo" | "doing" | "done") => void; run: (fn: () => Promise<unknown>) => void; projectId: string }) {
   const [open, setOpen] = useState(false);
   const long = i.detail.length > 170 || i.detail.includes("\n");
   const late = i.due && isOpen(i) && i.due < today, soon = i.due && isOpen(i) && !late && i.due <= addDays(today, 2);
   const claudeOwned = i.owner === "claude" || i.owner === "both";
+  // Blockers still open (an unknown code counts as open: it may sit behind a filter or have been renamed).
+  const waiting = isOpen(i) ? i.blocked_by.filter((c) => { const b = byId.get(c); return !b || isOpen(b); }) : [];
   return (
     <div id={`item-${i.id}`} className={`row${i.status === "done" ? " done" : ""}${i.status === "cancelled" ? " cancelled" : ""}${i.critical && isOpen(i) ? " crit-row" : ""}${fresh ? " fresh" : ""}`}>
       {i.status === "cancelled"
@@ -189,6 +192,7 @@ function Row({ i, s, today, fresh, onStatus, run, projectId }: { i: Item; s: Sec
           {i.priority === 1 && !i.critical && <span className="pill crit">high</span>}
           {i.priority === 3 && <span className="pill">low</span>}
           {i.estimate_minutes ? <span className="pill" title="Estimated time">~{i.estimate_minutes >= 60 ? `${Math.round(i.estimate_minutes / 30) / 2} h` : `${i.estimate_minutes} min`}</span> : null}
+          {waiting.length > 0 && <a className="pill crit blocked" href={`#item-${waiting[0]}`} title={`Waits on ${waiting.map((c) => `${c}${byId.get(c) ? `: ${byId.get(c)!.title}` : ""}`).join("; ")}`}>blocked by {waiting.slice(0, 2).join(", ")}{waiting.length > 2 ? ` +${waiting.length - 2}` : ""}</a>}
           {i.status === "cancelled" && <span className="pill" title={i.cancel_reason || "Cancelled"}>cancelled{i.duplicate_of ? ` · duplicate of ${i.duplicate_of}` : ""}</span>}
           {i.refine === "pending" && <span className="pill go" title={i.refine_request ? "Claude is reading your comment and will adjust the item" : "Claude is reading this item and will add steps, a priority, an estimate and a due date that doesn't clash"}>{i.refine_request ? "reading your comment…" : "refining…"}</span>}
           {i.refine === "done" && <span className="pill" title={i.refine_note || "Refined by Claude"}>refined by Claude</span>}
@@ -206,6 +210,7 @@ function Row({ i, s, today, fresh, onStatus, run, projectId }: { i: Item; s: Sec
         {i.build_status === "failed" && !i.pr_url && <Build i={i} run={run} projectId={projectId} />}
         <button className="more" aria-expanded={open} onClick={() => setOpen(!open)}>{open ? "Show less" : long ? "Show more" : "Comment"}</button>
         {open && <Comment i={i} run={run} projectId={projectId} />}
+        {open && isOpen(i) && <BlockedBy i={i} projectId={projectId} />}
         {(s.notes || i.note) && <Note i={i} projectId={projectId} />}
       </div>
       <div className="rowside">
@@ -290,6 +295,23 @@ function Comment({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unkno
         </form>
       )}
     </div>
+  );
+}
+
+/** "Blocked by": item codes this one waits on, comma-separated. Saved on Enter or Save; the server refuses loops and unknown codes. */
+function BlockedBy({ i, projectId }: { i: Item; projectId: string }) {
+  const [v, setV] = useState(i.blocked_by.join(", "));
+  useEffect(() => setV(i.blocked_by.join(", ")), [i.blocked_by]);
+  const s = useSubmit();
+  const codes = v.split(/[\s,]+/).map((x) => x.trim()).filter(Boolean);
+  const dirty = codes.join(",") !== i.blocked_by.join(",");
+  return (
+    <form className="addrow blockedby" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); if (!dirty || s.pending) return; s.submit(() => setBlockedBy(projectId, i.id, codes), { ok: codes.length ? "Saved" : "Cleared" }); }}>
+      <label className="lbl" htmlFor={`blk-${i.id}`}>Blocked by</label>
+      <input id={`blk-${i.id}`} className="input" value={v} onChange={(e) => setV(e.target.value)} maxLength={400} placeholder="Item codes it waits on, e.g. decide-ai, r-dom (empty = not blocked)" />
+      <button className="btn sm ghost" disabled={!dirty || s.pending}>{s.pending ? "Saving…" : "Save"}</button>
+      <Ack s={s} busy="Saving…" />
+    </form>
   );
 }
 

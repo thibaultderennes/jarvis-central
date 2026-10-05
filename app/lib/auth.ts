@@ -1,6 +1,7 @@
-import { createHmac, randomBytes, scryptSync, timingSafeEqual } from "node:crypto";
+import { createHmac, randomBytes, scryptSync } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { bearerOk, safeEq } from "./bearer";
 
 export const COOKIE = "jarvis_session";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
@@ -11,10 +12,6 @@ function secret(): string {
   return s;
 }
 const b64u = (b: Buffer) => b.toString("base64url");
-function safeEq(a: string, b: string) {
-  const x = Buffer.from(a), y = Buffer.from(b);
-  return x.length === y.length && timingSafeEqual(x, y);
-}
 
 /* ---- password: scrypt$N$r$p$salt$hash (base64url) ---- */
 export function hashPassword(pw: string): string {
@@ -81,8 +78,5 @@ export async function requireSession() {
 
 /** Agent API: Authorization: Bearer <JARVIS_AGENT_TOKEN>. */
 export function agentOk(req: Request): boolean {
-  const t = process.env.JARVIS_AGENT_TOKEN;
-  const h = req.headers.get("authorization") || "";
-  if (!t || t.length < 32 || !h.startsWith("Bearer ")) return false;
-  return safeEq(h.slice(7), t);
+  return bearerOk(req.headers.get("authorization"), process.env.JARVIS_AGENT_TOKEN);
 }

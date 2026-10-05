@@ -41,7 +41,9 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
   - `deadlines`: `[{date, label, prd?}]` (`prd`: a milestone moved on the Timeline; the date PRD.md still has until the Mac worker writes the new date into that row, `agent/milestones.mjs`), `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
-- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at)` pk `(project_id, id)`
+- `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at, blocked_by text[] /* codes of items in the same project it waits on */)` pk `(project_id, id)`
+  - **blocked_by**: an open item with an open blocker shows "blocked by …" on the checklist; nothing is enforced. The site refuses
+    unknown codes, the item itself and loops; the API and CLI take an array or `"a,b"` (`""` clears) and only normalise it.
   - **open** = `todo` or `doing`; `done` and `cancelled` are closed and leave every count, deadline, load and top-3 card.
   - Creating an item (site, API, CLI, plan) refuses an exact duplicate of a title in the same project (normalised: case,
     punctuation and filler words ignored; cancelled items don't count) → API 409 `{error, duplicate}`, `allow_duplicate: true`
@@ -97,7 +99,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/items` | `?project=ID` (optional; all when absent) `&open=1` (todo/doing only) `&refine=pending` `&build=queue|working|pr_open|merge_requested|sent_back|…` | `[{item}]` |
 | POST | `/api/agent/items` | `{project_id, section, title, id?, detail?, due?, owner?, critical?, allow_duplicate?}` | `{item}` (id = slug of title if absent); 409 `{error, duplicate}` on an exact duplicate title |
 | GET | `/api/agent/duplicates` | `?project=ID` (optional) | `[[{item}, …]]` groups of exact duplicates, oldest first |
-| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`) | `{item}` (logs item_events with actor 'agent') |
+| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`, `blocked_by`; fields outside `ITEM_FIELDS` in `app/lib/sqlbuild.ts` are ignored) | `{item}` (logs item_events with actor 'agent') |
 | DELETE | `/api/agent/items` | `?project=ID&id=ITEM` | `{ok}` |
 | GET | `/api/agent/events` | `?since=ISO` | `[{event}]` |
 | GET | `/api/agent/todos` | `?from=DATE&to=DATE` | `[{todo}]` |
@@ -165,8 +167,8 @@ title contain every word (case- and accent-insensitive, archived projects left o
   Approve & merge, replies you haven't opened; oldest first), the top-3 project cards with pace against the next
   milestone, this week's reviews; the charts live on `/stats`. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
-  Inbox, Timeline, Stats and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · `/timeline` (last week → 8 weeks out, one lane per project: PRD milestones,
-  open items' due dates per day, this and next week's Sunday-plan blocks, calendar events; built in `app/lib/timeline.ts`
+  Inbox, Timeline, Stats and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · `/timeline` (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,
+  open items' due dates per day, the Sunday-plan blocks of every planned week in range, calendar events; built in `app/lib/timeline.ts`
   from existing data, no table of its own) · `/p/<id>` (left menu: Dashboard, Checklists, Timeline (one lane per section),
   Project, Reviews, Finances, Statistics; `?v=` picks the view, old `?tab=` links still work) · `/reviews` · `/finance` (recurring costs across projects) ·
   `/inbox` (New / Pending / Treated) · `/admin` (projects: "Refresh project folders" with Approve / Decline for new folders, Remove per project, removed and declined

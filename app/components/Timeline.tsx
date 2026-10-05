@@ -1,7 +1,9 @@
 "use client";
 import Link from "next/link";
+import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import type { TimelineData, TItem, TLane } from "@/lib/timeline";
+import { SHIFT_MAX, SHIFT_MIN, SHIFT_STEP } from "@/lib/timelineRange";
 import { moveItemsDue, moveMilestone } from "@/lib/actions";
 import "./timeline.css";
 
@@ -19,6 +21,7 @@ type Pin = { key: string; project_id: string; date: string; top: number; color: 
 type Move = { pin: Pin; to: string; clamped: boolean; pick: string[]; kb: boolean; phase: "drag" | "confirm" | "saving" | "saved" };
 
 const HEAD = 38, LANE = 50, CAL = 30, POP = 280;
+const MIN_DAY = 22; // px per day: below this the chart scrolls sideways instead of squeezing (and wide panels fill)
 const sign = (k: number) => `${k > 0 ? "+" : "−"}${Math.abs(k)} d`;
 
 /**
@@ -27,22 +30,41 @@ const sign = (k: number) => `${k > 0 ? "+" : "−"}${Math.abs(k)} d`;
  * along the top of the lane, the signal line is today. Lane labels stay put; the chart scrolls sideways on phones.
  * Pins move: drag one (or focus it and use ←/→, Shift = a week, then Enter) and confirm in the popover; nothing saves before.
  */
+/** Earlier / Today / Later: moves the window by SHIFT_STEP weeks through ?w=, keeping the page's other params. */
+function RangeNav({ shift, from, to }: { shift: number; from: string; to: string }) {
+  const path = usePathname(), sp = useSearchParams();
+  const href = (w: number) => { const q = new URLSearchParams(sp.toString()); if (w) q.set("w", String(w)); else q.delete("w"); const s = q.toString(); return s ? `${path}?${s}` : path; };
+  const earlier = Math.max(SHIFT_MIN, shift - SHIFT_STEP), later = Math.min(SHIFT_MAX, shift + SHIFT_STEP);
+  return (
+    <nav className="tl-nav" aria-label="Move the timeline">
+      {shift > SHIFT_MIN ? <Link className="btn ghost sm" href={href(earlier)} scroll={false}>← {SHIFT_STEP} weeks</Link> : <span className="btn ghost sm" aria-disabled="true">← {SHIFT_STEP} weeks</span>}
+      {shift !== 0 && <Link className="btn ghost sm" href={href(0)} scroll={false}>Today</Link>}
+      {shift < SHIFT_MAX ? <Link className="btn ghost sm" href={href(later)} scroll={false}>{SHIFT_STEP} weeks →</Link> : <span className="btn ghost sm" aria-disabled="true">{SHIFT_STEP} weeks →</span>}
+      <span className="tl-range">{fmt(from)} – {fmt(to, { month: "short", day: "numeric", year: "numeric" })}{shift ? ` · ${Math.abs(shift)} week${Math.abs(shift) === 1 ? "" : "s"} ${shift < 0 ? "back" : "ahead"}` : ""}</span>
+    </nav>
+  );
+}
+
 export default function Timeline({ data }: { data: TimelineData }) {
-  const { from, to, today: t, lanes, calendar, guides } = data;
+  const { from, to, today: t, lanes, calendar, guides, shift } = data;
   const n = diff(from, to) + 1;
   const days = Array.from({ length: n }, (_, i) => addDays(from, i));
   const box = useRef<HTMLDivElement>(null);
-  const [dw, setDw] = useState(16);
+  const [dw, setDw] = useState(MIN_DAY);
   const [tip, setTip] = useState<Tip>(null);
   useEffect(() => {
     const el = box.current; if (!el) return;
-    const fit = () => setDw(Math.max(13, Math.floor(el.clientWidth / n)));
+    const fit = () => setDw(Math.max(MIN_DAY, Math.floor(el.clientWidth / n)));
     fit();
     const ro = new ResizeObserver(fit); ro.observe(el);
     return () => ro.disconnect();
   }, [n]);
-  // Start scrolled so the previous week stays visible but today is near the left on narrow screens.
-  useEffect(() => { const el = box.current; if (el && el.scrollWidth > el.clientWidth) el.scrollLeft = Math.max(0, (diff(from, t) - 5) * dw); }, [from, t, dw]);
+  // Start scrolled so the previous week stays visible but today is near the left; a moved window starts at its left edge
+  // when going later, at its right edge when going back (where it joins the window you came from).
+  useEffect(() => {
+    const el = box.current; if (!el || el.scrollWidth <= el.clientWidth) return;
+    el.scrollLeft = t >= from && t <= to ? Math.max(0, (diff(from, t) - 5) * dw) : t > to ? el.scrollWidth : 0;
+  }, [from, to, t, dw]);
 
   const W = n * dw;
   const x = (d: string) => diff(from, d) * dw;
@@ -174,10 +196,11 @@ export default function Timeline({ data }: { data: TimelineData }) {
     .concat(its.length > 8 ? [{ text: `+${its.length - 8} more`, tone: undefined }] : []);
   const tone = (its: TItem[]) => (its.some((i) => i.late) ? "late" : its.some((i) => i.critical) ? "crit" : "");
 
-  if (!lanes.length && !calendar?.length) return <div className="empty">Nothing dated between {fmt(from)} and {fmt(to)}: no milestones, no due dates, no planned blocks.</div>;
+  if (!lanes.length && !calendar?.length) return <div className="tl"><RangeNav shift={shift} from={from} to={to} /><div className="empty">Nothing dated between {fmt(from)} and {fmt(to)}: no milestones, no due dates, no planned blocks.</div></div>;
 
   return (
     <div className="tl">
+      <RangeNav shift={shift} from={from} to={to} />
       <div className="tl-grid">
         <div className="tl-labels" style={{ height: H }}>
           <div style={{ height: HEAD }} />

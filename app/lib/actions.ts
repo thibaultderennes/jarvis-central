@@ -5,6 +5,7 @@ import { requireSession } from "./auth";
 import { sql } from "./db";
 import * as D from "./data";
 import { isDate, today } from "./time";
+import { normBlockedBy, wouldCycle } from "./sqlbuild";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -37,6 +38,21 @@ export async function commentItem(project_id: string, id: string, text: string) 
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${project_id}, ${id}, 'comment', null, ${t}, 'founder')`;
   await D.logActivity("item_comment", `/p/${project_id}`, { id });
   done();
+}
+/** "Blocked by": item codes in the same project. Unknown codes, the item itself and loops are refused with a reason. */
+export async function setBlockedBy(project_id: string, id: string, codes: string[]): Promise<{ error?: string }> {
+  await requireSession();
+  const want = normBlockedBy(codes);
+  if (want.includes(id)) return { error: "An item can't wait on itself." };
+  const items = await D.getItems({ project: project_id });
+  const known = new Set(items.map((i) => i.id));
+  const missing = want.filter((c) => !known.has(c));
+  if (missing.length) return { error: `No item ${missing.join(", ")} in this project.` };
+  if (wouldCycle(Object.fromEntries(items.map((i) => [i.id, i.blocked_by])), id, want)) return { error: "That makes a loop: one of those items already waits on this one." };
+  if (!(await D.updateItem(project_id, id, { blocked_by: want }))) return { error: "That item is gone." };
+  await D.logActivity("item_blocked_by", `/p/${project_id}`, { id, n: want.length });
+  done();
+  return {};
 }
 export async function setDue(project_id: string, id: string, due: string | null) {
   await requireSession();

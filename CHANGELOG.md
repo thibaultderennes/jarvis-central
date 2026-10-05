@@ -3,12 +3,24 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+
+## 0.7.0 — 2026-10-05
 - **Admin: approve new projects, remove old ones.** "Refresh project folders" no longer registers new folders on its
   own: each one is listed with **Approve** / **Decline**, and a declined folder isn't proposed again. Each project has
   **Remove** (two clicks), which archives it, keeps its checklist history and keeps it out of every future scan.
   **Restore** undoes either. The ignore list is kv `projects.ignored`, and `projects.mjs sync` honours it too.
   Upgrade notes: deploy the site together with the agent update. An older site doesn't show the proposals, so a refresh
   would find new folders and nothing would let you approve them.
+- **Timeline moves**: ← 4 weeks / Today / 4 weeks → shift the window (`?w=`, from half a year back to a year ahead) on the
+  Timeline page and a project's Timeline view. Days are at least 22 px wide, so the chart scrolls sideways on desktop too
+  (before, it squeezed to fit and never scrolled). Sunday-plan blocks load for every week in range.
+- **Item dependencies**: "Blocked by" in an item's comment bar takes item codes from the same project. While a blocker
+  is open, the item shows a "blocked by …" badge that links to it. Loops and unknown codes are refused, and nothing is
+  enforced. New column `items.blocked_by` (additive); the API and CLI accept it (`jarvis set <p> <id> blocked_by=a,b`).
+- **Sidebar**: the project badge reads "within 7d" (it counts everything due in the next 7 days).
+- **Tests**: `cd app && npm test` (Node's built-in runner, no new dependency) covers the query builders behind item and
+  project writes (placeholder numbering, the #8 regression, the PATCH field whitelist, blocked_by) and the agent
+  API's bearer check. They moved to `app/lib/sqlbuild.ts` and `app/lib/bearer.ts`. CLAUDE.md rule 7 now runs it.
 
 ## 0.6.0 — 2026-10-03
 - **Sentient Dash**: the product is renamed in the UI (sidebar, login, browser title, Home, Admin), with the Lane S mark

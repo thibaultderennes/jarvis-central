@@ -508,3 +508,7 @@ h1.page .glyph .ac { fill: var(--signal); }
 .td-tag, .st-doing { display: inline-flex; align-items: center; gap: 5px; }
 .td-tag .ico .ac { fill: var(--signal); }
 .empty:has(.empty-art) { text-align: center; padding: 22px 14px; }
+/* 0.7.0: item dependencies */
+a.pill.blocked { text-decoration: none; }
+.addrow.blockedby { margin-top: 6px; align-items: center; }
+.addrow.blockedby .lbl { flex: 0 0 auto; }

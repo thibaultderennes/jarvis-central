@@ -19,7 +19,7 @@ import { REVIEW_WHEN } from "@/lib/instance";
 import "./project.css";
 import "../../finance/finance.css";
 
-type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string };
+type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; w?: string };
 const VIEWS = ["checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
 type View = (typeof VIEWS)[number];
 // Older links keep working: ?tab=… (before the 0.5.0 menu) and ?v=dashboard (its summary now sits beside the checklist).
@@ -83,7 +83,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           </div>
         )}
 
-        {view === "timeline" && <ProjectTimeline id={id} />}
+        {view === "timeline" && <ProjectTimeline id={id} shift={Number(sp.w) || 0} />}
 
         {view === "project" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
@@ -176,8 +176,8 @@ function Glance({ p, items, weekly, costs, today: t, href, rank }: { p: D.Projec
   );
 }
 
-async function ProjectTimeline({ id }: { id: string }) {
-  const data = await timelineData({ project: id });
+async function ProjectTimeline({ id, shift }: { id: string; shift: number }) {
+  const data = await timelineData({ project: id, shift });
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
       <section className="panel">

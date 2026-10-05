@@ -64,10 +64,10 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
   );
   const Proj = ({ p }: { p: NavProject }) => (
     <Link href={`/p/${p.id}`} className="sb-a sb-p" aria-current={on(`/p/${p.id}`)} data-c={p.color}
-      title={iconic ? `${p.name} · ${p.late ? `${p.late} late` : p.soon ? `${p.soon} due in 7 days` : `${p.open} open`}` : p.name}>
+      title={iconic ? `${p.name} · ${p.late ? `${p.late} late` : p.soon ? `${p.soon} due within 7 days` : `${p.open} open`}` : p.name}>
       <span className="sb-dot" aria-hidden="true"><i className="dot" />{p.late > 0 ? <b /> : p.soon > 0 && <b className="soon" />}</span><span className="sb-l">{p.name}</span>
       {p.late > 0 ? <span className="sb-n late" aria-label={`${p.late} late`}>{p.late} late</span>
-        : p.soon > 0 ? <span className="sb-n soon" aria-label={`${p.soon} due in the next 7 days`} title={`${p.soon} due in the next 7 days`}>{p.soon} in 7d</span>
+        : p.soon > 0 ? <span className="sb-n soon" aria-label={`${p.soon} due in the next 7 days`} title={`${p.soon} due in the next 7 days`}>{p.soon} within 7d</span>
         : p.open > 0 ? <span className="sb-n" aria-label={`${p.open} open`}>{p.open}</span> : null}
     </Link>
   );

@@ -218,3 +218,6 @@ create table if not exists metrics_snapshots (
   updated_at timestamptz not null default now(),
   primary key (project_id, date)
 );
+-- 0.7.0. Item dependencies: the codes of items in the same project this one waits on. An item with an open blocker shows
+-- a "blocked by" badge; nothing is enforced.
+alter table items add column if not exists blocked_by text[] not null default '{}';

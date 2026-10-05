@@ -8,7 +8,7 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   projects                                        list projects
   items <project> [--open] [--section S]          checklist items
   item <project> <id>                             one item in full
-  set <project> <id> key=value ...                status(todo|doing|done|cancelled)|due|title|detail|note|section|owner|critical=true/false
+  set <project> <id> key=value ...                status(todo|doing|done|cancelled)|due|title|detail|note|section|owner|critical=true/false|blocked_by=a,b
   add <project> <section> "title" [--due D] [--owner founder|claude|both] [--detail T] [--critical] [--force]
   cancel <project> <id> [--reason T] [--dup ID]   cancel an item (kept under "Show completed"); --dup = the item it duplicates
   dupes [--project P] [--cancel]                  exact duplicate titles per project; --cancel keeps the oldest, cancels the rest
@@ -100,9 +100,10 @@ async function main() {
         const m = kv.match(/^(\w+)=([\s\S]*)$/);
         if (!m) { out(`Bad pair "${kv}", expected key=value`); process.exit(2); }
         let [, k, v] = m;
-        if (!["status", "due", "title", "detail", "note", "section", "owner", "critical", "cancel_reason", "duplicate_of", "priority", "estimate_minutes"].includes(k)) { out(`Unknown field ${k}`); process.exit(2); }
+        if (!["status", "due", "title", "detail", "note", "section", "owner", "critical", "cancel_reason", "duplicate_of", "priority", "estimate_minutes", "blocked_by"].includes(k)) { out(`Unknown field ${k}`); process.exit(2); }
         if (k === "priority" || k === "estimate_minutes") v = Number(v);
         if (k === "critical") v = v === "true";
+        if (k === "blocked_by") v = v.split(",").map((x) => x.trim()).filter(Boolean); // "" clears
         if (k === "due") v = v === "" || v === "none" ? null : date(v);
         body[k] = v;
       }

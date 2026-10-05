@@ -2,6 +2,7 @@ import * as D from "./data";
 import { getPlan, type Block } from "./plan";
 import { getEvents, calendarConfigured } from "./calendar";
 import { addDays, mondayOf, today } from "./time";
+import { parseShift } from "./timelineRange";
 
 /** One item on the timeline (open work only: done and cancelled are closed). */
 export type TItem = { project_id: string; id: string; title: string; critical: boolean; late: boolean; status: string };
@@ -21,11 +22,13 @@ export type TLane = {
 export type TCal = { date: string; events: { title: string; time: string | null; allDay: boolean }[] };
 export type TimelineData = {
   from: string; to: string; today: string; lanes: TLane[]; guides: TMilestone[];
+  shift: number; // weeks the window is moved from the default (?w=)
   calendar: TCal[] | null; calendarError: string | null; upcoming: TMilestone[]; undated: { id: string; name: string }[];
 };
 
 const mins = (a: string, b: string) => (+b.slice(0, 2) * 60 + +b.slice(3)) - (+a.slice(0, 2) * 60 + +a.slice(3));
 const WEEKS_BEFORE = 1, WEEKS_AFTER = 8;
+
 
 function byDay(list: TItem[], due: (i: TItem) => string): TDay[] {
   const m = new Map<string, TItem[]>();
@@ -44,20 +47,22 @@ function planDays(blocks: Block[]): TPlanDay[] {
 
 /**
  * Timeline from data that already exists: PRD milestones (project deadlines), checklist due dates,
- * this week's and next week's Sunday-plan blocks, and (overview only) calendar events.
+ * the Sunday-plan blocks of every planned week in range, and (overview only) calendar events.
  * Overview: one lane per project with something dated. Project: one lane per checklist section.
+ * `shift` moves the window by whole weeks (last week → 8 weeks out by default), clamped to SHIFT_MIN…SHIFT_MAX.
  */
-export async function timelineData(opts: { project?: string } = {}): Promise<TimelineData> {
-  const t = today();
-  const from = addDays(mondayOf(t), -7 * WEEKS_BEFORE), to = addDays(mondayOf(t), 7 * WEEKS_AFTER + 6);
-  const thisWeek = mondayOf(t), nextWeek = addDays(thisWeek, 7);
-  const [projects, items, p1, p2, cal] = await Promise.all([
-    D.getProjects(), D.getItems({ project: opts.project, open: true }), getPlan(thisWeek), getPlan(nextWeek),
+export async function timelineData(opts: { project?: string; shift?: number } = {}): Promise<TimelineData> {
+  const t = today(), shift = parseShift(opts.shift ?? 0);
+  const base = addDays(mondayOf(t), 7 * shift);
+  const from = addDays(base, -7 * WEEKS_BEFORE), to = addDays(base, 7 * WEEKS_AFTER + 6);
+  const weeks = Array.from({ length: WEEKS_BEFORE + WEEKS_AFTER + 1 }, (_, i) => addDays(from, 7 * i));
+  const [projects, items, plans, cal] = await Promise.all([
+    D.getProjects(), D.getItems({ project: opts.project, open: true }), Promise.all(weeks.map((w) => getPlan(w).catch(() => null))),
     opts.project ? Promise.resolve(null) : getEvents(from, to),
   ]);
   const topIds = new Set(D.splitFeatured(projects).featured.map((p) => p.id));
   const color = (p: D.Project) => (opts.project ? p.color : D.displayColor(p, topIds));
-  const blocks = [...(p1?.blocks || []), ...(p2?.blocks || [])].filter((b) => b.date >= from && b.date <= to);
+  const blocks = plans.flatMap((p) => p?.blocks || []).filter((b) => b.date >= from && b.date <= to);
   const toT = (i: D.Item): TItem => ({ project_id: i.project_id, id: i.id, title: i.title, critical: i.critical, late: !!i.due && i.due < t, status: i.status });
   const dated = items.filter((i) => i.due);
 
@@ -114,7 +119,7 @@ export async function timelineData(opts: { project?: string } = {}): Promise<Tim
   })() : null;
 
   return {
-    from, to, today: t, lanes, guides: opts.project ? allMilestones.filter((m) => inRange(m.date)) : [],
+    from, to, today: t, shift, lanes, guides: opts.project ? allMilestones.filter((m) => inRange(m.date)) : [],
     calendar, calendarError: cal?.error || null,
     upcoming: allMilestones.filter((m) => m.date >= addDays(t, -7)).slice(0, 12), undated,
   };
