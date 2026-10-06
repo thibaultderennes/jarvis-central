@@ -83,7 +83,21 @@ async function handle(req: NextRequest, ctx: Ctx) {
     case "POST todos": {
       if (!b.title) return bad("title required");
       if (b.date && !isDate(b.date)) return bad("date must be YYYY-MM-DD");
+      if ((b.rolled_from && !isDate(b.rolled_from)) || (b.rolled_at && !isDate(b.rolled_at))) return bad("rolled_from and rolled_at must be YYYY-MM-DD");
+      if (b.source !== undefined && b.source !== null && !["plan", "rollover"].includes(b.source)) return bad("source must be plan or rollover");
+      if (b.sort !== undefined && !Number.isFinite(b.sort)) return bad("sort must be a number");
       return J({ todo: await D.addTodo({ ...b, date: b.date || null } as never) }, 201);
+    }
+    case "PATCH todos": {
+      // The daily roll-forward (agent/rollover.mjs): move a todo to a day (null = Someday), reorder, untime, count carries.
+      if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(b.id || ""))) return bad("id (a todo uuid) required");
+      if (b.date !== undefined && b.date !== null && !isDate(b.date)) return bad("date must be YYYY-MM-DD or null");
+      if ((b.rolled_from && !isDate(b.rolled_from)) || (b.rolled_at && !isDate(b.rolled_at))) return bad("rolled_from and rolled_at must be YYYY-MM-DD");
+      if (b.time !== undefined && b.time !== null && !/^\d{2}:\d{2}$/.test(b.time)) return bad("time must be HH:MM or null");
+      if (b.sort !== undefined && !Number.isFinite(b.sort)) return bad("sort must be a number");
+      if (b.rollovers !== undefined && !(Number.isInteger(b.rollovers) && b.rollovers >= 0)) return bad("rollovers must be a whole number, 0 or more");
+      const t = await D.patchTodo(String(b.id), { date: b.date, sort: b.sort, time: b.time, rollovers: b.rollovers, rolled_from: b.rolled_from, rolled_at: b.rolled_at });
+      return t ? J({ todo: t }) : bad("No such todo", 404);
     }
 
     case "GET messages": return J(await D.getMessages({ thread: sp.get("thread") || undefined, review: sp.get("review") || undefined, status: sp.get("status") || undefined, limit: +(sp.get("limit") || (sp.get("since") ? 200 : 20)), since: sp.get("since") || undefined, includeArchived: true }));

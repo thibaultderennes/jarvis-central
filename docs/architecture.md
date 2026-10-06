@@ -8,6 +8,12 @@
    - `worker.mjs` every minute: picks up inbox messages, runs `claude -p` in the project, replies.
    - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar, sized from the last 2 weeks
      (`planner.adapt`, `agent/adapt.mjs`: planned vs done per project and an hours check in the plan notes; `apply` caps idle projects).
+   - `rollover.mjs` daily, from the worker (first pass after `planner.rollover_at` on a work day, stamped in the cache):
+     undone todos from the last 14 days and open items you own due today or earlier with no todo go to the top of today,
+     critical → days overdue → priority, at most `planner.rollover_max_per_day` and within `max_focus_minutes_per_day`;
+     a todo carried `planner.rollover_flag_after` times is parked in Someday and its item flagged (`refine: 'flagged'`,
+     `refine_note` starting `Re-scope:`, shown as "check: re-scope"). Pure logic in `rollForward()`, tested in
+     `app/test/rollover.test.mjs`; `node agent/rollover.mjs --dry-run [--date D] [--fixture F]`. Rule: `docs/config.md`.
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
      (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.
@@ -74,7 +80,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   Select mode creates one or adds to it; its card shows done %, and the open estimate against the project's `weekly_minutes`
   for the sprint's length; the Timeline draws it as a band (its project's lane, or every section lane on the project page).
 - `item_events(id bigserial, project_id, item_id, field, old, new, actor 'founder'|'agent', at)` — every status/due/section change
-- `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at)`
+- `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at, source null 'plan'|'rollover', rollovers int /* times the daily roll-forward carried it */, rolled_from date null /* the day it was first meant for */, rolled_at date null /* the day it last rolled in */)`
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool, opened_at, treated_at, item_id null)`
   - status flow: `new` → `seen` (worker picked it) → `working` → `answered` | `done` | `needs_you` | `error`
   - inbox groups on the site: **New** (a reply not yet opened, or work still with Claude) → **Pending** (`opened_at` set
@@ -126,8 +132,9 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | PATCH | `/api/agent/sprints` | `{id, name?, start?, end?, add?: [ids], remove?: [ids]}` | `{sprint}` |
 | DELETE | `/api/agent/sprints` | `?id=UUID` (items stay, just leave it) | `{ok}` |
 | GET | `/api/agent/events` | `?since=ISO` | `[{event}]` |
-| GET | `/api/agent/todos` | `?from=DATE&to=DATE` | `[{todo}]` |
-| POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?}` | `{todo}` |
+| GET | `/api/agent/todos` | `?from=DATE&to=DATE` (`&someday=1` adds undated ones) | `[{todo}]` |
+| POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?, sort?, source? 'plan'|'rollover', rolled_from?, rolled_at?}` | `{todo}` |
+| PATCH | `/api/agent/todos` | `{id, date? /* null = Someday */, sort?, time? /* null = untimed */, rollovers?, rolled_from?, rolled_at?}` (the daily roll-forward; only given fields change) | `{todo}`; 404 when there's no such todo |
 | GET | `/api/agent/messages` | `?status=new&limit=5` (oldest first) or `?since=ISO` | `[{message}]` |
 | POST | `/api/agent/messages` | `{text, project_id?, status? 'answered'|'new'|…, reply?, meta?, mode?, item_id?, thread_id?}` a note already answered, or (`status: 'new'`) work queued for the worker | `{message: {id}}` |
 | PATCH | `/api/agent/messages` | `{id, status?, reply?, meta?, opened?, treated?}` (meta merged; reply sets replied_at and clears opened_at) | `{message}` |
@@ -163,7 +170,7 @@ title contain every word (case- and accent-insensitive, archived projects left o
   item's build run); the worker script (not Claude) pushes and opens the PR. Claude never merges, deploys, pays, emails,
   texts, or touches production data or secrets. The only merge the worker script does is `gh pr merge` of a PR the
   owner approved on the item ("Approve & merge"); the item is then done.
-- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, merge approved PRs, then
+- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, once a day the roll-forward (`rollover.mjs`), merge approved PRs, then
   queue at most one build run (in-progress items owned by Claude, sent-back PRs first, critical first).
 - Anything outside that → status `needs_you` with a clear explanation.
 

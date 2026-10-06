@@ -37,6 +37,8 @@ export type Cost = {
 export type Todo = {
   id: string; date: string | null; title: string; kind: "life" | "work"; project_id: string | null;
   item_id: string | null; time: string | null; sort: number; done: boolean; done_at: string | null; created_at: string;
+  /** 'plan' = made by the Sunday planner, 'rollover' = added by the daily roll-forward, null = by hand. */
+  source?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null;
 };
 export type Message = {
   id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan" | "screen" | "website"; text: string; status: string; reply: string;
@@ -54,7 +56,7 @@ const ts = (v: unknown): string | null => (v == null ? null : v instanceof Date 
 const normItem = (r: Record<string, unknown>) => ({ ...r, blocked_by: Array.isArray(r.blocked_by) ? r.blocked_by : [], due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at), note_sent_at: ts(r.note_sent_at), build_updated_at: ts(r.build_updated_at) }) as Item;
 const normSprint = (r: Record<string, unknown>) => ({ id: r.id, project_id: r.project_id, name: r.name, start: d10(r.start_date), end: d10(r.end_date), created_at: ts(r.created_at) }) as Sprint;
 const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
-const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at) }) as Todo;
+const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at), rollovers: Number(r.rollovers) || 0, rolled_from: d10(r.rolled_from), rolled_at: d10(r.rolled_at) }) as Todo;
 const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at), opened_at: ts(r.opened_at), treated_at: ts(r.treated_at) }) as Message;
 const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at) }) as Review;
 /** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
@@ -217,14 +219,27 @@ export async function getTodos(from: string | null, to: string | null, includeSo
     : await sql()`select * from todos where date between ${from} and ${to} and (project_id is null or project_id not in (select id from projects where archived)) order by date, sort, created_at`;
   return rows.map(normTodo);
 }
-export async function addTodo(t: { date: string | null; title: string; kind?: string; project_id?: string | null; item_id?: string | null; time?: string | null }): Promise<Todo> {
-  const [m] = t.date
+export async function addTodo(t: { date: string | null; title: string; kind?: string; project_id?: string | null; item_id?: string | null; time?: string | null; sort?: number | null; source?: string | null; rolled_from?: string | null; rolled_at?: string | null }): Promise<Todo> {
+  const [m] = typeof t.sort === "number" && Number.isFinite(t.sort) ? [{ s: t.sort }] : t.date
     ? await sql()`select coalesce(max(sort), 0) + 1 as s from todos where date = ${t.date}`
     : await sql()`select coalesce(max(sort), 0) + 1 as s from todos where date is null`;
   const kind = t.kind === "work" || t.project_id ? "work" : "life";
-  const rows = await sql()`insert into todos (date, title, kind, project_id, item_id, time, sort)
-    values (${t.date}, ${t.title}, ${kind}, ${t.project_id || null}, ${t.item_id || null}, ${t.time || null}, ${m.s}) returning *`;
+  const rows = await sql()`insert into todos (date, title, kind, project_id, item_id, time, sort, source, rolled_from, rolled_at)
+    values (${t.date}, ${t.title}, ${kind}, ${t.project_id || null}, ${t.item_id || null}, ${t.time || null}, ${m.s}, ${t.source || null}, ${t.rolled_from || null}, ${t.rolled_at || null}) returning *`;
   return normTodo(rows[0]);
+}
+/** Agent edit of a todo (the daily roll-forward): only the fields given change. Returns null when there's no such todo. */
+export async function patchTodo(id: string, p: { date?: string | null; sort?: number; time?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null }): Promise<Todo | null> {
+  const has = (k: keyof typeof p) => p[k] !== undefined;
+  const rows = await sql()`update todos set
+      date = case when ${has("date")} then ${p.date ?? null}::date else date end,
+      sort = case when ${has("sort")} then ${p.sort ?? null}::real else sort end,
+      time = case when ${has("time")} then ${p.time ?? null}::text else time end,
+      rollovers = case when ${has("rollovers")} then ${p.rollovers ?? 0}::int else rollovers end,
+      rolled_from = case when ${has("rolled_from")} then ${p.rolled_from ?? null}::date else rolled_from end,
+      rolled_at = case when ${has("rolled_at")} then ${p.rolled_at ?? null}::date else rolled_at end
+    where id = ${id} returning *`;
+  return rows[0] ? normTodo(rows[0]) : null;
 }
 
 /* ---------- messages ---------- */
