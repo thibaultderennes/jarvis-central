@@ -8,6 +8,7 @@ import { isDate, today } from "./time";
 import { normBlockedBy, wouldCycle } from "./sqlbuild";
 import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
 import { normSiteUrl, websiteKind } from "./website";
+import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSettings";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -311,14 +312,34 @@ export async function featureProject(id: string, slot: number) {
   await D.logActivity("project_feature", "/", { id, slot });
   done();
 }
-export async function setProjectSettings(id: string, s: { plan_enabled?: boolean; weekly_minutes?: number | null; reviews_enabled?: boolean }) {
+export async function setProjectSettings(id: string, s: { plan_enabled?: boolean; weekly_minutes?: number | null; reviews_enabled?: boolean; review_every_days?: number; build_mode?: BuildMode }): Promise<{ error?: string }> {
   await requireSession();
   const mins = s.weekly_minutes === undefined ? undefined : s.weekly_minutes === null || !Number.isFinite(s.weekly_minutes) ? null : Math.max(0, Math.min(80 * 60, Math.round(s.weekly_minutes)));
+  const every = s.review_every_days === undefined ? undefined : normEvery(s.review_every_days);
+  if (every === null) return { error: "Reviews run every 1 to 90 days: type a whole number." };
+  if (s.build_mode !== undefined && !isBuildMode(s.build_mode)) return { error: "Pick Goibniu or Lugh." };
   if (s.plan_enabled !== undefined) await sql()`update projects set plan_enabled = ${!!s.plan_enabled} where id = ${id}`;
   if (mins !== undefined) await sql()`update projects set weekly_minutes = ${mins} where id = ${id}`;
   if (s.reviews_enabled !== undefined) await sql()`update projects set reviews_enabled = ${!!s.reviews_enabled} where id = ${id}`;
+  if (every !== undefined) await sql()`update projects set review_every_days = ${every} where id = ${id}`;
+  if (s.build_mode !== undefined) await sql()`update projects set build_mode = ${s.build_mode} where id = ${id}`;
   await D.logActivity("project_settings", `/p/${id}`, { id, ...s });
   done();
+  return {};
+}
+
+/** Settings → Run now: the Mac worker runs this project's advisor review over its last N days (agent/reviewrun.mjs). */
+export async function requestReview(project_id: string): Promise<{ error?: string }> {
+  await requireSession();
+  const p = await D.getProject(project_id);
+  if (!p) return { error: "No such project." };
+  const busy = await sql()`select id from messages where project_id = ${project_id} and mode = 'review' and status in ('new', 'seen', 'working') limit 1`;
+  if (busy.length) return {};
+  const days = reviewEvery(p.review_every_days);
+  await D.insertMessage({ text: `Run the advisor review of ${p.name} now (the last ${days} days).`, project_id, status: "new", mode: "review", meta: { kind: "now", days } });
+  await D.logActivity("project_review", `/p/${project_id}`, { project_id, days });
+  done();
+  return {};
 }
 
 /** "Plan this project": the Mac worker reviews the folder, writes a situation report and adds the missing checklist items. */

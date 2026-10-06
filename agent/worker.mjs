@@ -19,6 +19,9 @@ import { syncMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
 import { prepareWebsiteSkills, websiteBrief, playwrightCommand } from "./website.mjs";
+import { prepareLughSkills, lughBrief, PLUGIN_NAME as LUGH_PLUGIN } from "./lugh.mjs";
+import { BUILD_MODES, buildModeFor } from "./projectsettings.mjs";
+import { queueDueReviews, runProjectReview } from "./reviewrun.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -108,7 +111,7 @@ function commitLeftovers(wt, title) {
   return true;
 }
 
-function finishWorktree(repo, wt, branch, reply) {
+function finishWorktree(repo, wt, branch, reply, modeLine = "") {
   let pr_url = null;
   const ahead = Number(tryGit(wt, "rev-list", "--count", `origin/${repo.base}..HEAD`) || 0);
   const pushed = Number(tryGit(wt, "rev-list", "--count", `origin/${branch}..HEAD`) ?? ahead) > 0;
@@ -118,7 +121,7 @@ function finishWorktree(repo, wt, branch, reply) {
     if (existing?.url && existing.state === "OPEN") pr_url = existing.url;
     else {
       const title = tryGit(wt, "log", "--reverse", "--format=%s", `origin/${repo.base}..HEAD`)?.split("\n")[0] || branch;
-      const body = `${reply}\n\n---\nOpened by the Jarvis worker from a message on the dashboard. Not merged.`;
+      const body = `${reply}\n\n---\n${modeLine ? `${modeLine}\n` : ""}Opened by the Jarvis worker from a message on the dashboard. Not merged.`;
       pr_url = execFileSync("gh", ["pr", "create", "--head", branch, "--base", repo.base, "--title", title, "--body", body], { cwd: wt, encoding: "utf8", timeout: 120_000 }).trim().split("\n").pop();
     }
   }
@@ -126,6 +129,9 @@ function finishWorktree(repo, wt, branch, reply) {
   if (!ahead) tryGit(repo.top, "branch", "-D", branch);
   return { pr_url, commits: ahead };
 }
+
+/** How many times worker.timeout_minutes a code run may take: a website twice, a Lugh build 1.5 times. */
+const runMultiplier = ({ site = false, lugh = false }) => (site ? 2 : lugh ? 1.5 : 1);
 
 export function buildPrompt({ message, project, projects, mode, today, cwd, review = null, history = [], wantedBuild = false, item = null }) {
   const where = project ? `${project.name} (${project.id})` : "no specific project";
@@ -197,6 +203,7 @@ async function handle(message, projects) {
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "seen" });
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
   if (message.mode === "screen") return screenProject(message, project, log); // Reviews → Screenings → Run
+  if (message.mode === "review") return runProjectReview(message, project, log); // Settings → Run now, or the project's own schedule
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : JARVIS_ROOT;
   const repo = project ? repoInfo(dir) : null;
   // The build run of an in-progress item (queued by queueBuilds): one branch per item, so a PR sent back continues there.
@@ -220,7 +227,13 @@ async function handle(message, projects) {
     try { ({ wt, branch } = makeWorktree(project, repo, shortId, item ? `jarvis/item-${item.id}` : website ? `jarvis/website-${shortId}` : null)); cwd = wt; }
     catch (e) { log("worktree failed, answer mode", message.id, e.message); mode = "answer"; }
   }
-  await api("PATCH", "/api/agent/messages", { id: message.id, status: "working", meta: { mode, branch } });
+  // Build mode (project Settings, else worker.build_mode): Lugh loads the agent-skills pack for this run. Website runs have their own pack.
+  let buildMode = mode === "code" && !website ? buildModeFor(project, W.build_mode) : null, lugh = null, lughNote = "";
+  if (buildMode === "lugh") {
+    try { lugh = prepareLughSkills(); }
+    catch (e) { log("lugh skills failed, building as goibniu", e.message); buildMode = "goibniu"; lughNote = `\n\n_The Lugh skills couldn't be fetched (${e.message.split("\n")[0]}), so this ran as ${BUILD_MODES.goibniu.label}._`; }
+  }
+  await api("PATCH", "/api/agent/messages", { id: message.id, status: "working", meta: { mode, branch, ...(buildMode ? { build_mode: buildMode } : {}) } });
   let review = null, history = [];
   if (message.review_id) {
     review = (await api("GET", "/api/agent/reviews" + qs({ id: message.review_id })))[0] || null;
@@ -236,16 +249,18 @@ async function handle(message, projects) {
   const playwright = website ? playwrightCommand() : null;
   if (website && mode === "code") prompt += "\n\n" + websiteBrief({ project, kind: message.meta?.kind, site: project.site, siteUrl: project.site_url, playwright,
     pack: pack || { skills: {}, designsDir: null } });
+  if (lugh) prompt += "\n\n" + lughBrief({ pack: lugh, sentBack: !!item?.build_note });
   log("run", message.id, { project: project?.id, mode, cwd });
   let res;
   try {
     // Discussions default to a lighter model to spare plan usage; code work uses worker.build_model (null = CLI default).
     const site = website && mode === "code";
+    const plugins = site && pack ? [pack.pluginDir] : lugh ? [lugh.pluginDir] : [];
     res = await runClaude({ prompt, cwd, allowedTools: mode === "code" ? [...codeTools(cwd), ...(site ? WEBSITE_TOOLS : [])] : READ_TOOLS, disallowedTools: DENY,
-      addDirs: site && pack ? [pack.pluginDir, ...(pack.designsDir ? [pack.designsDir] : [])] : [], pluginDirs: site && pack ? [pack.pluginDir] : [],
-      model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: site ? 120 : mode === "code" ? 60 : 30,
-      // A website takes longer than an item: twice the usual limit.
-      timeoutMs: (W.timeout_minutes || 25) * (site ? 2 : 1) * 60_000, log });
+      addDirs: site && pack ? [pack.pluginDir, ...(pack.designsDir ? [pack.designsDir] : [])] : plugins, pluginDirs: plugins,
+      model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: site ? 120 : lugh ? 90 : mode === "code" ? 60 : 30,
+      // A website takes longer than an item: twice the usual limit; a Lugh build (tests, review, docs) half as long again.
+      timeoutMs: (W.timeout_minutes || 25) * runMultiplier({ site, lugh: !!lugh }) * 60_000, log });
   } catch (e) {
     if (wt) tryGit(repo.top, "worktree", "remove", "--force", wt), tryGit(repo.top, "branch", "-D", branch);
     throw e;
@@ -260,16 +275,20 @@ async function handle(message, projects) {
     catch (e) { log("leftover commit failed", message.id, e.message); }
   }
   if (res.is_error && res.subtype === "error_max_turns") reply += "\n\n_Stopped at the turn limit; the work may be incomplete._";
+  // The PR body and the inbox reply say which build mode ran.
+  const modeLine = buildMode ? `Built by ${BUILD_MODES[buildMode].label}${lugh ? ` with ${Object.keys(lugh.skills).length} skills from addyosmani/agent-skills (${LUGH_PLUGIN})` : ""}.` : "";
+  reply += lughNote;
   let pr_url = null, commits = 0;
   if (wt) {
-    try { ({ pr_url, commits } = finishWorktree(repo, wt, branch, reply)); }
+    try { ({ pr_url, commits } = finishWorktree(repo, wt, branch, reply, modeLine)); }
     catch (e) { log("push/PR failed", message.id, e.message); reply += `\n\n**The branch \`${branch}\` has commits but the PR could not be opened:** ${e.message.split("\n")[0]}`; }
   }
   if (pr_url) reply += `\n\n**PR:** ${pr_url} (not merged)`;
+  if (modeLine) reply += `\n\n_${modeLine}_`;
   if (pr_url && leftovers) reply += "\n\n_The run left edits uncommitted; the worker committed them as the last commit on the PR. Review it before merging._";
   const needsYou = /^\s*NEEDS YOU:/i.test(reply);
   const status = needsYou ? "needs_you" : pr_url ? "done" : "answered";
-  await api("PATCH", "/api/agent/messages", { id: message.id, status, reply, meta: { mode, branch: commits ? branch : null, pr_url, cost_usd: res.cost_usd, duration_s: res.duration_s } });
+  await api("PATCH", "/api/agent/messages", { id: message.id, status, reply, meta: { mode, branch: commits ? branch : null, pr_url, cost_usd: res.cost_usd, duration_s: res.duration_s, ...(buildMode ? { build_mode: buildMode } : {}) } });
   if (item) {
     // The item shows the outcome: a PR awaiting the owner, or why the run stopped. It never stays "working".
     const ok = !!pr_url && !needsYou;
@@ -290,7 +309,8 @@ async function queueBuilds(projects, log) {
   const inflight = (await api("GET", "/api/agent/items" + qs({ build: "working" }))).filter((i) => i.build_status === "working");
   if (inflight.length) {
     // A run that vanished (worker killed mid-build) must not stay "working" forever.
-    const stale = inflight.filter((i) => i.build_updated_at && Date.now() - +new Date(i.build_updated_at) > ((W.timeout_minutes || 25) + 10) * 60_000);
+    const limit = (i) => ((W.timeout_minutes || 25) * runMultiplier({ lugh: buildModeFor(projects.find((p) => p.id === i.project_id), W.build_mode) === "lugh" }) + 10) * 60_000;
+    const stale = inflight.filter((i) => i.build_updated_at && Date.now() - +new Date(i.build_updated_at) > limit(i));
     for (const i of stale) await api("PATCH", "/api/agent/items", { project_id: i.project_id, id: i.id, build_status: "failed", build_note: "The build run stopped without finishing (the worker was interrupted). Retry to start it again." }).catch(() => {});
     if (stale.length < inflight.length) return;
   }
@@ -341,7 +361,7 @@ async function pass() {
   const release = acquireLock("worker");
   if (!release) return log("previous pass still running, skipping");
   try {
-    const hb = await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName() } }).catch((e) => (log("heartbeat failed", e.message), null));
+    const hb = await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName(), build_mode: buildModeFor(null, W.build_mode) } }).catch((e) => (log("heartbeat failed", e.message), null));
     // Agent and site from different releases disagree on the API: building or merging against it can loop
     // over every item. Pause those two passes (refine and messages stay on) until both are updated.
     const mm = (v) => String(v || "").split(".").slice(0, 2).join(".");
@@ -362,6 +382,9 @@ async function pass() {
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
     if (!skew) {
+      // Projects reviewed every N days (Settings) rather than in the weekly run: queue the ones due; hourly. Paused on
+      // skew too, since an older site stores a 'review' message as a discussion.
+      await queueDueReviews(projects, log).catch((e) => logChanged("review-queue", e.message, "review schedule check failed", e.message));
       await mergeApproved(projects, log).catch((e) => logChanged("merge-pass", e.message, "merge pass failed", e.message));
       await queueBuilds(projects, log).catch((e) => logChanged("build-queue", e.message, "build queue failed", e.message));
     }
@@ -386,6 +409,8 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     for (const p of projects) console.log(`${p.id}: repo=${JSON.stringify(repoInfo(p.dir))}`);
     const msg = { id: "0f3c9a7e-1111-2222-3333-444455556666", project_id: projects[0].id, text: `Sample: what's overdue on ${projects[0].name}?`, mode: "discuss" };
     console.log("\n--- prompt ---\n" + buildPrompt({ message: msg, project: projects[0], projects, mode: "code", today: todayTZ(), cwd: "/tmp/wt" }));
+    console.log(`\n--- build mode ---\ndefault: ${BUILD_MODES[buildModeFor(null, W.build_mode)].label} (worker.build_mode); per project: Settings on the site`);
+    console.log("\n--- Lugh brief (appended to a Lugh build's prompt) ---\n" + lughBrief({ pack: null }));
     console.log("\n--- code tools ---\n" + CODE_TOOLS.join("\n") + "\n--- deny ---\n" + DENY.join("\n"));
   } else {
     pass().catch((e) => { log("pass failed", e.message); process.exitCode = 1; });

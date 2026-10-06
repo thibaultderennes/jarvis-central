@@ -6,7 +6,8 @@
 //   node weekly.mjs                       review last week (Mon..Sun before this Monday)
 //   node weekly.mjs --week 2026-09-21     review the week starting that Monday
 //   node weekly.mjs --only my-app         one project (skips recap/coaching/jarvis unless --all-reports)
-//   node weekly.mjs --dry-run             build bundles + prompts, print paths; no claude, no POST
+//   node weekly.mjs --only my-app --days 3   that project's last 3 days, ending today (its own schedule, or Run now)
+//   node weekly.mjs --dry-run            build bundles + prompts, print paths; no claude, no POST
 //   node weekly.mjs --offline             with --dry-run: don't call the API either (sample data)
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
@@ -14,6 +15,7 @@ import path from "node:path";
 import { api, qs, makeLog, acquireLock, todayTZ, addDays, mondayOf, tzDayStart, parseModelJSON, cacheDir, HOME, JARVIS_ROOT, TZ, CONFIG, OWNER } from "./lib.mjs";
 import { scan, statsForDir, statsByCwd } from "./transcripts.mjs";
 import { runClaude } from "./claude.mjs";
+import { reviewEvery, reviewWindow } from "./projectsettings.mjs";
 import { ROLES, ADVISOR_TOOLS, STANCE, personaFor, oneLiner, memoryDirs, advisorPrompt, synthesisPrompt } from "./advisors.mjs";
 
 const log = makeLog("weekly");
@@ -21,6 +23,8 @@ const argv = process.argv.slice(2);
 const flag = (k) => argv.includes(`--${k}`);
 const opt = (k) => { const i = argv.indexOf(`--${k}`); return i >= 0 ? argv[i + 1] : undefined; };
 const DRY = flag("dry-run"), OFFLINE = flag("offline"), ONLY = opt("only");
+// A rolling period instead of last calendar week: a project reviewed every N days (the worker queues it), or Run now.
+const DAYS = opt("days") ? Math.max(1, Math.min(90, Math.round(Number(opt("days"))) || 7)) : null;
 const READ_ONLY = ["Read", "Grep", "Glob"];
 // The Jarvis review's repo scout (reviews.repo_scout) may also search the web and GitHub, read-only.
 const SCOUT_TOOLS = [...READ_ONLY, "WebSearch", "WebFetch", "Bash(gh search repos:*)", "Bash(gh repo view:*)"];
@@ -45,7 +49,8 @@ async function projectBundle(p, W, turnsAll, sessions, events) {
   const isOpen = (i) => i.status === "todo" || i.status === "doing";
   const overdue = items.filter((i) => isOpen(i) && i.due && i.due < W.endDate);
   const slips = ev.filter((e) => e.field === "due" && e.old && (!e.new || e.new > e.old));
-  L.push(`# ${p.name} (${p.id}) — week ${W.startDate} to ${W.lastDate}`, "");
+  L.push(`# ${p.name} (${p.id}) — ${W.rolling ? `the ${W.days} days` : "week"} ${W.startDate} to ${W.lastDate}`, "");
+  if (W.rolling) L.push(`This review covers the last ${W.days} days, not a calendar week: wherever your instructions say "week" or "this week", read it as this period.`, "");
   L.push("## Project", "```json", JSON.stringify({ ...p, items: undefined }, null, 1), "```", "");
   if (items.length) {
     L.push(`## Checklist: ${items.length} items, ${items.filter((i) => i.status === "done").length} done, ${items.filter((i) => i.status === "doing").length} in progress${items.some((i) => i.status === "cancelled") ? `, ${items.filter((i) => i.status === "cancelled").length} cancelled` : ""}`, "");
@@ -190,7 +195,8 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
   const b = await projectBundle(p, W, turns, sessions, events);
   const file = path.join(dir, `${p.id}.md`);
   fs.writeFileSync(file, b.text);
-  const title = `${p.name} · week of ${fmtDay(W.startDate)}`;
+  const title = W.rolling ? `${p.name} · ${fmtDay(W.startDate)} to ${fmtDay(W.lastDate)}` : `${p.name} · week of ${fmtDay(W.startDate)}`;
+  if (W.rolling) b.meta = { ...b.meta, period_days: W.days };
   if (!b.activity) {
     const body = `## Verdict\nNo commits, pull requests, Claude Code sessions or checklist changes for ${p.name} between ${fmtDay(W.startDate)} and ${fmtDay(W.lastDate)}.${(p.deadlines || []).length ? `\n\nNext deadline: ${(p.deadlines || []).filter((d) => d.date >= W.endDate).map((d) => `${d.label} (${d.date})`)[0] || "none upcoming"}.` : ""}`;
     const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: "idle", headline: "No activity this week", body_md: body, meta: b.meta };
@@ -240,13 +246,17 @@ function offlineProjects() {
 }
 
 async function main() {
-  const release = DRY ? () => {} : acquireLock("weekly", 3 * 60 * 60_000);
-  if (!release) return log("another weekly run is in progress");
-  const startDate = opt("week") ? mondayOf(opt("week")) : addDays(mondayOf(todayTZ()), -7);
-  const W = { startDate, lastDate: addDays(startDate, 6), endDate: addDays(startDate, 7), start: tzDayStart(startDate), end: tzDayStart(addDays(startDate, 7)) };
+  // A one-project run (Run now, a project's own schedule) has its own lock, so it doesn't wait on the Monday run.
+  const release = DRY ? () => {} : acquireLock(ONLY ? `weekly-${ONLY}` : "weekly", 3 * 60 * 60_000);
+  if (!release) return log("another weekly run is in progress", ONLY || "");
+  const win = DAYS ? reviewWindow(todayTZ(), DAYS) : null;
+  const startDate = win ? win.startDate : opt("week") ? mondayOf(opt("week")) : addDays(mondayOf(todayTZ()), -7);
+  const lastDate = win ? win.lastDate : addDays(startDate, 6);
+  const W = { startDate, lastDate, endDate: addDays(lastDate, 1), start: tzDayStart(startDate), end: tzDayStart(addDays(lastDate, 1)), days: DAYS || 7, rolling: !!DAYS };
   const dir = cacheDir("weekly", startDate);
   log("weekly start", W.startDate, { dry: DRY, only: ONLY });
-  if (!DRY) await api("POST", "/api/agent/heartbeat", { worker: "weekly", info: { week: startDate, phase: "start" } }).catch((e) => log("heartbeat failed", e.message));
+  // Only the full run reports a heartbeat: a one-project review must not read as the Monday run on the Admin page.
+  if (!DRY && !ONLY) await api("POST", "/api/agent/heartbeat", { worker: "weekly", info: { week: startDate, phase: "start" } }).catch((e) => log("heartbeat failed", e.message));
 
   let projects = await get("/api/agent/projects", OFFLINE ? offlineProjects() : []);
   projects = projects.filter((p) => !p.archived);
@@ -257,7 +267,10 @@ async function main() {
   // "Weekly review, strategy & audit" switched off on the site → no advisor run for that project.
   const reviewsOff = projects.filter((p) => p.reviews_enabled === false).map((p) => p.id);
   if (reviewsOff.length) log("reviews off for", reviewsOff.join(", "));
-  const todo = projects.filter((p) => (!ONLY || p.id === ONLY) && (p.reviews_enabled !== false || p.id === ONLY));
+  // A project on its own schedule (Settings: every N days other than 7) is reviewed by the worker when due, not here.
+  const ownSchedule = ONLY ? [] : projects.filter((p) => p.reviews_enabled !== false && reviewEvery(p) !== 7).map((p) => `${p.id} (every ${reviewEvery(p)} days)`);
+  if (ownSchedule.length) log("on their own review schedule, skipped", ownSchedule.join(", "));
+  const todo = projects.filter((p) => (ONLY ? p.id === ONLY : p.reviews_enabled !== false && reviewEvery(p) === 7));
   const results = new Array(todo.length);
   let next = 0;
   const workers = Array.from({ length: Math.max(1, Math.min(Number(CONFIG.reviews?.concurrency) || 2, todo.length)) }, async () => {
@@ -373,7 +386,7 @@ async function main() {
     await api("DELETE", "/api/agent/usage" + qs({ days })).then((r) => log("click events pruned", { days, deleted: r?.deleted ?? 0 })).catch((e) => log("click prune failed", e.message));
   }
 
-  if (!DRY) await api("POST", "/api/agent/heartbeat", { worker: "weekly", info: { week: startDate, phase: "done", failed: results.filter((r) => r && r.error).map((r) => r.p.id) } }).catch(() => {});
+  if (!DRY && !ONLY) await api("POST", "/api/agent/heartbeat", { worker: "weekly", info: { week: startDate, phase: "done", failed: results.filter((r) => r && r.error).map((r) => r.p.id) } }).catch(() => {});
   log("weekly done", W.startDate);
   release();
 }

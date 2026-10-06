@@ -5,8 +5,8 @@ A personal command centre for people who run several projects with Claude Code.
 Point it at the folder that holds your projects and it gives you:
 
 - **A private website** (password + authenticator app) with your top 3 projects up front (drag to swap), a full
-  page per project (checklist, weekly reviews, strategy, and switches for calendar planning, weekly hours and
-  reviews), deadlines and progress charts, a daily list that mixes work and personal todos, and a week view with your Google/Apple calendar in it.
+  page per project (checklist, weekly reviews, strategy, and a Settings view for calendar planning, weekly hours,
+  how often the review runs, and the build mode), deadlines and progress charts, a daily list that mixes work and personal todos, and a week view with your Google/Apple calendar in it.
 - **A Sunday planner** that estimates what's due next week, fits it around your appointments and writes the
   blocks into your Google and Apple calendars.
 - **Monday reviews**: a CEO, a CMO and a product-owner advisor review each active project (what shipped, what
@@ -14,12 +14,14 @@ Point it at the folder that holds your projects and it gives you:
   Claude, and a review of how you use Jarvis itself.
 - **Comment on any checklist item**: tell Claude what to change from the item itself; it adjusts the item the way
   it refines a new one.
-- **Plan this project**: one button and Claude reviews a project folder (CLAUDE.md, PRD.md, `docs/audits/`, code,
+- **Plan this project** (in the project's Settings): one button and Claude reviews a project folder (CLAUDE.md, PRD.md, `docs/audits/`, code,
   the checklist), writes where it stands, and fills the checklist's existing sections with what has to happen next,
   dated on days that still have room before the PRD's milestones. A project missing its PRD, audit prompts or
   "How we work" rules gets items to create them first.
 - **An inbox to Claude that works without a terminal**: leave a message on the site; a worker on your Mac answers
   it inside the right project, or builds it on a new branch and opens a pull request. Reply in the thread to keep going. It never merges or deploys.
+  Each project picks a build mode: **Jarvis (Goibniu)** builds quick and direct; **Jarvis (Lugh)** adds engineering
+  skills from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) for tests, code review and docs.
 
 Everything runs on your own accounts: your Claude plan, a free Vercel project, a free Neon Postgres database.
 

@@ -242,3 +242,7 @@ alter table reviews add constraint reviews_type_check check (type in ('project',
 -- folder on each projects sync; `site_url` is the address the owner types, which always wins over the guess.
 alter table projects add column if not exists site jsonb;
 alter table projects add column if not exists site_url text not null default '';
+-- 0.7.4. Project settings: how often the advisor review runs (7 = the Monday run; any other value, the worker runs it
+-- when due) and how Jarvis builds the project (build_mode 'goibniu' | 'lugh'; null = the worker's worker.build_mode).
+alter table projects add column if not exists review_every_days int not null default 7;
+alter table projects add column if not exists build_mode text;
