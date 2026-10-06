@@ -127,10 +127,12 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `dashboard.layout` (Home's box layout per tab), `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
+  `rollover.today` (`{date, workday, carried, load: {before, after, cap}, waiting: [{title, key, critical, overdue, reason}]}`: what
+  the morning roll-forward couldn't fit; Today shows it on that date only),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, proposed?: [project payload + folder], archived?, total?, error?}`;
   approving or declining a proposal removes it from `proposed`),
-  `projects.setup` (`{<project id>: {status 'baseline'|'queued'|'running'|'done'|'failed', at, trigger, missing, handled, docs, head, message_id?, pr_url?, review_id?, error?}}`:
-  the last setup run per project and the folder it saw; the first worker pass records a `baseline` for every project, no runs),
+  `projects.setup` (`{<project id>: {status 'queued'|'running'|'done'|'failed', at, trigger, missing, handled, docs, head, message_id?, pr_url?, review_id?, error?}}`:
+  the last setup run per project and the folder it saw; after an upgrade every existing project gets one run, one at a time),
   `projects.ignored` (`[{id, folder?, name, reason 'removed'|'declined', at}]`: folders the scan skips. **Remove** on the
   Admin page archives the project, keeping its items and history, and adds it here; **Restore** takes it off and un-archives a removed project).
 - `login_attempts(ip, at, ok)`.

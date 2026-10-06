@@ -96,7 +96,7 @@ export function fingerprint(dir) {
 }
 
 /* ---------------- state: kv projects.setup = {<project id>: record} ---------------- */
-// record = { status: baseline|queued|running|done|failed, at, trigger, missing, handled, docs, head, message_id?, pr_url?, review_id?, error? }
+// record = { status: queued|running|done|failed, at, trigger, missing, handled, docs, head, message_id?, pr_url?, review_id?, error? }
 async function getState() {
   try { const v = (await api("GET", `/api/agent/kv?key=${KEY}`)).value; return v && typeof v === "object" ? v : null; }
   catch (e) { if (e.status === 404) return null; throw e; }
@@ -112,21 +112,16 @@ const opts = () => ({ autoOnLoad: S.auto_on_load !== false, autoOnUpdate: S.auto
 const stampFile = () => path.join(cacheDir(), "setup-check.json");
 /**
  * Every worker pass: queue one setup run when a project needs it (shouldRunSetup). Projects never set up are checked
- * every pass; the others every `project_setup.check_minutes`. The first time (no kv yet) it only records where every
- * existing project stands, so an upgrade doesn't start a run in each of them; `setup.mjs queue <id>` runs one by hand.
+ * every pass; the others every `project_setup.check_minutes`. After an upgrade every existing project gets one run, one
+ * at a time; `setup.mjs queue <id>` runs one by hand.
  */
 export async function queueSetupDue(projects, log) {
   if (S.auto_on_load === false && S.auto_on_update === false) return null;
   const live = projects.filter((p) => !p.archived && p.dir && fs.existsSync(p.dir));
-  const state = await getState();
+  // No kv yet (first pass after the upgrade): every existing project counts as never set up, so each gets one run,
+  // one at a time (the check below waits while a run is queued or running).
+  const state = (await getState()) || {};
   const now = new Date().toISOString();
-  if (!state) {
-    const base = {};
-    for (const p of live) { const fp = fingerprint(p.dir); base[p.id] = { status: "baseline", at: now, missing: fp.missing, handled: fp.missing, docs: fp.docs, head: fp.head }; }
-    await api("PUT", "/api/agent/kv", { key: KEY, value: base });
-    log("setup baseline recorded", Object.keys(base).length);
-    return { baseline: Object.keys(base) };
-  }
   if (Object.values(state).some((r) => ["queued", "running"].includes(r?.status) && Date.now() - +new Date(r.at || 0) < 2 * 3600_000)) return null;
   let last = 0;
   try { last = JSON.parse(fs.readFileSync(stampFile(), "utf8")).at || 0; } catch {}
@@ -401,10 +396,10 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     if (cmd === "skills") return console.log(JSON.stringify(prepareSetupSkills(), null, 2));
     if (cmd === "check") {
       const [projects, state] = await Promise.all([api("GET", "/api/agent/projects"), getState()]);
-      console.log(state ? "" : "No setup state yet: the first worker pass records a baseline for every project (no runs).\n");
+      console.log(state ? "" : "No setup state yet: every project gets one run, one at a time, starting with the next worker pass.\n");
       for (const p of projects.filter((x) => (!arg || x.id === arg) && x.dir && fs.existsSync(x.dir))) {
         const fp = fingerprint(p.dir);
-        const d = state ? shouldRunSetup(state[p.id] || null, fp, opts()) : { run: false, reason: "baseline" };
+        const d = shouldRunSetup(state?.[p.id] || null, fp, opts());
         console.log(`${p.id.padEnd(22)} ${d.run ? `RUN (${d.trigger})` : "skip"}  ${d.reason}\n${" ".repeat(23)}missing: ${fp.missing.join(", ") || "nothing"}`);
       }
       return;
@@ -427,7 +422,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
       const fp = fingerprint(project.dir);
       const state = await getState();
       console.log(`${project.id}: ${project.dir}\npresent: ${fp.present.join(", ") || "nothing"}\nmissing: ${fp.missing.join(", ") || "nothing"}\nhead ${fp.head || "—"} · docs ${fp.docs.slice(0, 12)} · remote ${fp.remote || "—"} · repo for PRs ${repoInfo(project.dir) ? "yes" : "no"}`);
-      console.log(`automatic run now: ${JSON.stringify(state ? shouldRunSetup(state[project.id] || null, fp, opts()) : { run: false, reason: "no state yet (baseline)" })}`);
+      console.log(`automatic run now: ${JSON.stringify(shouldRunSetup(state?.[project.id] || null, fp, opts()))}`);
       // Read-only: the checklist straight from the API (gather() would also write moved milestones into PRD.md).
       const mine = await api("GET", "/api/agent/items" + qs({ project: project.id }));
       let pack = null;

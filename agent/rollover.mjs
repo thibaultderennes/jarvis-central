@@ -111,8 +111,8 @@ export function rollForward({ today, todos = [], items = [], projects = [], sett
   const chosen = [];
   for (const c of cands) {
     const m = c.k && !counted.has(c.k) ? minutesOf(c.k) : 0;
-    if (room <= 0) { out.waiting.push({ title: c.title, key: c.k, reason: `daily carry-over cap (${S.rollover_max_per_day}) reached` }); continue; }
-    if (m && load + m > S.max_focus_minutes_per_day && load > 0) { out.waiting.push({ title: c.title, key: c.k, reason: `no room today (${load} of ${S.max_focus_minutes_per_day} focus min used, needs ${m})` }); continue; }
+    if (room <= 0) { out.waiting.push({ title: c.title, key: c.k, critical: c.critical, overdue: c.overdue, reason: `daily carry-over cap (${S.rollover_max_per_day}) reached` }); continue; }
+    if (m && load + m > S.max_focus_minutes_per_day && load > 0) { out.waiting.push({ title: c.title, key: c.k, critical: c.critical, overdue: c.overdue, reason: `no room today (${load} of ${S.max_focus_minutes_per_day} focus min used, needs ${m})` }); continue; }
     if (c.k) counted.add(c.k);
     load += m; room--; chosen.push(c);
   }
@@ -169,6 +169,10 @@ export async function runRollover({ today = todayTZ(), dry = false, fixture = nu
   for (const a of r.adds) await api("POST", "/api/agent/todos", { date: a.date, title: a.title, kind: a.kind, project_id: a.project_id, item_id: a.item_id, sort: a.sort, source: a.source, rolled_from: a.rolled_from, rolled_at: a.rolled_at });
   for (const p of r.parks) await api("PATCH", "/api/agent/todos", { id: p.id, date: null, time: null });
   for (const f of r.flags) await api("PATCH", "/api/agent/items", f).catch((e) => log("rollover: flag failed", f.id, e.message));
+  // What didn't fit, for the "waiting" line on Today (kv rollover.today; replaced every morning).
+  await api("PUT", "/api/agent/kv", { key: "rollover.today", value: { date: today, workday: r.workday, carried: r.carried, load: r.load,
+    waiting: r.waiting.slice(0, 50).map((w) => ({ title: w.title, key: w.key || null, critical: !!w.critical, overdue: w.overdue ?? 0, reason: w.reason })) } })
+    .catch((e) => log("rollover: waiting list not saved", e.message));
   return r;
 }
 

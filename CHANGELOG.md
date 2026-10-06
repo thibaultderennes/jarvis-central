@@ -17,7 +17,7 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   analyses the folder with pinned planning and writing skills from mattpocock/skills (MIT) and drafts the missing
   foundation: PRD (value, pain, ideal customer, non-goals), CLAUDE.md, README, .gitignore, `docs/architecture.md`
   (stack, data and auth, staging and production, error tracking), `.env.example`, brand doc, DESIGN.md. New files only,
-  on a `jarvis/setup-<id>` PR when the folder is a GitHub repo. Its questions for you become decide items; what it
+  on a `jarvis/setup-<id>` PR when the folder is a GitHub repo. After the upgrade each existing project gets one run. Its questions for you become decide items; what it
   can't write becomes critical checklist items. It also runs on its own for a project folder loaded for the first time,
   and for one updated with a foundation gap no earlier run handled (at most weekly). `node agent/setup.mjs check` shows
   what it would do; `queue <id>` runs it by hand. `projects.mjs sync` now keeps a project name typed on the dashboard.
@@ -34,7 +34,8 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 - **Daily roll-forward**: once a day (first worker pass after `planner.rollover_at`, work days only), undone todos from
   earlier days and overdue items you own with no todo go back to the top of today: critical first, then most overdue,
   then priority, at most `planner.rollover_max_per_day` (5) and within `max_focus_minutes_per_day`. A todo carried
-  `planner.rollover_flag_after` (3) times is parked in Someday and its item flagged "check: re-scope".
+  `planner.rollover_flag_after` (3) times is parked in Someday and its item flagged "check: re-scope". What doesn't fit
+  shows on Today as "N late tasks are waiting" (critical and most late first), so a full day never hides overdue work.
   `node agent/rollover.mjs --dry-run` shows what today's run would do.
 - **The Monday Jarvis review looks wider.** New sections *Projects this week* and *Pain points* (what keeps coming back
   in the reviews, the coaching report and the worker's failed runs), and, with `reviews.repo_scout` (on by default),
@@ -63,7 +64,8 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   `project_setup.auto_on_load`, `auto_on_update`, `cooldown_days`, `check_minutes`, `model`. Set
   `planner.rollover` or `project_setup.auto_on_*` to `false` to opt out.
 - Press "Refresh project folders" on Admin (or run `node agent/projects.mjs sync`) to detect existing websites.
-- On the first worker pass, existing projects are only recorded for the setup session (no runs start). To run one:
+- After the upgrade every existing project gets one setup run, one at a time (each opens a PR or writes only new
+  files). Set `project_setup.auto_on_load: false` first if you'd rather start them by hand with
   `node agent/setup.mjs queue <project-id>`.
 - Optional: `npm i -g @playwright/cli` on the Mac so website builds can screenshot what they built.
 

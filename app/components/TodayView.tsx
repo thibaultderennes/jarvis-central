@@ -7,6 +7,7 @@ import { CSS } from "@dnd-kit/utilities";
 import { createTodo, placeTodo, removeTodo, setDue, setItemStatus, toggleTodo } from "@/lib/actions";
 import type { Todo } from "@/lib/data";
 import type { CalEvent } from "@/lib/calendar";
+import { lateLabel, type Waiting } from "@/lib/rollover";
 import { EditTitle, type BItem } from "./Board";
 import { Ack, imeGuard, useSubmit } from "./Submit";
 import { Glyph, HeaderVec } from "@/components/brand";
@@ -18,6 +19,8 @@ type Props = {
   day: string; today: string; label: string; dateLine: string; prev: { d: string; l: string }; next: { d: string; l: string };
   todos: Todo[]; events: CalEvent[]; calendarOn: boolean; calendarError?: string; backlog: BItem[]; due: BItem[];
   projects: P[]; nowTime: string; capMinutes: number; blocks: Block[]; unplanned: { project_id: string; item_id: string; title: string; reason: string }[];
+  /** What this morning's roll-forward couldn't fit (kv rollover.today), shown only on that day. */
+  waiting?: Waiting | null;
 };
 const DEFAULT_EST = 60;
 const addDays = (d: string, n: number) => { const x = new Date(d + "T12:00:00Z"); x.setUTCDate(x.getUTCDate() + n); return x.toISOString().slice(0, 10); };
@@ -108,6 +111,7 @@ export default function TodayView(props: Props) {
         </div>
       </header>
       {msg && <div className="due late" role="alert">{msg}</div>}
+      {props.waiting && <WaitingLine w={props.waiting} pmap={Object.fromEntries(projects.map((p) => [p.id, p]))} />}
 
       <div className="td-grid">
         <section className="panel td-main" aria-label={`${props.label}'s list`}>
@@ -341,5 +345,33 @@ function Later({ overdue, coming, someday, suggest, pmap, projects, today, isTod
         {!someday.length && <div className="empty">Use ↓ on a todo to park it here.</div>}
       </div>
     </div>
+  );
+}
+
+/** "N tasks are waiting": late work the morning roll-forward couldn't fit, so it doesn't slip out of sight. */
+function WaitingLine({ w, pmap }: { w: Waiting; pmap: Record<string, P> }) {
+  const crit = w.tasks.filter((t) => t.critical).length;
+  return (
+    <details className="td-waiting" data-track-section="Waiting">
+      <summary>
+        <b>{w.count} late {w.count === 1 ? "task is" : "tasks are"} waiting</b>
+        {crit > 0 && <> · {crit} critical</>}
+        {" · "}{w.full && w.load ? `this morning today was already at ${w.load.before} of ${w.load.cap} focus min` : "this morning's carry-over cap was reached"}
+      </summary>
+      <p>Finish or move something on today&apos;s list to make room; tomorrow morning they come first. A task waiting with no room is never pushed into an over-full day.</p>
+      <ul>
+        {w.tasks.slice(0, 15).map((t, i) => {
+          const pid = t.key?.split("/")[0], p = pid ? pmap[pid] : undefined;
+          return (
+            <li key={i}>
+              {t.critical && <span className="due late">critical</span>}
+              <span className="ti">{t.title}</span>
+              <small>{p ? <Link href={`/p/${p.id}`}>{p.name}{t.key ? ` · ${t.key.split("/")[1]}` : ""}</Link> : null} · {lateLabel(t.overdue)}</small>
+            </li>
+          );
+        })}
+      </ul>
+      {w.count > 15 && <p>And {w.count - 15} more. Run <code>node agent/rollover.mjs --dry-run</code> on the Mac for the full list.</p>}
+    </details>
   );
 }

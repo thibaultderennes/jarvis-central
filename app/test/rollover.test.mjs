@@ -142,3 +142,21 @@ test("todos older than the lookback are history", () => {
   const r = rollForward({ today: TUE, todos: [todo({ date: "2026-09-01" })], items: [], settings: S });
   assert.ok(empty(r));
 });
+
+import { waitingFor, lateLabel } from "../lib/rollover.ts";
+
+test("waitingFor: only that day, critical then most late first", () => {
+  const v = { date: "2026-10-06", load: { before: 420, after: 420, cap: 360 }, waiting: [
+    { title: "a", key: "p/a", critical: false, overdue: 5, reason: "no room today (420 of 360 focus min used, needs 60)" },
+    { title: "b", key: "p/b", critical: true, overdue: 1, reason: "no room today (420 of 360 focus min used, needs 60)" },
+    { title: "c", key: null, critical: false, overdue: 9, reason: "daily carry-over cap (5) reached" } ] };
+  const w = waitingFor(v, "2026-10-06");
+  assert.equal(w.count, 3);
+  assert.deepEqual(w.tasks.map((t) => t.title), ["b", "c", "a"]);
+  assert.equal(w.full, true);
+  assert.equal(waitingFor(v, "2026-10-07"), null);
+  assert.equal(waitingFor({ date: "2026-10-06", waiting: [] }, "2026-10-06"), null);
+  assert.equal(waitingFor(null, "2026-10-06"), null);
+  assert.equal(lateLabel(0), "due today");
+  assert.equal(lateLabel(3), "3 days late");
+});
