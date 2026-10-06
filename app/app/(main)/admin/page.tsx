@@ -3,7 +3,7 @@ import { requireSession } from "@/lib/auth";
 import * as D from "@/lib/data";
 import { TZ, fmtDate } from "@/lib/time";
 import { OWNER, PLAN_WHEN, REVIEW_WHEN, VERSION } from "@/lib/instance";
-import { IgnoredList, PrefsForm, Proposals, RemoveProject, RescanButton, type Rescan } from "@/components/Admin";
+import { IgnoredList, NewProject, PrefsForm, Proposals, RemoveProject, RescanButton, type Rescan } from "@/components/Admin";
 import type { Ignored } from "@/lib/actions";
 import "./admin.css";
 import { Glyph, HeaderVec } from "@/components/brand";
@@ -33,6 +33,8 @@ export default async function AdminPage() {
 
       <section className="panel" aria-labelledby="h-projects">
         <div className="ph"><h2 className="ph-t" id="h-projects">Projects</h2><span className="sp" /><span className="hint">{listed.filter((p) => !p.archived).length} registered · {listed.filter((p) => p.archived).length} archived{ignored.length ? ` · ${ignored.length} removed or declined` : ""}</span></div>
+        <NewProject />
+        <div className="note-line">Start new project creates the folder in your projects folder on your Mac and adds it here. Claude then reads it and writes its first docs (PRD, CLAUDE.md, README and the rest of the foundation), new files only, and puts what it can&apos;t write and its questions for you on the project&apos;s checklist. Folders you approve below get the same setup, unless you switched it off (<code>project_setup</code> in jarvis.config.json).</div>
         <RescanButton state={rescan?.value || null} workerAt={hb?.value?.at || null} />
         <div className="note-line">A refresh scans your projects folder on your Mac, through the Jarvis worker. New folders wait below for your approval; nothing joins the dashboard on its own. Existing projects are updated, and nothing is ever deleted: a folder that is gone gets archived, and Remove only takes a project off the dashboard.</div>
         <Proposals list={rescan?.value?.status === "done" ? rescan.value.proposed || [] : []} />

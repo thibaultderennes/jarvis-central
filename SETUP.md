@@ -31,7 +31,8 @@ Copy `jarvis.config.example.json` to `jarvis.config.json`, fill it in, show it, 
 ## Phase 3 — Projects
 1. `node agent/projects.mjs list` and confirm the list with the owner (adjust `projects.include`/`exclude`,
    and `overrides` for names, kinds `checklist`/`running`, colours).
-2. `node agent/projects.mjs scaffold --dry-run` to show which files will be drafted, then `scaffold`.
+2. `node agent/projects.mjs scaffold --dry-run` to show which files will be drafted, then `scaffold`. (Once the worker
+   runs, projects started or loaded later get the full setup session instead: `agent/setup.mjs`.)
 3. Ask the owner to review each new `PRD.md`, especially the **milestones table** (its dates become deadlines,
    drive the burn-up charts and the planner). Offer to fill `TODO(owner)` items with them, one project at a time.
 

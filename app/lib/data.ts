@@ -46,7 +46,7 @@ export type Todo = {
   source?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null;
 };
 export type Message = {
-  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan" | "screen" | "website" | "review"; text: string; status: string; reply: string;
+  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan" | "screen" | "website" | "review" | "setup"; text: string; status: string; reply: string;
   meta: Record<string, unknown>; archived: boolean; created_at: string; updated_at: string; replied_at: string | null; opened_at: string | null; treated_at: string | null;
 };
 export type Review = {
@@ -275,7 +275,7 @@ export async function patchMessage(id: string, p: { status?: string; reply?: str
 }
 /** A message the agent leaves or queues: already answered (a note), or new work for the worker (a build run of an item). */
 export async function insertMessage(m: { text: string; project_id?: string | null; status?: string; reply?: string; meta?: Record<string, unknown>; mode?: string; item_id?: string | null; thread_id?: string | null }): Promise<{ id: string }> {
-  const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen", "website", "review"].includes(m.mode || "") ? m.mode! : "discuss";
+  const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen", "website", "review", "setup"].includes(m.mode || "") ? m.mode! : "discuss";
   const [row] = await sql()`insert into messages (text, project_id, status, reply, meta, mode, item_id, thread_id, replied_at)
     values (${m.text.slice(0, 4000)}, ${m.project_id || null}, ${status}, ${(m.reply || "").slice(0, 8000)}, ${JSON.stringify(m.meta || {})}, ${mode}, ${m.item_id || null}, ${m.thread_id || null}, ${status === "new" ? null : new Date().toISOString()}) returning id`;
   return { id: row.id as string };

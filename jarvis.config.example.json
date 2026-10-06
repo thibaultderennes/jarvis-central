@@ -49,6 +49,14 @@
     "timeout_minutes": 25
   },
 
+  "project_setup": {
+    "auto_on_load": true,
+    "auto_on_update": true,
+    "cooldown_days": 7,
+    "check_minutes": 60,
+    "model": null
+  },
+
   "audits": {
     "dir": "docs/audits",
     "sync_minutes": 60

@@ -9,6 +9,7 @@ API contract: `../docs/architecture.md`.
 |---|---|
 | `jarvis.mjs` | CLI for Claude Code sessions: checklists, todos, inbox, reviews (`node jarvis.mjs help`) |
 | `projects.mjs` | Your projects folder: `list`, `scaffold` (draft missing CLAUDE.md / PRD.md), `sync` (register on the site), `checklist <id>` (first checklist from the PRD) |
+| `setup.mjs` | The project setup session the worker runs for a new or loaded project (foundation docs, a PR, questions on the checklist); `check [id]`, `<id> --dry-run`, `queue <id>`, `new "<name>"`. What counts as the foundation, and when it re-runs: `foundation.mjs` |
 | `worker.mjs` | One inbox pass: picks up messages from the site, runs `claude -p` in the project, replies; once an hour also mirrors audit reports |
 | `economics.mjs` | Evaluates each project's unit-economics model file (`jarvis.economics.*` or `economics.models.<id>`; see `docs/unit-economics.md`) and uploads it to the Finances tab; `sync [--project id] [--dry-run]`, `eval <file>` |
 | `metrics.mjs` | Fetches each project's product numbers from its source in `metrics.sources.<id>` (URL or command; see `docs/metrics.md`) and posts the day's snapshot for the Stats view; `sync [--project id] [--dry-run]` |

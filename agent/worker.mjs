@@ -23,6 +23,7 @@ import { prepareWebsiteSkills, websiteBrief, playwrightCommand } from "./website
 import { prepareLughSkills, lughBrief, PLUGIN_NAME as LUGH_PLUGIN } from "./lugh.mjs";
 import { BUILD_MODES, buildModeFor } from "./projectsettings.mjs";
 import { queueDueReviews, runProjectReview } from "./reviewrun.mjs";
+import { setupProject, queueSetupDue } from "./setup.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -52,7 +53,7 @@ const DENY = ["Bash(git push:*)", "Bash(gh pr merge:*)", "Bash(gh pr create:*)",
 const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
 const tryGit = (dir, ...args) => { try { return git(dir, ...args); } catch { return null; } };
 
-function repoInfo(dir) {
+export function repoInfo(dir) {
   if (!dir || !fs.existsSync(dir)) return null;
   const top = tryGit(dir, "rev-parse", "--show-toplevel");
   // ~/Projects itself is an unrelated repo: only accept a repo rooted at the project dir
@@ -82,7 +83,7 @@ function linkNodeModules(src, dst) {
 }
 
 /** A throwaway worktree on `branch`: new from the base, or continuing a branch already on origin (a PR sent back). */
-function makeWorktree(project, repo, shortId, wanted = null) {
+export function makeWorktree(project, repo, shortId, wanted = null) {
   const wtRoot = path.join(path.dirname(repo.top), ".jarvis-worktrees");
   fs.mkdirSync(wtRoot, { recursive: true });
   const wt = path.join(wtRoot, `${project.id}-${shortId}`);
@@ -112,7 +113,7 @@ function commitLeftovers(wt, title) {
   return true;
 }
 
-function finishWorktree(repo, wt, branch, reply, modeLine = "") {
+export function finishWorktree(repo, wt, branch, reply, modeLine = "") {
   let pr_url = null;
   const ahead = Number(tryGit(wt, "rev-list", "--count", `origin/${repo.base}..HEAD`) || 0);
   const pushed = Number(tryGit(wt, "rev-list", "--count", `origin/${branch}..HEAD`) ?? ahead) > 0;
@@ -205,6 +206,7 @@ async function handle(message, projects) {
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
   if (message.mode === "screen") return screenProject(message, project, log); // Reviews → Screenings → Run
   if (message.mode === "review") return runProjectReview(message, project, log); // Settings → Run now, or the project's own schedule
+  if (message.mode === "setup") return setupProject(message, project, log); // Start new project / a project loaded or updated (setup.mjs)
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : JARVIS_ROOT;
   const repo = project ? repoInfo(dir) : null;
   // The build run of an in-progress item (queued by queueBuilds): one branch per item, so a PR sent back continues there.
@@ -381,6 +383,8 @@ async function pass() {
     await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
+    // A project loaded for the first time, or updated with a foundation gap: queue its setup session (setup.mjs).
+    await queueSetupDue(projects, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
     if (!skew) {
       // Once a day on a work day: yesterday's undone todos and overdue items back to the top of today (agent/rollover.mjs).
