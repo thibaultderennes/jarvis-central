@@ -29,7 +29,7 @@ Owner values: `founder` = the owner (you'd say "you"), `claude`, `both`.
 ## During / end of session
 - Finished something on the checklist → `jarvis set <project> <id> status=done`. New work discovered → `jarvis add`.
 - Never mark an item done that isn't done. Due-date moves are logged and show up as "slipped" in Monday reviews.
-- A new project folder → `node {{REPO}}/agent/projects.mjs scaffold --only <id>` then `projects.mjs sync`.
+- A new project → "Start new project" on the Admin page (or `node {{REPO}}/agent/setup.mjs new "<name>"`). A new folder → `projects.mjs sync`; the worker then runs the setup session (`setup.mjs queue <id>` runs it by hand).
 
 ## Changing Jarvis itself
 Follow `{{REPO}}/CLAUDE.md`: personal changes go in `jarvis.config.json` (never committed); tool changes are generic,

@@ -88,7 +88,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
             <article className="msg" key={root.id} data-c={p?.color || "other"}>
               <div className="mh">
                 {p && <span style={{ display: "flex", gap: 6, alignItems: "center" }}><i className="dot" />{p.name}</span>}
-                <span>{root.mode === "build" ? "build" : root.mode === "plan" ? "project plan" : (root.meta as { kind?: string }).kind === "refine" ? "new item" : (root.meta as { kind?: string }).kind === "comment" ? "your comment" : "discuss"}{root.review_id ? " · on a review" : ""}{root.item_id ? ` · item ${root.item_id}` : ""}</span>
+                <span>{root.mode === "build" ? "build" : root.mode === "plan" ? "project plan" : root.mode === "setup" ? "project setup" : (root.meta as { kind?: string }).kind === "refine" ? "new item" : (root.meta as { kind?: string }).kind === "comment" ? "your comment" : "discuss"}{root.review_id ? " · on a review" : ""}{root.item_id ? ` · item ${root.item_id}` : ""}</span>
                 <span>{mounted ? ago(last.created_at) : ""}</span>
                 {turns.length > 1 && <span>{turns.length} messages</span>}
                 <span className="sp" />

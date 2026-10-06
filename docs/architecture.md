@@ -10,7 +10,7 @@
      (`planner.adapt`, `agent/adapt.mjs`: planned vs done per project and an hours check in the plan notes; `apply` caps idle projects).
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
      (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
-   - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.
+   - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md` (offline; the full setup is `setup.mjs`), registers projects, drafts checklists.
    - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
      to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
      (`audits.sync_minutes`); `node agent/audits.mjs sync [--project id] [--dry-run]` runs it by hand.
@@ -38,6 +38,19 @@
      projects sync it also detects the site: site code (a web framework in a `package.json`, or an `index.html`), an address
      (`package.json` homepage, the GitHub repo homepage, a "Website: https://…" line in PRD.md / README.md / CLAUDE.md), whether
      it answers, and a Vercel / Netlify link. `node agent/website.mjs detect [id]` prints it; `node agent/website.mjs skills` fetches the pack.
+   - `setup.mjs`: the **project setup session** (message `mode: 'setup'`). Entry points: **Start new project** on the Admin page
+     (`meta: {kind: 'new', name, id}`; the worker creates `<projects_root>/<id>`, refusing a name or folder in use, registers the
+     project, then runs the session), a project loaded for the first time, and a project updated with a foundation gap
+     (`meta: {kind: 'setup', trigger: 'load'|'update'|'manual', reason}`, queued by the worker every pass, at most one at a time).
+     Claude reads the folder read-only with pinned planning/writing skills from `mattpocock/skills` (grilling, to-questionnaire,
+     to-spec, domain-modeling, writing-for-agents; `agent/skillpacks.mjs`) and returns the missing foundation pieces
+     (`agent/foundation.mjs`: PRD with value/pain/ICP and non-goals, CLAUDE.md, README, .gitignore, GitHub, stack, database and
+     auth, env vars, staging and production, error tracking, brand, design system). The script writes them: on a
+     `jarvis/setup-<id>` branch + PR in a repository with a remote (the worker's worktree flow), straight into the folder otherwise,
+     new files only (in a PR, a missing section may be appended to an existing doc). Questions only the owner can answer become
+     `decide` items owned by `founder`; what can't be written becomes items, the foundation ones critical; all validated and
+     scheduled like "Plan this project". The report is a strategy document "Project setup · date" (`meta.kind: 'project-setup'`).
+     When it re-runs is `shouldRunSetup` in `foundation.mjs` (kv `projects.setup`); `node agent/setup.mjs check` shows it.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
@@ -97,6 +110,8 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, proposed?: [project payload + folder], archived?, total?, error?}`;
   approving or declining a proposal removes it from `proposed`),
+  `projects.setup` (`{<project id>: {status 'baseline'|'queued'|'running'|'done'|'failed', at, trigger, missing, handled, docs, head, message_id?, pr_url?, review_id?, error?}}`:
+  the last setup run per project and the folder it saw; the first worker pass records a `baseline` for every project, no runs),
   `projects.ignored` (`[{id, folder?, name, reason 'removed'|'declined', at}]`: folders the scan skips. **Remove** on the
   Admin page archives the project, keeping its items and history, and adds it here; **Restore** takes it off and un-archives a removed project).
 - `login_attempts(ip, at, ok)`.
@@ -163,11 +178,11 @@ title contain every word (case- and accent-insensitive, archived projects left o
   item's build run); the worker script (not Claude) pushes and opens the PR. Claude never merges, deploys, pays, emails,
   texts, or touches production data or secrets. The only merge the worker script does is `gh pr merge` of a PR the
   owner approved on the item ("Approve & merge"); the item is then done.
-- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, merge approved PRs, then
+- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, queue at most one project setup run, merge approved PRs, then
   queue at most one build run (in-progress items owned by Claude, sent-back PRs first, critical first).
 - Anything outside that → status `needs_you` with a clear explanation.
 
-- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `website` = a website build, see `website.mjs` above; `plan` = "Plan this project", `agent/planproject.mjs`:
+- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `website` = a website build, see `website.mjs` above; `setup` = the project setup session, see `setup.mjs` above; `plan` = "Plan this project", `agent/planproject.mjs`:
   reads CLAUDE.md, PRD.md, `docs/audits/` and the checklist, adds items only to existing sections under new ids, due
   before the PRD milestone they serve; on a project that already has a checklist the same button reads "Refresh this
   project checklist" and the run also reads the git history and changed files since the checklist last moved plus the

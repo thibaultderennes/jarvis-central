@@ -21,9 +21,13 @@ These are the few rules the whole tool relies on. Setup enforces them; everythin
 | `CLAUDE.md` | How to work in this folder: what the project is, stack, commands, rules, where things live. | Every Claude Code session opened there, the inbox worker, the Monday reviews. |
 | `PRD.md` | What we're building and why: problem, users, goals and non-goals, scope, milestones with dates, success metrics, open questions. | The Monday advisors, the Sunday planner (deadlines), the first checklist draft. |
 
-Setup creates whichever is missing (`node agent/projects.mjs scaffold`): Claude reads the folder (README, package
-files, docs, git log) and drafts both from `templates/`. Anything it can't infer is marked `TODO(owner):` for the
-owner to fill in — it never invents facts, numbers or dates. Existing files are never overwritten.
+The **project setup session** creates whichever is missing, with the rest of the foundation (README, .gitignore,
+`docs/architecture.md` for stack, data and auth, environments and error tracking, `.env.example`, `docs/BRAND.md`,
+`DESIGN.md`): the worker runs it when you start a project from the Admin page or a folder is loaded for the first time
+(`node agent/setup.mjs queue <id>` runs it by hand). Claude reads the folder (README, package files, docs, git log) and
+drafts from `templates/`; anything it can't infer is marked `TODO(owner):` and asked on the checklist as a decide item.
+It never invents facts, numbers or dates, and never overwrites a file: in a repository with a remote the drafts come as
+a `jarvis/setup-<id>` pull request. `node agent/projects.mjs scaffold` is the offline variant (CLAUDE.md and PRD.md only).
 
 What "Plan this project" expects, and adds checklist items to create when missing (it doesn't invent a roadmap
 without a PRD):

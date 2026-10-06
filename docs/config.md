@@ -36,6 +36,11 @@ re-run it and redeploy after changing those.
 | `worker.discuss_model` | `"sonnet"` | Model for discussion messages (lighter on your plan). |
 | `worker.build_model` | `null` | Model for build messages (`null` = Claude Code's default). |
 | `worker.timeout_minutes` | `25` | Hard limit per message. |
+| `project_setup.auto_on_load` | `true` | A project created with "Start new project" (Admin) always gets the setup session. `true` = a project folder loaded for the first time (approved after "Refresh project folders", or registered by `projects.mjs sync`) gets it too: Claude analyses the folder, drafts the missing foundation docs (new files only; on a branch + PR when the folder is a repository with a remote) and puts what it can't write, and its questions for you, on the checklist. See `agent/setup.mjs`. |
+| `project_setup.auto_on_update` | `true` | Run it again on a project that changed (new commits or foundation docs edited) and has a foundation piece missing that no earlier run handled, at most once per `cooldown_days`. A complete folder, or one whose gaps are already drafted or on the checklist, never re-runs. `node agent/setup.mjs check` shows what it would do. |
+| `project_setup.cooldown_days` | `7` | Fewest days between two automatic runs on the same project. |
+| `project_setup.check_minutes` | `60` | How often the worker checks registered projects for an update run (new projects are picked up every pass). |
+| `project_setup.model` | `null` | Model for the setup session (`null` = `worker.build_model`, then Claude Code's default). |
 | `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Security tab. |
 | `audits.sync_minutes` | `60` | How often the worker mirrors those reports to the site (`0` = every worker pass). `node agent/audits.mjs sync` does it now. |
 | `economics.files` | `["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"]` | File names, relative to each project folder, that opt a project into unit economics: the first that exists is its model. See [`unit-economics.md`](unit-economics.md). |

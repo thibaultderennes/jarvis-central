@@ -8,6 +8,7 @@ import { isDate, today } from "./time";
 import { normBlockedBy, wouldCycle } from "./sqlbuild";
 import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
 import { normSiteUrl, websiteKind } from "./website";
+import { validateProjectName } from "./newProject";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -413,6 +414,32 @@ export async function requestRescan() {
   await D.kvSet("projects.rescan", { status: "queued", requested_at: new Date().toISOString() });
   await D.logActivity("projects_rescan", "/admin");
   done();
+}
+/**
+ * "Start new project": queues a setup message for the Mac worker, which creates the folder under projects_root
+ * (the typed name, slugified), registers the project and runs the setup session (agent/setup.mjs). A name already
+ * used by a project, a removed or declined folder, a proposed folder or another start in flight is refused here;
+ * the worker refuses a folder that already exists on the Mac.
+ */
+export async function startProject(name: string): Promise<{ error?: string; id?: string }> {
+  await requireSession();
+  const [projects, rescan, inflight] = await Promise.all([
+    D.getProjects(true), D.kvGet<{ proposed?: Proposal[] }>("projects.rescan"),
+    sql()`select meta from messages where mode = 'setup' and meta->>'kind' = 'new' and status in ('new', 'seen', 'working')`,
+  ]);
+  const base = (d?: string | null) => (d ? d.replace(/\/+$/, "").split("/").pop() || "" : "");
+  const taken = [
+    ...projects.flatMap((p) => [p.id, base(p.dir)]),
+    ...(await getIgnored()).flatMap((x) => [x.id, x.folder || ""]),
+    ...(rescan?.value?.proposed || []).flatMap((p) => [p.id, p.folder || ""]),
+    ...inflight.map((m) => String((m.meta as { id?: string })?.id || "")),
+  ].filter(Boolean);
+  const v = validateProjectName(name, taken);
+  if (v.error !== undefined) return { error: v.error };
+  await D.insertMessage({ text: `Start a new project: ${v.name}`, status: "new", mode: "setup", meta: { kind: "new", name: v.name, id: v.id } });
+  await D.logActivity("project_start", "/admin", { project: v.id });
+  done();
+  return { id: v.id };
 }
 /** Folders removed or declined on the Admin page (kv `projects.ignored`): the Mac scan never registers or proposes them again. */
 export type Ignored = { id: string; folder?: string; name: string; reason: "removed" | "declined"; at: string };
