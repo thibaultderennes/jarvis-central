@@ -13,6 +13,7 @@ import { runClaude } from "./claude.mjs";
 import { oneLiner } from "./advisors.mjs";
 import { DEFAULT_SECTIONS, parseMilestones, slugify } from "./structure.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
+import { detectSite } from "./website.mjs";
 
 export { DEFAULT_SECTIONS, parseMilestones, slugify };
 
@@ -133,6 +134,8 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
   const byId = Object.fromEntries(existing.map((p) => [p.id, p]));
   const used = new Set(existing.filter((p) => !p.archived).map((p) => p.color));
   const nextColor = () => { const c = COLORS.find((x) => !used.has(x)) || COLORS[used.size % COLORS.length]; used.add(c); return c; };
+  // What the folder says about the project's website (Reviews → Build website / Try a new visual).
+  const sites = await Promise.all(ps.map((p) => detectSite(p.dir, { remote: p.remote }).catch(() => null)));
   const payloads = ps.map((p, i) => {
     const cur = byId[p.id];
     const prd = read(path.join(p.dir, "PRD.md"));
@@ -149,6 +152,7 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
     if (cur?.state && !p.state) body.state = cur.state;
     if (cur?.status && !p.status) body.status = cur.status;
     if (!cur || !(cur.sections || []).length) body.sections = DEFAULT_SECTIONS; // never overwrite sections you edited
+    if (sites[i]) body.site = sites[i];
     return body;
   });
   const gone = existing.filter((e) => !e.archived && e.dir && path.resolve(e.dir).startsWith(path.resolve(PROJECTS_ROOT) + path.sep) && !ps.some((p) => p.id === e.id));

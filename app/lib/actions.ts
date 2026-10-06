@@ -7,6 +7,7 @@ import * as D from "./data";
 import { isDate, today } from "./time";
 import { normBlockedBy, wouldCycle } from "./sqlbuild";
 import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
+import { normSiteUrl, websiteKind } from "./website";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -340,6 +341,30 @@ export async function requestScreening(project_id: string, kind: string) {
   await D.insertMessage({ text: `Run the ${kind} screening on this project and add what to fix to the checklist.`, project_id, status: "new", mode: "screen", meta: { kind } });
   await D.logActivity("project_screening", `/p/${project_id}`, { project_id, kind });
   done();
+}
+
+/** Reviews → Build website / Try a new visual: the Mac worker builds it with the design skills on a branch and opens a PR. */
+export async function requestWebsite(project_id: string): Promise<{ error?: string }> {
+  await requireSession();
+  const p = await D.getProject(project_id);
+  if (!p) return { error: "No such project." };
+  const busy = await sql()`select id from messages where project_id = ${project_id} and mode = 'website' and status in ('new', 'seen', 'working') limit 1`;
+  if (busy.length) return {};
+  const kind = websiteKind(p);
+  await D.insertMessage({ text: kind === "redesign" ? `Try a new visual for ${p.name}'s website, using the design skills, and open a PR.` : `Build ${p.name}'s website from the project's docs, using the design skills, and open a PR.`,
+    project_id, status: "new", mode: "website", meta: { kind } });
+  await D.logActivity("project_website", `/p/${project_id}`, { project_id, kind });
+  done();
+  return {};
+}
+/** The website address the owner types on the Reviews page; it wins over what the folder suggests. "" clears it. */
+export async function setSiteUrl(project_id: string, url: string): Promise<{ error?: string }> {
+  await requireSession();
+  const v = normSiteUrl(url);
+  if (v === null) return { error: "That isn't a web address. Try something like example.com." };
+  await sql()`update projects set site_url = ${v} where id = ${project_id}`;
+  done();
+  return {};
 }
 
 /** The dashboard (Home): saves one tab's box layout after Customize. Cleaned server-side; kv `dashboard.layout`. */

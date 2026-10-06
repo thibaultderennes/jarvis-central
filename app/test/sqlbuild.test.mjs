@@ -69,3 +69,11 @@ test("wouldCycle: direct and indirect loops", () => {
   assert.equal(wouldCycle(edges, "a", ["d"]), false);
   assert.equal(wouldCycle({ x: ["x"] }, "a", ["x"]), false, "an existing self-loop elsewhere doesn't hang");
 });
+
+test("projectUpsert: the detected site is stored as JSON", () => {
+  const site = { code: { framework: "Astro", path: "." }, url: null, source: null, live: false, deploy: null, checked_at: "2026-10-06T00:00:00Z" };
+  const q = projectUpsert({ id: "demo", site });
+  placeholdersMatch(q);
+  assert.match(q.text, /^insert into projects \(id, site\)/);
+  assert.equal(q.params[1], JSON.stringify(site));
+});

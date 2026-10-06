@@ -30,6 +30,14 @@
      `screenings/<kind>.md`, marks every check fail / warn / pass / n/a / live (needs the deployed site) with file evidence, and
      proposes items; they are validated and scheduled like "Plan this project" (blockers critical, owner choices in decide). The report
      is a review of type `screening` (`meta: {kind, counts, added}`). `node agent/screen.mjs <id> <kind> --dry-run` prints the prompt.
+   - `website.mjs`: **website builds**, run from a project's Reviews → Screenings by **Build website** (no site yet) or
+     **Try a new visual** (message `mode: 'website'`, `meta.kind` = `new` | `redesign`). The worker runs it like a build (a
+     `jarvis/website-<id>` worktree, then a PR, never merged) with the design skills pack: taste-skill (taste, redesign,
+     image-to-code), vercel-labs `web-design-guidelines` and the Playwright CLI skill, fetched at pinned commits into the cache
+     and loaded with `claude --plugin-dir`, plus the awesome-design-md DESIGN.md library as an extra read directory. On each
+     projects sync it also detects the site: site code (a web framework in a `package.json`, or an `index.html`), an address
+     (`package.json` homepage, the GitHub repo homepage, a "Website: https://…" line in PRD.md / README.md / CLAUDE.md), whether
+     it answers, and a Vercel / Netlify link. `node agent/website.mjs detect [id]` prints it; `node agent/website.mjs skills` fetches the pack.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
@@ -44,7 +52,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 ```
 
 ## Data model (Postgres)
-- `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
+- `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, site jsonb null /* detected: {code: {framework, path}, url, source, live, deploy, checked_at} */, site_url text /* typed by the owner; wins */, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
   - `deadlines`: `[{date, label, prd?}]` (`prd`: a milestone moved on the Timeline; the date PRD.md still has until the Mac worker writes the new date into that row, `agent/milestones.mjs`), `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
 - `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at, blocked_by text[] /* codes of items in the same project it waits on */, sprint_id uuid null)` pk `(project_id, id)`
@@ -159,7 +167,7 @@ title contain every word (case- and accent-insensitive, archived projects left o
   queue at most one build run (in-progress items owned by Claude, sent-back PRs first, critical first).
 - Anything outside that → status `needs_you` with a clear explanation.
 
-- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `plan` = "Plan this project", `agent/planproject.mjs`:
+- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `website` = a website build, see `website.mjs` above; `plan` = "Plan this project", `agent/planproject.mjs`:
   reads CLAUDE.md, PRD.md, `docs/audits/` and the checklist, adds items only to existing sections under new ids, due
   before the PRD milestone they serve; on a project that already has a checklist the same button reads "Refresh this
   project checklist" and the run also reads the git history and changed files since the checklist last moved plus the

@@ -18,6 +18,7 @@ import { syncEconomicsDue } from "./economics.mjs";
 import { syncMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
+import { prepareWebsiteSkills, websiteBrief, playwrightCommand } from "./website.mjs";
 
 const VERSION = (() => { try { return fs.readFileSync(path.join(JARVIS_ROOT, "VERSION"), "utf8").trim(); } catch { return "dev"; } })();
 const W = CONFIG.worker || {};
@@ -39,6 +40,9 @@ const CODE_TOOLS = [
 // `git -C <dir> add` doesn't match "git add:*", and headless Claude often writes it that way: allow it for the
 // worktree path only, so `git -C <anywhere> push` stays denied.
 const codeTools = (wt) => [...CODE_TOOLS, `Bash(git -C ${wt} add:*)`, `Bash(git -C ${wt} commit:*)`];
+// A website build also runs the site and looks at it: dev/start scripts and the Playwright CLI.
+const WEBSITE_TOOLS = ["Bash(npm run dev:*)", "Bash(npm run start:*)", "Bash(npm run preview:*)", "Bash(npx next dev:*)", "Bash(npx astro dev:*)", "Bash(npx vite:*)",
+  "Bash(playwright-cli:*)"];
 const DENY = ["Bash(git push:*)", "Bash(gh pr merge:*)", "Bash(gh pr create:*)", "Bash(rm -rf:*)", "Bash(curl:*)", "Bash(vercel:*)", "Bash(railway:*)", "Bash(stripe:*)", "Bash(supabase:*)"];
 
 const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
@@ -198,10 +202,22 @@ async function handle(message, projects) {
   // The build run of an in-progress item (queued by queueBuilds): one branch per item, so a PR sent back continues there.
   const item = message.item_id && project ? (await api("GET", "/api/agent/items" + qs({ project: project.id }))).find((i) => i.id === message.item_id) || null : null;
   // The owner picks: "discuss" (read-only, lighter model) or "build" (branch + PR). Old messages: "auto".
-  const wantedBuild = W.allow_build !== false && (message.mode === "build" || (message.mode === "auto" && !!repo));
+  // Reviews → "Build website" / "Try a new visual": a code run with the design skills pack (agent/website.mjs).
+  const website = message.mode === "website";
+  if (website && (!repo || W.allow_build === false)) {
+    const reply = `NEEDS YOU: ${!repo ? `${project?.name || "This project"} has no git repository with a remote, so the website can't be built on a branch. Push the folder to GitHub (or add a remote), then press the button again.` : "Builds are off on this computer (worker.allow_build is false)."}`;
+    await api("PATCH", "/api/agent/messages", { id: message.id, status: "needs_you", reply });
+    return log("website: can't build", message.id, project?.id);
+  }
+  let pack = null;
+  if (website) {
+    try { pack = prepareWebsiteSkills(); }
+    catch (e) { log("website skills failed", e.message); }
+  }
+  const wantedBuild = W.allow_build !== false && (website || message.mode === "build" || (message.mode === "auto" && !!repo));
   let mode = wantedBuild && repo ? "code" : "answer", cwd = dir, wt = null, branch = null;
   if (mode === "code") {
-    try { ({ wt, branch } = makeWorktree(project, repo, shortId, item ? `jarvis/item-${item.id}` : null)); cwd = wt; }
+    try { ({ wt, branch } = makeWorktree(project, repo, shortId, item ? `jarvis/item-${item.id}` : website ? `jarvis/website-${shortId}` : null)); cwd = wt; }
     catch (e) { log("worktree failed, answer mode", message.id, e.message); mode = "answer"; }
   }
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "working", meta: { mode, branch } });
@@ -216,14 +232,20 @@ async function handle(message, projects) {
     const convo = await api("GET", "/api/agent/messages" + qs({ thread: message.thread_id, limit: 100 }));
     history = [...history, ...convo.filter((m) => m.id !== message.id && m.created_at < message.created_at).slice(-10)];
   }
-  const prompt = buildPrompt({ message, project, projects, mode, today: todayTZ(), cwd, review, history, wantedBuild: wantedBuild && mode !== "code", item });
+  let prompt = buildPrompt({ message, project, projects, mode, today: todayTZ(), cwd, review, history, wantedBuild: wantedBuild && mode !== "code", item });
+  const playwright = website ? playwrightCommand() : null;
+  if (website && mode === "code") prompt += "\n\n" + websiteBrief({ project, kind: message.meta?.kind, site: project.site, siteUrl: project.site_url, playwright,
+    pack: pack || { skills: {}, designsDir: null } });
   log("run", message.id, { project: project?.id, mode, cwd });
   let res;
   try {
     // Discussions default to a lighter model to spare plan usage; code work uses worker.build_model (null = CLI default).
-    res = await runClaude({ prompt, cwd, allowedTools: mode === "code" ? codeTools(cwd) : READ_TOOLS, disallowedTools: DENY,
-      model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: mode === "code" ? 60 : 30,
-      timeoutMs: (W.timeout_minutes || 25) * 60_000, log });
+    const site = website && mode === "code";
+    res = await runClaude({ prompt, cwd, allowedTools: mode === "code" ? [...codeTools(cwd), ...(site ? WEBSITE_TOOLS : [])] : READ_TOOLS, disallowedTools: DENY,
+      addDirs: site && pack ? [pack.pluginDir, ...(pack.designsDir ? [pack.designsDir] : [])] : [], pluginDirs: site && pack ? [pack.pluginDir] : [],
+      model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: site ? 120 : mode === "code" ? 60 : 30,
+      // A website takes longer than an item: twice the usual limit.
+      timeoutMs: (W.timeout_minutes || 25) * (site ? 2 : 1) * 60_000, log });
   } catch (e) {
     if (wt) tryGit(repo.top, "worktree", "remove", "--force", wt), tryGit(repo.top, "branch", "-D", branch);
     throw e;
