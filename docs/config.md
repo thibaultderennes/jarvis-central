@@ -23,6 +23,10 @@ re-run it and redeploy after changing those.
 | `planner.project_caps.<id>` | — | Weekly minutes cap for a project (e.g. a side project). The "Hours per week" setting on the project's page overrides it. |
 | `planner.adapt` | `"suggest"` | Sizes the week from the last 2 weeks. `suggest` adds "planned X, done Y" per project and an hours check (when most of your site actions and typed Claude Code messages fall outside `planner.hours`, it proposes the hours you really work) to the plan notes. `apply` does that and also caps a project where nothing moved in 2 weeks (no planned task done, no item closed, no Claude Code time) at `adapt_min_todos` tasks. `off` plans as before. An explicit `project_caps` entry or "Hours per week" always wins. |
 | `planner.adapt_min_todos` | `3` | Most tasks an idle project gets under `planner.adapt: "apply"`. |
+| `planner.rollover` | `true` | Daily roll-forward: once a day the worker carries unfinished work to the top of today instead of letting it slip. See [Daily roll-forward](#daily-roll-forward). `false` = off. |
+| `planner.rollover_at` | `"04:00"` | Earliest local time the roll-forward runs (the first worker pass after it, once a day). |
+| `planner.rollover_max_per_day` | `5` | Most todos carried into one day, so one bad day doesn't bury the next. |
+| `planner.rollover_flag_after` | `3` | A todo carried this many times and still not done is parked in Someday instead, and its checklist item is flagged "check: re-scope". |
 | `reviews.run` | Monday 05:00 | When the weekly reviews start. |
 | `reviews.advisors` | `["ceo","cmo","po"]` | Which advisors review each active project. |
 | `reviews.stance` | sceptical | Instruction given to every advisor about how hard to push back. |
@@ -50,3 +54,23 @@ re-run it and redeploy after changing those.
 | `usage.track_clicks` | `true` | Records your page views and clicks on the site (first-party, in your own database; only the labels the tool gives its buttons, links and tabs, never what you type) so the Monday Jarvis review can base its flow advice on how you actually move around. `false` stops it: the site gets it as `JARVIS_TRACK_CLICKS` from `setup.mjs secrets` (or just `setup.mjs usage`), then redeploy. |
 | `usage.retention_days` | `90` | Raw click events older than this are deleted by the Monday run. |
 | `guard.deny` | `[]` | Extra words the privacy guard must never let into a commit (client names, product names…). Your name, project folders and names, site address and home path are always blocked. |
+
+## Daily roll-forward
+
+The Sunday planner fills next week; the daily roll-forward (`agent/rollover.mjs`) keeps today honest. Once a day, on
+the first worker pass after `planner.rollover_at` on a work day (`planner.work_days`, or every day when
+`planner.weekends` is `always`), it looks back 14 days:
+
+- **What qualifies.** Undone todos dated before today, and open checklist items (to do or in progress) due today or
+  earlier that you own and that have no undone todo anywhere (past, today, later or Someday). Left alone: done and
+  cancelled items and their todos, Someday todos, Claude's items, and projects with "Plan into my calendar" off.
+- **Order.** Critical first, then most days overdue (from the day it was first meant for, or the item's due date),
+  then the item's priority, then its old day and position.
+- **Caps.** At most `planner.rollover_max_per_day` carry into a day (including any that already rolled in today), and
+  never past `planner.max_focus_minutes_per_day` of load, counted like the Today load bar (a todo linked to an item
+  weighs its estimate, 60 min when unknown). What doesn't fit stays on its day and is first in line tomorrow.
+- **Placement.** At the top of today, untimed. Each carry adds one to the todo's carry count.
+- **Repeats.** A todo carried `planner.rollover_flag_after` times and still not done is parked in Someday instead, and
+  its checklist item gets the "check: re-scope" flag with a note: split it, give it a realistic date, or cancel it.
+- **Safe to re-run.** A second run the same day changes nothing. `node agent/rollover.mjs --dry-run` shows what today's
+  run would do; `--date YYYY-MM-DD` pretends it's another day.

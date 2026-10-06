@@ -1,0 +1,21 @@
+{
+ "_comment": "Daily roll-forward fixture: node agent/rollover.mjs --fixture agent/fixtures/rollover.json --date 2026-10-12 (a Monday). Friday left two todos undone, one of them carried three times already; one item is overdue with no todo; one project has planning off.",
+ "projects": [
+  { "id": "example-app", "name": "Example app" },
+  { "id": "side-project", "name": "Side project", "plan_enabled": false }
+ ],
+ "items": [
+  { "project_id": "example-app", "id": "ship-login", "title": "Ship the login page", "status": "doing", "due": "2026-10-09", "owner": "founder", "critical": true, "priority": 1, "estimate_minutes": 120 },
+  { "project_id": "example-app", "id": "write-faq", "title": "Write the FAQ", "status": "todo", "due": "2026-10-07", "owner": "founder", "critical": false, "priority": 2, "estimate_minutes": 90 },
+  { "project_id": "example-app", "id": "pricing-copy", "title": "Pricing page copy", "status": "todo", "due": "2026-10-01", "owner": "founder", "critical": false, "priority": 2, "estimate_minutes": 60 },
+  { "project_id": "example-app", "id": "bot-task", "title": "Refactor the API client", "status": "todo", "due": "2026-10-08", "owner": "claude", "critical": false, "priority": 2 },
+  { "project_id": "side-project", "id": "logo", "title": "Pick a logo", "status": "todo", "due": "2026-10-05", "owner": "founder", "critical": false, "priority": 3 }
+ ],
+ "todos": [
+  { "id": "t1", "date": "2026-10-09", "title": "Ship the login page (1/2)", "done": false, "project_id": "example-app", "item_id": "ship-login", "time": "09:00", "sort": 1, "rollovers": 0 },
+  { "id": "t2", "date": "2026-10-09", "title": "Pricing page copy", "done": false, "project_id": "example-app", "item_id": "pricing-copy", "sort": 2, "rollovers": 3, "rolled_from": "2026-10-01" },
+  { "id": "t3", "date": "2026-10-09", "title": "Call the accountant", "done": false, "project_id": null, "item_id": null, "sort": 3, "rollovers": 0 },
+  { "id": "t4", "date": "2026-10-09", "title": "Groceries", "done": true, "project_id": null, "item_id": null, "sort": 4, "rollovers": 0 },
+  { "id": "t5", "date": "2026-10-12", "title": "Team call prep", "done": false, "project_id": null, "item_id": null, "time": "11:00", "sort": 1, "rollovers": 0 }
+ ]
+}

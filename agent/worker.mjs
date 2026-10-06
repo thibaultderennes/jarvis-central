@@ -17,6 +17,7 @@ import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
 import { syncMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
+import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
 import { prepareWebsiteSkills, websiteBrief, playwrightCommand } from "./website.mjs";
 
@@ -362,6 +363,8 @@ async function pass() {
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
     if (!skew) {
+      // Once a day on a work day: yesterday's undone todos and overdue items back to the top of today (agent/rollover.mjs).
+      await rolloverDue(log).then((r) => r && r.workday && log("rollover", { carried: r.carried, parked: r.parks.length, flagged: r.flags.length, waiting: r.waiting.length }, describeRollover(r).join(" | "))).catch((e) => log("rollover failed", e.message));
       await mergeApproved(projects, log).catch((e) => logChanged("merge-pass", e.message, "merge pass failed", e.message));
       await queueBuilds(projects, log).catch((e) => logChanged("build-queue", e.message, "build queue failed", e.message));
     }

@@ -242,3 +242,9 @@ alter table reviews add constraint reviews_type_check check (type in ('project',
 -- folder on each projects sync; `site_url` is the address the owner types, which always wins over the guess.
 alter table projects add column if not exists site jsonb;
 alter table projects add column if not exists site_url text not null default '';
+-- 0.7.4. Daily roll-forward (agent/rollover.mjs): an undone todo from an earlier day is carried to the top of today.
+-- `rollovers` counts the carries (parked in Someday and its item flagged after planner.rollover_flag_after),
+-- `rolled_from` is the day it was first meant for, `rolled_at` the day it last rolled in (the daily cap counts these).
+alter table todos add column if not exists rollovers int not null default 0;
+alter table todos add column if not exists rolled_from date;
+alter table todos add column if not exists rolled_at date;

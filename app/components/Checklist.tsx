@@ -218,7 +218,7 @@ function Row({ i, s, byId, sprint, selecting, selected, onSelect, today, fresh, 
           {i.status === "cancelled" && <span className="pill" title={i.cancel_reason || "Cancelled"}>cancelled{i.duplicate_of ? ` · duplicate of ${i.duplicate_of}` : ""}</span>}
           {i.refine === "pending" && <span className="pill go" title={i.refine_request ? "Claude is reading your comment and will adjust the item" : "Claude is reading this item and will add steps, a priority, an estimate and a due date that doesn't clash"}>{i.refine_request ? "reading your comment…" : "refining…"}</span>}
           {i.refine === "done" && <span className="pill" title={i.refine_note || "Refined by Claude"}>refined by Claude</span>}
-          {i.refine === "flagged" && <span className="pill crit" title={i.refine_note}>check: overlaps</span>}
+          {i.refine === "flagged" && <span className="pill crit" title={i.refine_note}>{/* agent/rollover.mjs RESCOPE */ i.refine_note?.startsWith("Re-scope:") ? "check: re-scope" : "check: overlaps"}</span>}
           {claudeOwned && i.status === "doing" && !i.build_status && <span className="pill go" title="The Mac worker starts building this within a minute">go given · queued</span>}
           {i.build_status === "working" && <span className="pill go">Claude is building…</span>}
           {i.build_status === "pr_open" && <span className="pill go">PR ready for you</span>}

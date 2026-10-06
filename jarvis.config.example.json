@@ -22,7 +22,11 @@
     "weekends": "overflow",
     "project_caps": { "example-project": 360 },
     "adapt": "suggest",
-    "adapt_min_todos": 3
+    "adapt_min_todos": 3,
+    "rollover": true,
+    "rollover_at": "04:00",
+    "rollover_max_per_day": 5,
+    "rollover_flag_after": 3
   },
 
   "reviews": {
