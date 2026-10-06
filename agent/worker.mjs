@@ -19,7 +19,7 @@ import { syncMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
 import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
-import { prepareWebsiteSkills, websiteBrief, playwrightCommand } from "./website.mjs";
+import { prepareWebsiteSkills, websiteBrief, playwrightCommand, githubWebUrl } from "./website.mjs";
 import { prepareLughSkills, lughBrief, PLUGIN_NAME as LUGH_PLUGIN } from "./lugh.mjs";
 import { BUILD_MODES, buildModeFor } from "./projectsettings.mjs";
 import { queueDueReviews, runProjectReview } from "./reviewrun.mjs";
@@ -47,7 +47,7 @@ const CODE_TOOLS = [
 const codeTools = (wt) => [...CODE_TOOLS, `Bash(git -C ${wt} add:*)`, `Bash(git -C ${wt} commit:*)`];
 // A website build also runs the site and looks at it: dev/start scripts and the Playwright CLI.
 const WEBSITE_TOOLS = ["Bash(npm run dev:*)", "Bash(npm run start:*)", "Bash(npm run preview:*)", "Bash(npx next dev:*)", "Bash(npx astro dev:*)", "Bash(npx vite:*)",
-  "Bash(playwright-cli:*)"];
+  "Bash(playwright-cli:*)", "Bash(npx serve:*)", "Bash(npx -y serve:*)", "Bash(python3 -m http.server:*)"];
 const DENY = ["Bash(git push:*)", "Bash(gh pr merge:*)", "Bash(gh pr create:*)", "Bash(rm -rf:*)", "Bash(curl:*)", "Bash(vercel:*)", "Bash(railway:*)", "Bash(stripe:*)", "Bash(supabase:*)"];
 
 const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
@@ -251,7 +251,8 @@ async function handle(message, projects) {
   let prompt = buildPrompt({ message, project, projects, mode, today: todayTZ(), cwd, review, history, wantedBuild: wantedBuild && mode !== "code", item });
   const playwright = website ? playwrightCommand() : null;
   if (website && mode === "code") prompt += "\n\n" + websiteBrief({ project, kind: message.meta?.kind, site: project.site, siteUrl: project.site_url, playwright,
-    pack: pack || { skills: {}, designsDir: null } });
+    pack: pack || { skills: {}, designsDir: null }, ask: String(message.meta?.ask || "").slice(0, 1000), keepColours: !!message.meta?.keep_colours,
+    branch, repoWeb: githubWebUrl(repo?.origin) });
   if (lugh) prompt += "\n\n" + lughBrief({ pack: lugh, sentBack: !!item?.build_note });
   log("run", message.id, { project: project?.id, mode, cwd });
   let res;

@@ -37,7 +37,8 @@
      proposes items; they are validated and scheduled like "Plan this project" (blockers critical, owner choices in decide). The report
      is a review of type `screening` (`meta: {kind, counts, added}`). `node agent/screen.mjs <id> <kind> --dry-run` prints the prompt.
    - `website.mjs`: **website builds**, run from a project's Reviews → Screenings by **Build website** (no site yet) or
-     **Try a new visual** (message `mode: 'website'`, `meta.kind` = `new` | `redesign`). The worker runs it like a build (a
+     **Try a new visual** (message `mode: 'website'`, `meta: {kind: 'new'|'redesign', ask, keep_colours}`). A redesign builds 3
+     distinct home-page directions as previews under `/visuals/` (live pages untouched), with screenshots in the PR. The worker runs it like a build (a
      `jarvis/website-<id>` worktree, then a PR, never merged) with the design skills pack: taste-skill (taste, redesign,
      image-to-code), vercel-labs `web-design-guidelines` and the Playwright CLI skill, fetched at pinned commits into the cache
      and loaded with `claude --plugin-dir` (`agent/skillpacks.mjs`), plus the awesome-design-md DESIGN.md library as an extra read directory. On each

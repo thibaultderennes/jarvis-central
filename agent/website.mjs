@@ -96,26 +96,62 @@ export function prepareWebsiteSkills() {
 }
 
 /* ---------------- the run's prompt ---------------- */
-/** The extra instructions for a website build run; worker.mjs appends them to its usual code-mode prompt. */
-export function websiteBrief({ project, kind, site, siteUrl, pack, playwright }) {
+/** "https://github.com/owner/repo" for a GitHub remote (ssh or https), else null. */
+export function githubWebUrl(remote) {
+  const m = String(remote || "").match(/github\.com[:/]([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/);
+  return m ? `https://github.com/${m[1]}/${m[2]}` : null;
+}
+
+/**
+ * The extra instructions for a website build run; worker.mjs appends them to its usual code-mode prompt.
+ * `kind` "new" builds the first site; "redesign" (Try a new visual) builds 3 distinct directions as preview pages next to
+ * the live site, which stays untouched. `ask` = what the owner wants changed (free text, may be empty); `keepColours` =
+ * keep the current palette (otherwise only the name and logo are fixed). `branch` + `repoWeb` let the reply embed screenshots.
+ */
+export function websiteBrief({ project, kind, site, siteUrl, pack, playwright, ask = "", keepColours = false, branch = null, repoWeb = null }) {
   const url = siteUrl || site?.url || null;
   const sk = (n) => pack.skills[n] ? `\`${pack.skills[n]}\`` : "(not available this run: skip)";
   const redesign = kind === "redesign";
-  return `## Website build (${redesign ? "Try a new visual" : "Build website"})
-The owner pressed "${redesign ? "Try a new visual" : "Build website"}" on ${project.name}'s Reviews page. ${redesign
-    ? `The project already has a website${url ? ` (${url}${siteUrl ? ", set by the owner" : site?.source ? `, found in ${site.source}` : ""})` : ""}${site?.code ? `; its code is ${site.code.framework} in \`${site.code.path}\`` : ""}. Give it a new, clearly better visual direction: restyle the existing pages, keep the routes, content, data and behaviour.`
-    : `It has no website yet${site?.code ? ` (but ${site.code.framework} code exists in \`${site.code.path}\`: build on it)` : ""}. Build its first public website.`}
+  const refs = pack.designsDir ? `Real design systems are in \`${pack.designsDir}\` (one folder per brand, each with a DESIGN.md).` : "";
+  const shotsUrl = (f) => repoWeb && branch ? `${repoWeb}/blob/${branch}/${f}?raw=true` : null;
+  const look = playwright
+    ? `Use the Playwright CLI skill ${sk("playwright-cli")} (\`${playwright}\`): serve the site (the project's dev script as a background command, or a static file server for plain HTML), check the console for errors, and fix what looks broken. Stop the server before you finish.`
+    : "The Playwright CLI isn't installed on this computer, so you can't screenshot: say so in your final message (install it with `npm i -g @playwright/cli`).";
+  const askLine = ask ? `\n\n**What the owner wants changed (their words, the most important input):** ${ask}` : "";
+  if (!redesign) return `## Website build (Build website)
+The owner pressed "Build website" on ${project.name}'s Reviews page. It has no website yet${site?.code ? ` (but ${site.code.framework} code exists in \`${site.code.path}\`: build on it)` : ""}. Build its first public website.${askLine}
 
 1. **Read everything about the project first**: PRD.md, CLAUDE.md, README, DESIGN.md or any brand/design doc, docs/, and the existing UI code. The site's message, audience, offer and call to action come from these docs only. Never invent features, numbers, testimonials, logos of customers, prices or claims; where the docs don't say, write \`TODO(owner): …\` in the copy.
-2. **Design direction.** Follow the taste skill ${sk("taste-skill")}${redesign ? ` and the redesign skill ${sk("redesign-skill")} (audit the current UI first, then redesign)` : ""}. Read the SKILL.md files with Read; they are also loaded as the \`${PLUGIN_NAME}\` plugin's skills.
-3. **Design system.** ${pack.designsDir ? `Real design systems are in \`${pack.designsDir}\` (one folder per brand, each with a DESIGN.md).` : ""} If the project has a DESIGN.md, follow it. If not, pick 1-2 references that fit the project's audience and tone, and write the project's own \`DESIGN.md\` adapted from them (tokens, type scale, spacing, components, do/don't). Borrow principles and structure, never another brand's name, logo or signature identity.
-4. **From reference to code.** Use the image-to-code skill ${sk("image-to-code-skill")} for its analyse-then-implement discipline. There is no image generator in this run: skip any step that generates images and work from the DESIGN.md and the references instead.
+2. **Design direction.** Follow the taste skill ${sk("taste-skill")}. Read the SKILL.md files with Read; they are also loaded as the \`${PLUGIN_NAME}\` plugin's skills.
+3. **Design system.** ${refs} If the project has a DESIGN.md, follow it. If not, pick 1-2 references that fit the project's audience and tone, and write the project's own \`DESIGN.md\` adapted from them (tokens, type scale, spacing, components, do/don't). Borrow principles and structure, never another brand's name, logo or signature identity.
+4. **From reference to code.** Use the image-to-code skill ${sk("image-to-code-skill")} for its analyse-then-implement discipline. There is no image generator in this run: skip any step that generates images.
 5. **Where the code goes.** Match the project's stack. ${site?.code ? `The site code lives in \`${site.code.path}\` (${site.code.framework}).` : "If the project has no web stack, create a static site in `site/` (HTML and CSS, no build step) unless the PRD names a stack."} Don't add dependencies unless there is no other way: \`npm install\` is not available in this run, so list any needed package in your final message instead.
-6. **Audit.** Run the web design guidelines skill ${sk("web-design-guidelines")} on the files you changed and fix what it finds (it fetches its rules with WebFetch).
-7. **Look at it.** ${playwright ? `Use the Playwright CLI skill ${sk("playwright-cli")} (\`${playwright}\`): start the site (the project's dev script as a background command, or open the static file), take desktop (1440 px) and mobile (390 px) screenshots of each page you touched, check the console for errors, and fix what looks broken. Stop the dev server before you finish. Don't commit screenshots.` : "The Playwright CLI isn't installed on this computer, so skip the visual check and say so in your final message (install it with `npm i -g @playwright/cli`)."}
+6. **Audit.** Run the web design guidelines skill ${sk("web-design-guidelines")} on the files you changed and fix what it finds.
+7. **Look at it.** ${look}${playwright ? " Take desktop (1440 px) and mobile (390 px) screenshots of each page into `visuals/screenshots/` and commit them." : ""}
 8. Commit in small steps with clear messages. Never deploy, never change DNS or hosting, never touch .env files or secrets.
 
-Final message: what you built or changed (files), the design reference you used and why, the guideline findings fixed and left, what the screenshots showed, every \`TODO(owner)\` you left, and how to preview it locally.`;
+Final message: what you built (files), the design reference you used and why, the guideline findings fixed and left, every \`TODO(owner)\` you left, how to preview it locally${shotsUrl("visuals/screenshots/") ? `, and a **Screenshots** section embedding each committed screenshot as a Markdown image with the URL form ${shotsUrl("visuals/screenshots/<file>.png")}` : ""}.`;
+
+  return `## Website build (Try a new visual)
+The owner pressed "Try a new visual" on ${project.name}'s Reviews page. The project already has a website${url ? ` (${url}${siteUrl ? ", set by the owner" : site?.source ? `, found in ${site.source}` : ""})` : ""}${site?.code ? `; its code is ${site.code.framework} in \`${site.code.path}\`` : ""}. They want to SEE genuinely different looks, not a polish of the current one. A restyle that keeps the same colours, type and layout is a failed run.${askLine}
+
+**What to build: 3 distinct directions (A, B, C) of the home page**, each a standalone preview next to the live site. Do not change the live pages, their shared CSS, components or routes: everything new lives under a \`visuals/\` path the site serves (for a static site, a \`visuals/\` folder in the folder it publishes; for a framework, a \`/visuals/a\`, \`/visuals/b\`, \`/visuals/c\` route with its own styles), plus an index page at \`/visuals/\` linking the three with one line each.
+
+**Fixed:** the product name, the logo/mark, and the copy (message, claims, CTA) from the docs and the current home page. ${keepColours
+    ? "**The owner asked to keep their colours:** reuse the current palette in all three; vary type, layout, density, imagery and motion instead."
+    : "**Everything else is open, including the palette and the typefaces.** Brand rules in the docs that lock colours, fonts or layout do not bind these previews: the owner pressed this button to see alternatives. (The name and logo stay.)"}
+
+**How different:** each direction must differ from the current site and from the other two on at least three of: colour palette (or, if colours are kept, its use: dark vs light base, accent placement), type pairing, layout structure (grid, hero composition, section rhythm), density/whitespace, imagery or illustration style, motion. Give each a one-line name (e.g. "A · Night broadcast"). Make one direction safe-but-fresh, one bold, one unexpected for this category.
+
+1. **Read the project first**: PRD.md, CLAUDE.md, README, any brand/design doc, and the current home page. Note the audience, the tone and the one thing the page must make people do.
+2. **Audit the current look** with the redesign skill ${sk("redesign-skill")}: list what makes it look the way it does (palette, type, layout), so the directions can deliberately move away from it.
+3. **Pick a different reference for each direction.** ${refs} Choose three that differ from each other and from the current site, each fitting the audience. Follow the taste skill ${sk("taste-skill")} for each. Borrow principles and structure, never another brand's name, logo or signature identity.
+4. **Build each one** with the image-to-code skill's discipline ${sk("image-to-code-skill")} (analyse the reference, then implement; no image generator here, so skip generation). Plain HTML/CSS or the project's stack; no new dependencies (\`npm install\` isn't available; use system font stacks or fonts already in the repo, and say which webfont you'd add).
+5. **Audit** each with the web design guidelines skill ${sk("web-design-guidelines")} and fix what it finds.
+6. **Look at them.** ${look}${playwright ? " Take desktop (1440 px) and mobile (390 px) screenshots of the current home page and of each direction into `visuals/screenshots/` (`current-desktop.png`, `a-desktop.png`, `a-mobile.png`, …) and commit them. If two directions look alike in the screenshots, change one until they don't." : ""}
+7. Write \`visuals/README.md\`: per direction, its name, the reference it borrows from, palette and type, and what it would mean to adopt it (which files change). Commit in small steps. Never deploy, never touch .env files or secrets.
+
+Final message: the three directions (name, one line on the idea, the reference), the preview paths (\`/visuals/a\` …) and how to open them locally${shotsUrl("x") ? `, a **Screenshots** section embedding the committed screenshots as Markdown images with the URL form ${shotsUrl("visuals/screenshots/<file>.png")} (current, then A, B, C)` : ""}, and how to adopt one: the owner replies "apply B" (or comments on the PR) and a build run makes it the real site.`;
 }
 
 /** The Playwright CLI command available on this computer, if any. */
