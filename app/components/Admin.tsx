@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { approveProject, declineProject, removeProject, requestRescan, restoreProject, savePrefs, type Ignored } from "@/lib/actions";
+import { approveProject, declineProject, removeProject, requestRescan, restoreProject, savePrefs, startProject, type Ignored } from "@/lib/actions";
 import { Ack, enterCommits, useSubmit } from "./Submit";
 
 export type Proposal = { id: string; name: string; folder?: string; dir?: string; tagline?: string };
@@ -31,6 +31,28 @@ export function RescanButton({ state, workerAt }: { state: Rescan | null; worker
       <span className={`mst ${state?.status === "failed" ? "err" : busy ? "wait" : "ok"}`} role="status">{line}</span>
       {offline && <span className="due late">{workerAt ? "The Mac worker is offline: the scan runs when your Mac wakes." : "The Mac worker isn't installed yet: the scan can't run."}</span>}
     </div>
+  );
+}
+
+/** "Start new project": the Mac worker creates the folder, adds the project and runs the setup session on it. */
+export function NewProject() {
+  const [name, setName] = useState("");
+  const sub = useSubmit();
+  const send = (e: React.FormEvent) => {
+    e.preventDefault();
+    sub.submit(() => startProject(name), { ok: "Queued: the result arrives in your Inbox", onOk: () => setName("") });
+  };
+  return (
+    <form className="newproj" onSubmit={send} data-track-section="Start new project">
+      <label className="lbl" htmlFor="new-project-name">New project</label>
+      <input className="input" id="new-project-name" type="text" maxLength={60} placeholder="Project name" autoComplete="off" value={name}
+        onChange={(e) => { setName(e.target.value); if (sub.err) sub.clear(); }} />
+      <button className="btn" type="submit" disabled={sub.pending || !name.trim()}
+        title="Creates the folder in your projects folder on your Mac, adds it here, then Claude writes its first docs (PRD, CLAUDE.md, README…) and puts its questions for you on the checklist">
+        {sub.pending ? "Starting…" : "Start new project"}
+      </button>
+      <Ack s={sub} busy="Starting…" />
+    </form>
   );
 }
 

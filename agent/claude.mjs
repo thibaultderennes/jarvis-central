@@ -8,12 +8,13 @@ export const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
  * Permission mode `dontAsk`: anything not in --allowedTools is denied without a prompt
  * (headless runs have nobody to answer one).
  */
-export function runClaude({ prompt, cwd, allowedTools = [], disallowedTools = [], addDirs = [], tools, maxTurns = 60, timeoutMs = 25 * 60_000, model, log = () => {} }) {
+export function runClaude({ prompt, cwd, allowedTools = [], disallowedTools = [], addDirs = [], pluginDirs = [], tools, maxTurns = 60, timeoutMs = 25 * 60_000, model, log = () => {} }) {
   const args = ["-p", prompt, "--output-format", "json", "--permission-mode", "dontAsk", "--max-turns", String(maxTurns)];
   if (tools !== undefined) args.push("--tools", tools); // "" = no tools at all (pure text/JSON calls)
   if (allowedTools.length) args.push("--allowedTools", ...allowedTools);
   if (disallowedTools.length) args.push("--disallowedTools", ...disallowedTools);
   for (const d of addDirs) args.push("--add-dir", d);
+  for (const d of pluginDirs) args.push("--plugin-dir", d); // a local plugin for this run only (skills)
   if (model) args.push("--model", model);
   const started = Date.now();
   return new Promise((resolve, reject) => {

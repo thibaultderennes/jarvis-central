@@ -53,7 +53,7 @@ else {
 if (fs.existsSync(PROJECTS_ROOT)) {
   const ps = scanProjects(), missing = ps.filter((p) => !p.hasClaude || !p.hasPrd);
   ok(`projects_root ${PROJECTS_ROOT} (${ps.length} projects)`);
-  if (missing.length) warn(`${missing.length} project(s) without CLAUDE.md or PRD.md: ${missing.map((p) => p.id).join(", ")}`, "`node agent/projects.mjs scaffold`");
+  if (missing.length) warn(`${missing.length} project(s) without CLAUDE.md or PRD.md: ${missing.map((p) => p.id).join(", ")}`, "`node agent/setup.mjs queue <id>` (or `node agent/projects.mjs scaffold`, offline)");
 } else bad(`projects_root ${PROJECTS_ROOT} doesn't exist`, "set projects_root in jarvis.config.json to the folder that holds one folder per project");
 
 // secrets + API

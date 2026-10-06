@@ -111,7 +111,8 @@ export function PaceBullets({ rows }: { rows: Insight[] }) {
 
 /** 100% stacked bars: who the open items are waiting on. */
 export function OwnerBars({ rows }: { rows: Insight[] }) {
-  const seg = [["you", "You", "var(--own-you)"], ["claude", "Claude", "var(--own-claude)"], ["both", "Both", "var(--own-both)"]] as const;
+  // One slate ramp, strongest on you: segments run you → both → Claude so the shades read in order.
+  const seg = [["you", "You", "var(--own-you)"], ["both", "Both", "var(--own-both)"], ["claude", "Claude", "var(--own-claude)"]] as const;
   return (
     <div className="pb">
       {rows.map((r) => {
@@ -119,9 +120,9 @@ export function OwnerBars({ rows }: { rows: Insight[] }) {
         return (
           <div key={r.id} className="stack100" data-c={r.color}>
             <span style={{ display: "flex", gap: 7, alignItems: "center" }}><i className="dot" />{r.name}</span>
-            <span className="bars" role="img" aria-label={`${r.name}: ${r.owners.you} on you, ${r.owners.claude} on Claude, ${r.owners.both} on both`}>
+            <span className="bars" role="img" aria-label={`${r.name}: ${r.owners.you} on you, ${r.owners.both} on both, ${r.owners.claude} on Claude`}>
               {seg.map(([k, label, c]) => r.owners[k] > 0 && (
-                <span key={k} title={`${label}: ${r.owners[k]}`} style={{ width: `${(r.owners[k] / n) * 100}%`, background: c }}>{r.owners[k] / n > 0.12 ? r.owners[k] : ""}</span>
+                <span key={k} className={`own-${k}`} title={`${label}: ${r.owners[k]}`} style={{ width: `${(r.owners[k] / n) * 100}%`, background: c }}>{r.owners[k] / n > 0.12 ? r.owners[k] : ""}</span>
               ))}
             </span>
             <span className="due" style={{ textAlign: "right" }}>{Math.round((r.owners.you / n) * 100)}%</span>

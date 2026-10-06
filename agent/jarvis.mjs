@@ -205,7 +205,7 @@ async function main() {
       let d = null;
       for (const t of ts.sort((a, b) => (a.date || "9").localeCompare(b.date || "9") || (a.sort ?? 0) - (b.sort ?? 0))) {
         if (t.date !== d) { d = t.date; out(`\n# ${d || "someday"}`); }
-        out(`${t.done ? "[x]" : "[ ]"} ${t.time ? t.time + " " : ""}${t.title}${t.kind === "life" ? "  (life)" : t.project_id ? `  (${t.project_id}${t.item_id ? "/" + t.item_id : ""})` : ""}`);
+        out(`${t.done ? "[x]" : "[ ]"} ${t.time ? t.time + " " : ""}${t.title}${t.kind === "life" ? "  (life)" : t.project_id ? `  (${t.project_id}${t.item_id ? "/" + t.item_id : ""})` : ""}${t.rollovers ? `  carried ${t.rollovers}×` : ""}`);
       }
       if (!ts.length) out("No todos in that range.");
       return;

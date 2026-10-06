@@ -2,8 +2,8 @@
 // Every value goes in as a numbered placeholder; the 0.5.x "text = integer" bug (#8) came from placeholders that drifted
 // from their params.
 
-export const PROJECT_FIELDS = ["name", "kind", "color", "tagline", "state", "status", "dir", "sections", "deadlines", "links", "sort", "archived", "featured_rank", "plan_enabled", "weekly_minutes", "reviews_enabled"] as const;
-const PROJECT_JSON = new Set(["sections", "deadlines", "links"]);
+export const PROJECT_FIELDS = ["name", "kind", "color", "tagline", "state", "status", "dir", "sections", "deadlines", "links", "sort", "archived", "featured_rank", "plan_enabled", "weekly_minutes", "reviews_enabled", "site", "site_url"] as const;
+const PROJECT_JSON = new Set(["sections", "deadlines", "links", "site"]);
 
 /** Insert-or-update one project with only the fields given; `id` is always $1. */
 export function projectUpsert(p: { id: string } & Record<string, unknown>): { text: string; params: unknown[] } {

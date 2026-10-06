@@ -17,6 +17,7 @@ It should look like a well-kept instrument, not a landing page: no decoration th
 | Lines | `--line` / `--line-2` | `#D5D9E0` / `#E7EAEE` | `#29303B` / `#1F242D` | borders / row dividers |
 | Signal | `--signal`, `--signal-ink`, `--signal-soft` | amber `#E9A100` | `#F5B82E` | **"now" only**: today line, the next thing, the active nav dot |
 | Status | `--doing`, `--done`, `--bad` (+ `-soft`) | | | in progress, done, late/critical. Always with a word or icon, never colour alone |
+| Owners | `--own-you` / `--own-both` / `--own-claude` | slate `#2A3248` / `#59637B` / `#A0ABC5` | `#D3DEFA` / `#9AA4BE` / `#59637B` | "Who it's waiting on": one slate ramp (ordinal check in the dataviz validator), strongest on you, always with the legend |
 | Projects | `--p1` … `--p7` | blue `#2B5FC7`, rust `#C2551B`, teal `#00968A`, plum `#8E44AD`, olive `#7A8A00`, magenta `#C23F78`, sky `#2E9BD6` | `#5A84E2`, `#CF6A39`, `#14A091`, `#A468C2`, `#8C9B18`, `#D45E8A`, `#3C9BD0` | a project's identity |
 
 - Every text colour is at least **4.5:1** on `--ground`, `--surface` and `--surface-2` (muted `--ink-3` is 4.96:1 on the

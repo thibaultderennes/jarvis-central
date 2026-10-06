@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { requireSession } from "@/lib/auth";
@@ -5,6 +6,8 @@ import * as D from "@/lib/data";
 import { addDays, daysBetween, fmtDate, today } from "@/lib/time";
 import Checklist from "@/components/Checklist";
 import Screenings, { type ScreenCard } from "@/components/Screenings";
+import WebsiteCard, { type WebsiteRun } from "@/components/WebsiteCard";
+import { siteSummary, websiteKind } from "@/lib/website";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
 import ProjectSettings from "@/components/ProjectSettings";
@@ -17,11 +20,12 @@ import { deliveryStats, productStats } from "@/lib/projectStats";
 import Timeline, { MilestoneList } from "@/components/Timeline";
 import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
+import { effectiveBuildMode, isBuildMode, nextReview, reviewEvery } from "@/lib/projectSettings";
 import "./project.css";
 import "../../finance/finance.css";
 
 type Search = { v?: string; k?: string; r?: string; t?: string; tab?: string; w?: string };
-const VIEWS = ["checklist", "timeline", "project", "reviews", "finance", "stats"] as const;
+const VIEWS = ["checklist", "timeline", "project", "reviews", "finance", "stats", "settings"] as const;
 type View = (typeof VIEWS)[number];
 // Older links keep working: ?tab=… (before the 0.5.0 menu) and ?v=dashboard (its summary now sits beside the checklist).
 const LEGACY: Record<string, { v: View; k?: string }> = { checklist: { v: "checklist" }, reviews: { v: "reviews" }, strategy: { v: "project" }, security: { v: "reviews", k: "security" }, screenings: { v: "reviews", k: "screenings" }, dashboard: { v: "checklist" } };
@@ -54,6 +58,8 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     return { kind, title, what, running: msgs.some((m) => m.project_id === id && m.mode === "screen" && m.meta?.kind === kind && ["new", "seen", "working"].includes(m.status)),
       last: last ? { date: last.created_at.slice(0, 10), verdict: last.verdict, fail: c.fail || 0, live: c.live || 0 } : null };
   });
+  const site = msgs.find((m) => m.project_id === id && m.mode === "website"); // newest first
+  const siteRun: WebsiteRun = site ? { status: site.status, created_at: site.created_at, pr_url: (site.meta?.pr_url as string) || null, reply: site.reply } : null;
   const open = items.filter(D.isOpen), dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
   const planning = msgs.some((m) => m.project_id === id && m.mode === "plan" && ["new", "seen", "working"].includes(m.status));
@@ -66,7 +72,9 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     { v: "reviews", label: "Reviews", count: weekly.length + audits.length + screenings.length || undefined },
     { v: "finance", label: "Finances", count: costs.filter((c) => c.active).length || undefined },
     { v: "stats", label: "Stats" },
+    { v: "settings", label: "Settings" },
   ];
+  const every = reviewEvery(p.review_every_days);
 
   return (
     <div data-c={p.color} className="ppage">
@@ -76,7 +84,6 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           <p className="sub">{p.tagline} · {dn} of {items.filter((i) => i.status !== "cancelled").length} done{next ? ` · ${next.label} in ${daysBetween(t, next.date)} days (${fmtDate(next.date)})` : ""}</p>
         </div>
         <div className="subtabs">
-          <PlanButton projectId={id} running={planning} lastPlan={docs.find((d) => d.title.startsWith("Project plan") || d.title.startsWith("Checklist refresh"))?.created_at.slice(0, 10) || null} hasChecklist={items.length > 0} />
           {p.links.map((l) => <a key={l.url} className="chip" href={l.url} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}
         </div>
       </div>
@@ -92,7 +99,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
       <div className="pmain">
         {view === "checklist" && (
           <div className="pchk">
-            <Glance p={p} items={items} weekly={weekly} costs={costs} today={t} href={href} rank={rank} />
+            <Glance p={p} items={items} weekly={weekly} costs={costs} today={t} href={href} rank={rank} every={every} />
             <div className="pchk-list"><Checklist projectId={id} sections={p.sections} items={items} today={t} showDoneDefault={!!prefs.show_done_default} sprints={sprints} weeklyMinutes={p.weekly_minutes ?? null} /></div>
           </div>
         )}
@@ -116,7 +123,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
             <section style={{ display: "flex", flexDirection: "column", gap: 8 }}>
               <div className="lbl">Strategy documents · moat, why it matters, competitors, plans</div>
               {docs.length ? <ReviewPicker list={docs} sel={sp.r} base={{ v: "project" }} href={href} subtab={sp.t} />
-                : <div className="panel empty">No strategy documents for {p.name} yet. Ask Claude for one from the Inbox (for example &ldquo;Run a CEO review of {p.name}: moat, 5 whys, competitors&rdquo;), or press &ldquo;{items.length ? "Refresh this project checklist" : "Plan this project"}&rdquo; for a situation report. They land here.</div>}
+                : <div className="panel empty">No strategy documents for {p.name} yet. Ask Claude for one from the Inbox (for example &ldquo;Run a CEO review of {p.name}: moat, 5 whys, competitors&rdquo;), or press &ldquo;{items.length ? "Refresh this project checklist" : "Plan this project"}&rdquo; in <Link href={href({ v: "settings" })}>Settings</Link> for a situation report. They land here.</div>}
             </section>
           </div>
         )}
@@ -129,12 +136,13 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
               <Link className="chip" aria-pressed={kind === "screenings"} href={href({ v: "reviews", k: "screenings" })}>Screenings{screenings.length > 0 && ` (${screenings.length})`}</Link>
             </div>
             {kind === "screenings" && <>
+              <WebsiteCard projectId={id} kind={websiteKind(p)} summary={siteSummary(p)} siteUrl={p.site_url || ""} last={siteRun} />
               <Screenings projectId={id} cards={cards} />
               {screenings.length ? <ReviewPicker list={screenings} sel={sp.r} base={{ v: "reviews", k: "screenings" }} href={href} />
                 : <div className="panel empty">No screening yet. Run one above: Claude checks the folder against a researched check list, writes the report here and adds what to fix to the checklist.</div>}
             </>}
             {kind !== "security" && kind !== "screenings" && (weekly.length ? <ReviewPicker list={weekly} sel={sp.r} base={{ v: "reviews" }} href={href} />
-              : <div className="panel empty">The first weekly review for {p.name} arrives {REVIEW_WHEN}. It covers what shipped, what slipped, an audit of the week&apos;s work, risks, and your top 3 for the week.</div>)}
+              : <div className="panel empty">{p.reviews_enabled === false ? `Scheduled reviews are off for ${p.name}. Turn them on,` : `The first review for ${p.name} arrives ${every === 7 ? REVIEW_WHEN : `within the hour, then every ${every} days`},`} or press Run now in <Link href={href({ v: "settings" })}>Settings</Link>. It covers what shipped, what slipped, an audit of the work, risks, and your top 3.</div>)}
             {kind === "security" && (audits.length ? <ReviewPicker list={audits} sel={sp.r} base={{ v: "reviews", k: "security" }} href={href} />
               : <div className="panel empty">No audit reports yet. Markdown reports in the project folder&apos;s audits directory (<code>docs/audits</code> unless <code>audits.dir</code> says otherwise) appear here after the next sync, within an hour of landing.</div>)}
           </div>
@@ -149,13 +157,50 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
         )}
 
         {view === "stats" && <Stats project={p} today={t} />}
+
+        {view === "settings" && (
+          <SettingsView p={p} rank={rank} every={every} weekly={weekly} today={t}
+            reviewRunning={msgs.some((m) => m.project_id === id && m.mode === "review" && ["new", "seen", "working"].includes(m.status))}
+            plan={<PlanButton projectId={id} running={planning} lastPlan={docs.find((d) => d.title.startsWith("Project plan") || d.title.startsWith("Checklist refresh"))?.created_at.slice(0, 10) || null} hasChecklist={items.length > 0} />}
+            hasChecklist={items.length > 0} />
+        )}
       </div>
     </div>
   );
 }
 
 /** "At a glance" beside the checklist (a strip above it on narrower screens): what the old Dashboard view showed. */
-function Glance({ p, items, weekly, costs, today: t, href, rank }: { p: D.Project; items: D.Item[]; weekly: D.Review[]; costs: D.Cost[]; today: string; href: (q: Record<string, string>) => string; rank: number }) {
+/** A review's period: "Week of …" for the weekly run, or the N days a project on its own schedule covered. */
+function periodLabel(r: D.Review) {
+  if (!r.week_start) return r.title;
+  const n = Number(r.meta?.period_days);
+  return n ? `${n} days from ${fmtDate(r.week_start)}` : `Week of ${fmtDate(r.week_start)}`;
+}
+
+/** Settings: planning, the advisor review schedule, the checklist refresh, build mode. */
+async function SettingsView({ p, rank, every, weekly, today: t, reviewRunning, plan, hasChecklist }: { p: D.Project; rank: number; every: number; weekly: D.Review[]; today: string; reviewRunning: boolean; plan: ReactNode; hasChecklist: boolean }) {
+  const hb = await D.kvGet<{ info?: { build_mode?: string } }>("worker.heartbeat").catch(() => null);
+  const last = weekly.map((r) => r.created_at.slice(0, 10)).sort().pop() || null;
+  const next = nextReview({ every, last, today: t });
+  return (
+    <div className="pset">
+      <ProjectSettings id={p.id} plan={p.plan_enabled !== false} minutes={p.weekly_minutes ?? null} rank={rank || null}
+        reviews={p.reviews_enabled !== false} every={every} lastReview={last ? fmtDate(last) : null} nextReview={next ? fmtDate(next) : null} reviewWhen={REVIEW_WHEN} reviewRunning={reviewRunning}
+        buildMode={isBuildMode(p.build_mode) ? p.build_mode : null} defaultMode={effectiveBuildMode(null, hb?.value?.info?.build_mode)} />
+      <section className="panel" aria-labelledby="set-checklist">
+        <div className="ph"><h2 className="ph-t" id="set-checklist">Checklist</h2></div>
+        <div className="pset-body">
+          <p>{hasChecklist
+            ? "Claude re-reads the folder and the earlier reviews, ticks what the folder shows is done, flags stale items and adds what's missing. The report lands in Docs."
+            : "Claude goes through the folder, writes where the project stands and adds what's missing to the checklist. The report lands in Docs."}</p>
+          {plan}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function Glance({ p, items, weekly, costs, today: t, href, rank, every }: { p: D.Project; items: D.Item[]; weekly: D.Review[]; costs: D.Cost[]; today: string; href: (q: Record<string, string>) => string; rank: number; every: number }) {
   const open = items.filter(D.isOpen);
   const late = open.filter((i) => i.due && i.due < t);
   const doing = open.filter((i) => i.status === "doing");
@@ -179,7 +224,7 @@ function Glance({ p, items, weekly, costs, today: t, href, rank }: { p: D.Projec
       <div className="pg-cards">
         <Link className="pg-c" href={review ? href({ v: "reviews", r: review.id }) : href({ v: "reviews" })}>
           <span className="lbl">Latest review</span>
-          <span className="pg-t">{review?.verdict && <span className={`verdict v-${review.verdict}`}>{review.verdict.replace("-", " ")}</span>}<span>{review?.week_start ? `Week of ${fmtDate(review.week_start)}` : review ? "No verdict" : `First one ${REVIEW_WHEN}`}</span></span>
+          <span className="pg-t">{review?.verdict && <span className={`verdict v-${review.verdict}`}>{review.verdict.replace("-", " ")}</span>}<span>{review?.week_start ? periodLabel(review) : review ? "No verdict" : every === 7 ? `First one ${REVIEW_WHEN}` : `Every ${every} days`}</span></span>
           {review?.headline && <span className="pg-d">{review.headline}</span>}
         </Link>
         <Link className="pg-c" href={href({ v: "timeline" })}>
@@ -187,10 +232,10 @@ function Glance({ p, items, weekly, costs, today: t, href, rank }: { p: D.Projec
           {next ? <span className="pg-t"><span>{next.label}</span><span className={`due${n <= 2 ? " soon" : ""}`}>{n === 0 ? "today" : `${n} d`} · {fmtDate(next.date)}</span></span>
             : <span className="pg-d">None dated. Add a Milestones table to PRD.md.</span>}
         </Link>
-        <details className="pg-set">
-          <summary><span className="lbl">Project settings</span><span className="pg-d">{[p.plan_enabled !== false ? "planned" : "not planned", p.reviews_enabled !== false ? "reviewed" : "no review", rank ? `top 3 · #${rank}` : ""].filter(Boolean).join(" · ")}</span></summary>
-          <ProjectSettings id={p.id} plan={p.plan_enabled !== false} minutes={p.weekly_minutes ?? null} reviews={p.reviews_enabled !== false} rank={rank || null} />
-        </details>
+        <Link className="pg-c" href={href({ v: "settings" })}>
+          <span className="lbl">Project settings</span>
+          <span className="pg-d">{[p.plan_enabled !== false ? "planned" : "not planned", p.reviews_enabled !== false ? `reviewed every ${every} days` : "no scheduled review", p.build_mode === "lugh" ? "Lugh builds" : p.build_mode === "goibniu" ? "Goibniu builds" : "", rank ? `top 3 · #${rank}` : ""].filter(Boolean).join(" · ")}</span>
+        </Link>
       </div>
     </aside>
   );
@@ -236,7 +281,7 @@ async function ReviewPicker({ list, sel, base, href, subtab }: { list: D.Review[
         {list.map((x) => (
           <Link key={x.id} href={href({ ...base, r: x.id })} className="revrow" aria-current={x.id === r.id ? "page" : undefined} style={x.id === r.id ? { background: "var(--surface-2)" } : undefined}>
             <i className="dot" />
-            <span className="t"><b>{x.week_start ? `Week of ${fmtDate(x.week_start)}` : x.title}</b><span>{[fileDate(x), x.headline].filter(Boolean).join(" · ")}</span></span>
+            <span className="t"><b>{periodLabel(x)}</b><span>{[fileDate(x), x.headline].filter(Boolean).join(" · ")}</span></span>
             {x.verdict ? <span className={`verdict v-${x.verdict}`}>{x.verdict.replace("-", " ")}</span> : <span />}
           </Link>
         ))}

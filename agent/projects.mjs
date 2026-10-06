@@ -2,9 +2,12 @@
 // Projects: one folder per project under projects_root (docs/conventions.md).
 //
 //   node projects.mjs list                                 what Jarvis sees in projects_root
-//   node projects.mjs scaffold [--only id] [--dry-run]     draft missing CLAUDE.md / PRD.md with Claude (never overwrites)
+//   node projects.mjs scaffold [--only id] [--dry-run]     draft missing CLAUDE.md / PRD.md with Claude (never overwrites; offline)
 //   node projects.mjs sync [--dry-run]                     register / update every project on the dashboard
 //   node projects.mjs checklist <id> [--dry-run]           draft a first checklist from the PRD (only if it has no items)
+//
+// The full project setup (every foundation doc, a PR, questions and items on the checklist) is agent/setup.mjs: the
+// worker runs it when a project is created or loaded; `node agent/setup.mjs queue <id>` runs it by hand.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -13,6 +16,7 @@ import { runClaude } from "./claude.mjs";
 import { oneLiner } from "./advisors.mjs";
 import { DEFAULT_SECTIONS, parseMilestones, slugify } from "./structure.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
+import { detectSite } from "./website.mjs";
 
 export { DEFAULT_SECTIONS, parseMilestones, slugify };
 
@@ -66,7 +70,7 @@ function list() {
   console.log(`projects_root: ${PROJECTS_ROOT}  (${ps.length} projects)\n`);
   for (const p of ps) console.log(`${p.id.padEnd(22)} ${p.kind.padEnd(9)} CLAUDE.md ${p.hasClaude ? "✓" : "✗"}  PRD.md ${p.hasPrd ? "✓" : "✗"}  ${p.isRepo ? (p.remote ? `git: ${p.remote}` : "git (no remote: Build it will only plan)") : "no git repo"}`);
   const missing = ps.filter((p) => !p.hasClaude || !p.hasPrd);
-  if (missing.length) console.log(`\n${missing.length} project(s) need files: node agent/projects.mjs scaffold`);
+  if (missing.length) console.log(`\n${missing.length} project(s) need files: node agent/setup.mjs queue <id> (full setup through the worker), or node agent/projects.mjs scaffold (CLAUDE.md / PRD.md only, offline)`);
 }
 
 /* ---------------- scaffold ---------------- */
@@ -89,6 +93,7 @@ async function scaffold() {
   const only = opt("only");
   const ps = scanProjects().filter((p) => (!only || p.id === only) && (!p.hasClaude || !p.hasPrd));
   if (!ps.length) return console.log(only ? `${only}: nothing missing (or no such project)` : "Every project already has CLAUDE.md and PRD.md.");
+  console.log("Drafting CLAUDE.md / PRD.md only. For the full foundation (README, brand, stack, env vars…, questions on the checklist) use: node agent/setup.mjs queue <id>\n");
   for (const p of ps) {
     const need = [!p.hasClaude && "CLAUDE.md", !p.hasPrd && "PRD.md"].filter(Boolean);
     const prompt = scaffoldPrompt(p, need);
@@ -133,11 +138,14 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
   const byId = Object.fromEntries(existing.map((p) => [p.id, p]));
   const used = new Set(existing.filter((p) => !p.archived).map((p) => p.color));
   const nextColor = () => { const c = COLORS.find((x) => !used.has(x)) || COLORS[used.size % COLORS.length]; used.add(c); return c; };
+  // What the folder says about the project's website (Reviews → Build website / Try a new visual).
+  const sites = await Promise.all(ps.map((p) => detectSite(p.dir, { remote: p.remote }).catch(() => null)));
   const payloads = ps.map((p, i) => {
     const cur = byId[p.id];
     const prd = read(path.join(p.dir, "PRD.md"));
     const body = {
-      id: p.id, name: p.name, kind: p.kind, dir: p.dir, archived: false, ...(p.state ? { state: p.state } : {}), ...(p.status ? { status: p.status } : {}),
+      // A name typed on the dashboard ("Start new project": "My App" in folder my-app) is kept over the bare folder name.
+      id: p.id, name: p.name === p.folder && cur?.name && slugify(cur.name) === slugify(p.folder) ? cur.name : p.name, kind: p.kind, dir: p.dir, archived: false, ...(p.state ? { state: p.state } : {}), ...(p.status ? { status: p.status } : {}),
       color: p.color || cur?.color || nextColor(),
       // Never clobber what's already on the site: a curated tagline wins over one guessed from CLAUDE.md,
       // and deadlines only change when the PRD actually has a milestones table.
@@ -149,6 +157,7 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
     if (cur?.state && !p.state) body.state = cur.state;
     if (cur?.status && !p.status) body.status = cur.status;
     if (!cur || !(cur.sections || []).length) body.sections = DEFAULT_SECTIONS; // never overwrite sections you edited
+    if (sites[i]) body.site = sites[i];
     return body;
   });
   const gone = existing.filter((e) => !e.archived && e.dir && path.resolve(e.dir).startsWith(path.resolve(PROJECTS_ROOT) + path.sep) && !ps.some((p) => p.id === e.id));

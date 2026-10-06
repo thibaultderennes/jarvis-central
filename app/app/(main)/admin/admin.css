@@ -1,6 +1,8 @@
 /* Admin page */
 .admin { display: flex; flex-direction: column; gap: 14px; }
 .rescan { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 12px 14px; }
+.newproj { display: flex; gap: 8px 12px; align-items: center; flex-wrap: wrap; padding: 12px 16px 8px; }
+.newproj .input { flex: 1 1 200px; max-width: 320px; }
 .rescan .mst { font-family: var(--mono); font-size: 12px; }
 .admin table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .admin th, .admin td { padding: 7px 14px; border-top: 1px solid var(--line-2); text-align: left; vertical-align: top; }

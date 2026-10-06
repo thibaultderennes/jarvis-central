@@ -238,3 +238,17 @@ create index if not exists items_sprint on items (sprint_id) where sprint_id is 
 -- meta.kind = vibecoded | prelaunch | rights. The type check is widened in place (drop + add, same end state every run).
 alter table reviews drop constraint if exists reviews_type_check;
 alter table reviews add constraint reviews_type_check check (type in ('project','recap','coaching','jarvis','doc','security','screening'));
+-- 0.7.4. Website builds (Reviews → Build website / Try a new visual). `site` is what agent/website.mjs detects in the
+-- folder on each projects sync; `site_url` is the address the owner types, which always wins over the guess.
+alter table projects add column if not exists site jsonb;
+alter table projects add column if not exists site_url text not null default '';
+-- 0.7.4. Daily roll-forward (agent/rollover.mjs): an undone todo from an earlier day is carried to the top of today.
+-- `rollovers` counts the carries (parked in Someday and its item flagged after planner.rollover_flag_after),
+-- `rolled_from` is the day it was first meant for, `rolled_at` the day it last rolled in (the daily cap counts these).
+alter table todos add column if not exists rollovers int not null default 0;
+alter table todos add column if not exists rolled_from date;
+alter table todos add column if not exists rolled_at date;
+-- 0.7.4. Project settings: how often the advisor review runs (7 = the Monday run; any other value, the worker runs it
+-- when due) and how Jarvis builds the project (build_mode 'goibniu' | 'lugh'; null = the worker's worker.build_mode).
+alter table projects add column if not exists review_every_days int not null default 7;
+alter table projects add column if not exists build_mode text;

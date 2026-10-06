@@ -8,9 +8,15 @@
    - `worker.mjs` every minute: picks up inbox messages, runs `claude -p` in the project, replies.
    - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar, sized from the last 2 weeks
      (`planner.adapt`, `agent/adapt.mjs`: planned vs done per project and an hours check in the plan notes; `apply` caps idle projects).
+   - `rollover.mjs` daily, from the worker (first pass after `planner.rollover_at` on a work day, stamped in the cache):
+     undone todos from the last 14 days and open items you own due today or earlier with no todo go to the top of today,
+     critical → days overdue → priority, at most `planner.rollover_max_per_day` and within `max_focus_minutes_per_day`;
+     a todo carried `planner.rollover_flag_after` times is parked in Someday and its item flagged (`refine: 'flagged'`,
+     `refine_note` starting `Re-scope:`, shown as "check: re-scope"). Pure logic in `rollForward()`, tested in
+     `app/test/rollover.test.mjs`; `node agent/rollover.mjs --dry-run [--date D] [--fixture F]`. Rule: `docs/config.md`.
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
      (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
-   - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md`, registers projects, drafts checklists.
+   - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md` (offline; the full setup is `setup.mjs`), registers projects, drafts checklists.
    - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
      to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
      (`audits.sync_minutes`); `node agent/audits.mjs sync [--project id] [--dry-run]` runs it by hand.
@@ -30,6 +36,40 @@
      `screenings/<kind>.md`, marks every check fail / warn / pass / n/a / live (needs the deployed site) with file evidence, and
      proposes items; they are validated and scheduled like "Plan this project" (blockers critical, owner choices in decide). The report
      is a review of type `screening` (`meta: {kind, counts, added}`). `node agent/screen.mjs <id> <kind> --dry-run` prints the prompt.
+   - `website.mjs`: **website builds**, run from a project's Reviews → Screenings by **Build website** (no site yet) or
+     **Try a new visual** (message `mode: 'website'`, `meta.kind` = `new` | `redesign`). The worker runs it like a build (a
+     `jarvis/website-<id>` worktree, then a PR, never merged) with the design skills pack: taste-skill (taste, redesign,
+     image-to-code), vercel-labs `web-design-guidelines` and the Playwright CLI skill, fetched at pinned commits into the cache
+     and loaded with `claude --plugin-dir` (`agent/skillpacks.mjs`), plus the awesome-design-md DESIGN.md library as an extra read directory. On each
+     projects sync it also detects the site: site code (a web framework in a `package.json`, or an `index.html`), an address
+     (`package.json` homepage, the GitHub repo homepage, a "Website: https://…" line in PRD.md / README.md / CLAUDE.md), whether
+     it answers, and a Vercel / Netlify link. `node agent/website.mjs detect [id]` prints it; `node agent/website.mjs skills` fetches the pack.
+   - `reviewrun.mjs`: **advisor reviews outside the weekly run**. A project's Settings set `review_every_days` (default 7 =
+     the weekly run). For any other value the worker checks hourly and queues a message `mode: 'review'`
+     (`meta: {kind: 'scheduled', days}`) once the newest project review (or the last attempt) is that many days old;
+     Settings → **Run now** queues `meta.kind: 'now'`. The worker runs `weekly.mjs --only <id> --days <N>`: the same
+     advisors and synthesis over the last N days ending today (`week_start` = the first day, `meta.period_days` = N),
+     then replies with the verdict. The weekly run skips projects on their own schedule. `node agent/reviewrun.mjs due` lists them.
+   - `lugh.mjs`: **build modes**. Each project picks one in Settings (`projects.build_mode`; null = `worker.build_mode`,
+     default `goibniu`). **Jarvis (Goibniu)** is the plain build run. **Jarvis (Lugh)** is the same run with engineering
+     skills from addyosmani/agent-skills (MIT) at a pinned commit, loaded as the `jarvis-lugh` plugin (`agent/skillpacks.mjs`),
+     plus a prompt section that says which skill to follow at each step (thin slices, tests first, debugging, frontend,
+     security, then self-review, simplification and docs). Applies to code runs except website builds; Lugh gets 90 turns
+     and 1.5 × `worker.timeout_minutes`. The PR body and the reply name the mode; the message `meta.build_mode` records it.
+     `node agent/lugh.mjs skills` fetches the pack, `brief` prints the prompt section.
+   - `setup.mjs`: the **project setup session** (message `mode: 'setup'`). Entry points: **Start new project** on the Admin page
+     (`meta: {kind: 'new', name, id}`; the worker creates `<projects_root>/<id>`, refusing a name or folder in use, registers the
+     project, then runs the session), a project loaded for the first time, and a project updated with a foundation gap
+     (`meta: {kind: 'setup', trigger: 'load'|'update'|'manual', reason}`, queued by the worker every pass, at most one at a time).
+     Claude reads the folder read-only with pinned planning/writing skills from `mattpocock/skills` (grilling, to-questionnaire,
+     to-spec, domain-modeling, writing-for-agents; `agent/skillpacks.mjs`) and returns the missing foundation pieces
+     (`agent/foundation.mjs`: PRD with value/pain/ICP and non-goals, CLAUDE.md, README, .gitignore, GitHub, stack, database and
+     auth, env vars, staging and production, error tracking, brand, design system). The script writes them: on a
+     `jarvis/setup-<id>` branch + PR in a repository with a remote (the worker's worktree flow), straight into the folder otherwise,
+     new files only (in a PR, a missing section may be appended to an existing doc). Questions only the owner can answer become
+     `decide` items owned by `founder`; what can't be written becomes items, the foundation ones critical; all validated and
+     scheduled like "Plan this project". The report is a strategy document "Project setup · date" (`meta.kind: 'project-setup'`).
+     When it re-runs is `shouldRunSetup` in `foundation.mjs` (kv `projects.setup`); `node agent/setup.mjs check` shows it.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
@@ -44,7 +84,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 ```
 
 ## Data model (Postgres)
-- `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
+- `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, review_every_days int default 7 /* 7 = the weekly run */, build_mode text null /* 'goibniu'|'lugh'; null = worker.build_mode */, site jsonb null /* detected: {code: {framework, path}, url, source, live, deploy, checked_at} */, site_url text /* typed by the owner; wins */, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
   - `deadlines`: `[{date, label, prd?}]` (`prd`: a milestone moved on the Timeline; the date PRD.md still has until the Mac worker writes the new date into that row, `agent/milestones.mjs`), `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
 - `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at, blocked_by text[] /* codes of items in the same project it waits on */, sprint_id uuid null)` pk `(project_id, id)`
@@ -66,13 +106,13 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   Select mode creates one or adds to it; its card shows done %, and the open estimate against the project's `weekly_minutes`
   for the sprint's length; the Timeline draws it as a band (its project's lane, or every section lane on the project page).
 - `item_events(id bigserial, project_id, item_id, field, old, new, actor 'founder'|'agent', at)` — every status/due/section change
-- `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at)`
+- `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at, source null 'plan'|'rollover', rollovers int /* times the daily roll-forward carried it */, rolled_from date null /* the day it was first meant for */, rolled_at date null /* the day it last rolled in */)`
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool, opened_at, treated_at, item_id null)`
   - status flow: `new` → `seen` (worker picked it) → `working` → `answered` | `done` | `needs_you` | `error`
   - inbox groups on the site: **New** (a reply not yet opened, or work still with Claude) → **Pending** (`opened_at` set
     once the reply was on screen) → **Treated** (`treated_at`, "Mark treated"; hidden = `archived`). `item_id` = the
     build run of a checklist item.
-  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'}`
+  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh'}`
 - `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at)`
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - `doc` = long-lived documents (strategy reviews). `meta.tabs` may hold `[{key, label, body_md}]`.
@@ -87,8 +127,12 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `dashboard.layout` (Home's box layout per tab), `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
+  `rollover.today` (`{date, workday, carried, load: {before, after, cap}, waiting: [{title, key, critical, overdue, reason}]}`: what
+  the morning roll-forward couldn't fit; Today shows it on that date only),
   `projects.rescan` (`{status 'queued'|'running'|'done'|'failed', requested_at, started_at?, finished_at?, proposed?: [project payload + folder], archived?, total?, error?}`;
   approving or declining a proposal removes it from `proposed`),
+  `projects.setup` (`{<project id>: {status 'queued'|'running'|'done'|'failed', at, trigger, missing, handled, docs, head, message_id?, pr_url?, review_id?, error?}}`:
+  the last setup run per project and the folder it saw; after an upgrade every existing project gets one run, one at a time),
   `projects.ignored` (`[{id, folder?, name, reason 'removed'|'declined', at}]`: folders the scan skips. **Remove** on the
   Admin page archives the project, keeping its items and history, and adds it here; **Restore** takes it off and un-archives a removed project).
 - `login_attempts(ip, at, ok)`.
@@ -118,8 +162,9 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | PATCH | `/api/agent/sprints` | `{id, name?, start?, end?, add?: [ids], remove?: [ids]}` | `{sprint}` |
 | DELETE | `/api/agent/sprints` | `?id=UUID` (items stay, just leave it) | `{ok}` |
 | GET | `/api/agent/events` | `?since=ISO` | `[{event}]` |
-| GET | `/api/agent/todos` | `?from=DATE&to=DATE` | `[{todo}]` |
-| POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?}` | `{todo}` |
+| GET | `/api/agent/todos` | `?from=DATE&to=DATE` (`&someday=1` adds undated ones) | `[{todo}]` |
+| POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?, sort?, source? 'plan'|'rollover', rolled_from?, rolled_at?}` | `{todo}` |
+| PATCH | `/api/agent/todos` | `{id, date? /* null = Someday */, sort?, time? /* null = untimed */, rollovers?, rolled_from?, rolled_at?}` (the daily roll-forward; only given fields change) | `{todo}`; 404 when there's no such todo |
 | GET | `/api/agent/messages` | `?status=new&limit=5` (oldest first) or `?since=ISO` | `[{message}]` |
 | POST | `/api/agent/messages` | `{text, project_id?, status? 'answered'|'new'|…, reply?, meta?, mode?, item_id?, thread_id?}` a note already answered, or (`status: 'new'`) work queued for the worker | `{message: {id}}` |
 | PATCH | `/api/agent/messages` | `{id, status?, reply?, meta?, opened?, treated?}` (meta merged; reply sets replied_at and clears opened_at) | `{message}` |
@@ -155,18 +200,19 @@ title contain every word (case- and accent-insensitive, archived projects left o
   item's build run); the worker script (not Claude) pushes and opens the PR. Claude never merges, deploys, pays, emails,
   texts, or touches production data or secrets. The only merge the worker script does is `gh pr merge` of a PR the
   owner approved on the item ("Approve & merge"); the item is then done.
-- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, merge approved PRs, then
+- Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, queue at most one project setup run, once a day the roll-forward (`rollover.mjs`), merge approved PRs, then
+  queue advisor reviews that are due on a project's own schedule (hourly), then
   queue at most one build run (in-progress items owned by Claude, sent-back PRs first, critical first).
 - Anything outside that → status `needs_you` with a clear explanation.
 
-- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `plan` = "Plan this project", `agent/planproject.mjs`:
+- Messages carry `mode` (`discuss` = read-only, lighter model; `build` = worktree + PR; `website` = a website build, see `website.mjs` above; `setup` = the project setup session, see `setup.mjs` above; `plan` = "Plan this project", `agent/planproject.mjs`:
   reads CLAUDE.md, PRD.md, `docs/audits/` and the checklist, adds items only to existing sections under new ids, due
   before the PRD milestone they serve; on a project that already has a checklist the same button reads "Refresh this
   project checklist" and the run also reads the git history and changed files since the checklist last moved plus the
   earlier weekly reviews, then reconciles: ticks items verified done (evidence in `refine_note`, one click to undo),
   flags obsolete ones (`refine: 'flagged'`, nothing removed), adds what's missing; the report is a strategy document
   "Checklist refresh · date"; `node agent/planproject.mjs <id> --dry-run` shows what it would read;
-  `auto` = legacy), an optional `review_id` (discussion under a review) and `thread_id` (first message of an inbox
+  `review` = an advisor review of one project, see `reviewrun.mjs` above; `auto` = legacy), an optional `review_id` (discussion under a review) and `thread_id` (first message of an inbox
   conversation; `GET /api/agent/messages?thread=ID`). `worker.allow_build: false` disables build mode.
 
 ## Week plans

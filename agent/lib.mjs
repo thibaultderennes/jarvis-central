@@ -38,6 +38,8 @@ function defaults() {
   if (ex.planner) ex.planner = { ...ex.planner, project_caps: {} };
   // Page-view/click tracking for the Monday Jarvis review: on unless the owner's config says false.
   ex.usage = { track_clicks: true, retention_days: 90, ...(ex.usage || {}) };
+  // Project setup session (setup.mjs): runs on its own when a project is created or loaded, and when one is updated with a gap.
+  ex.project_setup = { auto_on_load: true, auto_on_update: true, cooldown_days: 7, check_minutes: 60, model: null, ...(ex.project_setup || {}) };
   return ex;
 }
 

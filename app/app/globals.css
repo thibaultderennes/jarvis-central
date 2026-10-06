@@ -376,8 +376,10 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 .thread { border-top: 1px solid var(--line-2); margin-top: 22px; padding-top: 16px; display: flex; flex-direction: column; gap: 10px; max-width: 78ch; }
 .thread .turn { display: flex; flex-direction: column; gap: 6px; padding-bottom: 10px; border-bottom: 1px dashed var(--line-2); }
 /* owner split (validated categorical trio) + heat ramp (single hue) */
-:root { --own-you: #A87400; --own-claude: #2F7FC1; --own-both: #2E9A5B; --heat: #2F7FC1; }
-@media (prefers-color-scheme: dark) { :root { --own-you: #C4861C; --own-claude: #5B97D4; --own-both: #34A877; --heat: #5B97D4; } }
+/* owner split = one slate ramp (validated as an ordinal ramp, light + dark): strongest step on "you", then "both",
+   then "Claude". No amber (signal), red or green (status), and far enough from p1…p7 and the project dots beside it. */
+:root { --own-you: #2A3248; --own-both: #59637B; --own-claude: #A0ABC5; --heat: #2F7FC1; }
+@media (prefers-color-scheme: dark) { :root { --own-you: #D3DEFA; --own-both: #9AA4BE; --own-claude: #59637B; --heat: #5B97D4; } }
 .burns { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
 @media (max-width: 1000px) { .burns { grid-template-columns: 1fr; } }
 .burn .ph .ph-t { display: flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; }
@@ -393,7 +395,8 @@ section.cat { display: flex; flex-direction: column; gap: 8px; }
 .bullet .v b { color: var(--ink); } .bullet .v .bad { color: var(--bad); }
 .stack100 { display: grid; grid-template-columns: 110px minmax(0, 1fr) 44px; gap: 12px; align-items: center; padding: 7px 0; font-size: 13px; }
 .stack100 .bars { display: flex; gap: 2px; height: 18px; }
-.stack100 .bars span { display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10.5px; color: #fff; min-width: 2px; }
+.stack100 .bars span { display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 10.5px; color: var(--surface); min-width: 2px; }
+.stack100 .bars span.own-claude { color: var(--ink); }
 .stack100 .bars span:first-child { border-radius: 3px 0 0 3px; } .stack100 .bars span:last-child { border-radius: 0 3px 3px 0; }
 .heatgrid { display: grid; grid-template-columns: 48px repeat(7, minmax(0, 1fr)); gap: 4px; align-items: center; }
 .heatgrid .cell { aspect-ratio: 2.6; border-radius: 3px; background: var(--line-2); position: relative; max-width: 100%; }
@@ -540,6 +543,10 @@ a.pill.blocked { text-decoration: none; }
 .screen-card { display: flex; flex-direction: column; gap: 6px; align-items: flex-start; padding: 12px 14px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
 .screen-card b { font-family: var(--display); }
 .screen-card p { margin: 0; font-size: 12.5px; color: var(--ink-2); flex: 1; }
+.website-card { margin-bottom: 4px; }
+.website-card .site-line { font-size: 12px; color: var(--ink-3); overflow-wrap: anywhere; white-space: normal; }
+.website-url { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; width: 100%; }
+.website-url input { flex: 1; min-width: 160px; }
 
 /* 0.7.3 (VibeCoded Screening): designed hover and pressed states instead of none. Ink buttons lift a step, ghost
    buttons and chips take the surface-2 fill; pressing settles 1px. Motion stays off under reduced motion. */

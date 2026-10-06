@@ -22,14 +22,20 @@
     "weekends": "overflow",
     "project_caps": { "example-project": 360 },
     "adapt": "suggest",
-    "adapt_min_todos": 3
+    "adapt_min_todos": 3,
+    "rollover": true,
+    "rollover_at": "04:00",
+    "rollover_max_per_day": 5,
+    "rollover_flag_after": 3
   },
 
   "reviews": {
     "run": { "weekday": "monday", "time": "05:00" },
     "advisors": ["ceo", "cmo", "po"],
     "stance": "Be sceptical by default. Challenge optimistic plans with evidence; validate only what the evidence supports.",
-    "concurrency": 2
+    "concurrency": 2,
+    "repo_scout": true,
+    "repo_scout_skip": []
   },
 
   "worker": {
@@ -39,7 +45,16 @@
     "refine_inbox_notes": false,
     "discuss_model": "sonnet",
     "build_model": null,
+    "build_mode": "goibniu",
     "timeout_minutes": 25
+  },
+
+  "project_setup": {
+    "auto_on_load": true,
+    "auto_on_update": true,
+    "cooldown_days": 7,
+    "check_minutes": 60,
+    "model": null
   },
 
   "audits": {

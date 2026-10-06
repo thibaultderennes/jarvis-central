@@ -7,6 +7,9 @@ import * as D from "./data";
 import { isDate, today } from "./time";
 import { normBlockedBy, wouldCycle } from "./sqlbuild";
 import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
+import { normSiteUrl, websiteKind } from "./website";
+import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSettings";
+import { validateProjectName } from "./newProject";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -310,14 +313,34 @@ export async function featureProject(id: string, slot: number) {
   await D.logActivity("project_feature", "/", { id, slot });
   done();
 }
-export async function setProjectSettings(id: string, s: { plan_enabled?: boolean; weekly_minutes?: number | null; reviews_enabled?: boolean }) {
+export async function setProjectSettings(id: string, s: { plan_enabled?: boolean; weekly_minutes?: number | null; reviews_enabled?: boolean; review_every_days?: number; build_mode?: BuildMode }): Promise<{ error?: string }> {
   await requireSession();
   const mins = s.weekly_minutes === undefined ? undefined : s.weekly_minutes === null || !Number.isFinite(s.weekly_minutes) ? null : Math.max(0, Math.min(80 * 60, Math.round(s.weekly_minutes)));
+  const every = s.review_every_days === undefined ? undefined : normEvery(s.review_every_days);
+  if (every === null) return { error: "Reviews run every 1 to 90 days: type a whole number." };
+  if (s.build_mode !== undefined && !isBuildMode(s.build_mode)) return { error: "Pick Goibniu or Lugh." };
   if (s.plan_enabled !== undefined) await sql()`update projects set plan_enabled = ${!!s.plan_enabled} where id = ${id}`;
   if (mins !== undefined) await sql()`update projects set weekly_minutes = ${mins} where id = ${id}`;
   if (s.reviews_enabled !== undefined) await sql()`update projects set reviews_enabled = ${!!s.reviews_enabled} where id = ${id}`;
+  if (every !== undefined) await sql()`update projects set review_every_days = ${every} where id = ${id}`;
+  if (s.build_mode !== undefined) await sql()`update projects set build_mode = ${s.build_mode} where id = ${id}`;
   await D.logActivity("project_settings", `/p/${id}`, { id, ...s });
   done();
+  return {};
+}
+
+/** Settings → Run now: the Mac worker runs this project's advisor review over its last N days (agent/reviewrun.mjs). */
+export async function requestReview(project_id: string): Promise<{ error?: string }> {
+  await requireSession();
+  const p = await D.getProject(project_id);
+  if (!p) return { error: "No such project." };
+  const busy = await sql()`select id from messages where project_id = ${project_id} and mode = 'review' and status in ('new', 'seen', 'working') limit 1`;
+  if (busy.length) return {};
+  const days = reviewEvery(p.review_every_days);
+  await D.insertMessage({ text: `Run the advisor review of ${p.name} now (the last ${days} days).`, project_id, status: "new", mode: "review", meta: { kind: "now", days } });
+  await D.logActivity("project_review", `/p/${project_id}`, { project_id, days });
+  done();
+  return {};
 }
 
 /** "Plan this project": the Mac worker reviews the folder, writes a situation report and adds the missing checklist items. */
@@ -340,6 +363,30 @@ export async function requestScreening(project_id: string, kind: string) {
   await D.insertMessage({ text: `Run the ${kind} screening on this project and add what to fix to the checklist.`, project_id, status: "new", mode: "screen", meta: { kind } });
   await D.logActivity("project_screening", `/p/${project_id}`, { project_id, kind });
   done();
+}
+
+/** Reviews → Build website / Try a new visual: the Mac worker builds it with the design skills on a branch and opens a PR. */
+export async function requestWebsite(project_id: string): Promise<{ error?: string }> {
+  await requireSession();
+  const p = await D.getProject(project_id);
+  if (!p) return { error: "No such project." };
+  const busy = await sql()`select id from messages where project_id = ${project_id} and mode = 'website' and status in ('new', 'seen', 'working') limit 1`;
+  if (busy.length) return {};
+  const kind = websiteKind(p);
+  await D.insertMessage({ text: kind === "redesign" ? `Try a new visual for ${p.name}'s website, using the design skills, and open a PR.` : `Build ${p.name}'s website from the project's docs, using the design skills, and open a PR.`,
+    project_id, status: "new", mode: "website", meta: { kind } });
+  await D.logActivity("project_website", `/p/${project_id}`, { project_id, kind });
+  done();
+  return {};
+}
+/** The website address the owner types on the Reviews page; it wins over what the folder suggests. "" clears it. */
+export async function setSiteUrl(project_id: string, url: string): Promise<{ error?: string }> {
+  await requireSession();
+  const v = normSiteUrl(url);
+  if (v === null) return { error: "That isn't a web address. Try something like example.com." };
+  await sql()`update projects set site_url = ${v} where id = ${project_id}`;
+  done();
+  return {};
 }
 
 /** The dashboard (Home): saves one tab's box layout after Customize. Cleaned server-side; kv `dashboard.layout`. */
@@ -388,6 +435,32 @@ export async function requestRescan() {
   await D.kvSet("projects.rescan", { status: "queued", requested_at: new Date().toISOString() });
   await D.logActivity("projects_rescan", "/admin");
   done();
+}
+/**
+ * "Start new project": queues a setup message for the Mac worker, which creates the folder under projects_root
+ * (the typed name, slugified), registers the project and runs the setup session (agent/setup.mjs). A name already
+ * used by a project, a removed or declined folder, a proposed folder or another start in flight is refused here;
+ * the worker refuses a folder that already exists on the Mac.
+ */
+export async function startProject(name: string): Promise<{ error?: string; id?: string }> {
+  await requireSession();
+  const [projects, rescan, inflight] = await Promise.all([
+    D.getProjects(true), D.kvGet<{ proposed?: Proposal[] }>("projects.rescan"),
+    sql()`select meta from messages where mode = 'setup' and meta->>'kind' = 'new' and status in ('new', 'seen', 'working')`,
+  ]);
+  const base = (d?: string | null) => (d ? d.replace(/\/+$/, "").split("/").pop() || "" : "");
+  const taken = [
+    ...projects.flatMap((p) => [p.id, base(p.dir)]),
+    ...(await getIgnored()).flatMap((x) => [x.id, x.folder || ""]),
+    ...(rescan?.value?.proposed || []).flatMap((p) => [p.id, p.folder || ""]),
+    ...inflight.map((m) => String((m.meta as { id?: string })?.id || "")),
+  ].filter(Boolean);
+  const v = validateProjectName(name, taken);
+  if (v.error !== undefined) return { error: v.error };
+  await D.insertMessage({ text: `Start a new project: ${v.name}`, status: "new", mode: "setup", meta: { kind: "new", name: v.name, id: v.id } });
+  await D.logActivity("project_start", "/admin", { project: v.id });
+  done();
+  return { id: v.id };
 }
 /** Folders removed or declined on the Admin page (kv `projects.ignored`): the Mac scan never registers or proposes them again. */
 export type Ignored = { id: string; folder?: string; name: string; reason: "removed" | "declined"; at: string };

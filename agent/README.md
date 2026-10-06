@@ -9,12 +9,14 @@ API contract: `../docs/architecture.md`.
 |---|---|
 | `jarvis.mjs` | CLI for Claude Code sessions: checklists, todos, inbox, reviews (`node jarvis.mjs help`) |
 | `projects.mjs` | Your projects folder: `list`, `scaffold` (draft missing CLAUDE.md / PRD.md), `sync` (register on the site), `checklist <id>` (first checklist from the PRD) |
+| `setup.mjs` | The project setup session the worker runs for a new or loaded project (foundation docs, a PR, questions on the checklist); `check [id]`, `<id> --dry-run`, `queue <id>`, `new "<name>"`. What counts as the foundation, and when it re-runs: `foundation.mjs` |
 | `worker.mjs` | One inbox pass: picks up messages from the site, runs `claude -p` in the project, replies; once an hour also mirrors audit reports |
 | `economics.mjs` | Evaluates each project's unit-economics model file (`jarvis.economics.*` or `economics.models.<id>`; see `docs/unit-economics.md`) and uploads it to the Finances tab; `sync [--project id] [--dry-run]`, `eval <file>` |
 | `metrics.mjs` | Fetches each project's product numbers from its source in `metrics.sources.<id>` (URL or command; see `docs/metrics.md`) and posts the day's snapshot for the Stats view; `sync [--project id] [--dry-run]` |
 | `milestones.mjs` | Milestones moved on the Timeline → the new date written into that PRD.md row (file only, no commit); the worker runs it every pass, `sync` and plans before reading the PRD |
 | `audits.mjs` | Mirrors each project's security audit reports (`audits.dir`, default `docs/audits/*.md`) to the site's Security tab; `sync [--project id] [--dry-run]` runs it by hand |
 | `plan.mjs` | Weekly planner: estimates open items, packs them around your calendar → todos + calendars |
+| `rollover.mjs` | Daily roll-forward: unfinished todos and overdue items back to the top of today by priority, within the day's caps; the worker runs it once a day (rule in `docs/config.md`) |
 | `weekly.mjs` | Weekly reviews: CEO / CMO / PO advisors per project + synthesis, recap, "working with AI" coaching, Jarvis usage |
 | `advisors.mjs` | Persona lookup and advisor prompts |
 | `transcripts.mjs` | Reads `~/.claude/projects/*/*.jsonl`: your typed messages + session stats (stays on your machine) |
@@ -38,7 +40,8 @@ node agent/security-check.mjs
 
 ## Schedules
 From `jarvis.config.json` — change them there, then re-run `agent/install.sh` (or re-paste the cron lines):
-- worker: every `worker.interval_seconds` (default 60)
+- worker: every `worker.interval_seconds` (default 60); its first pass after `planner.rollover_at` (default 04:00)
+  on a work day also runs the daily roll-forward
 - planner: `planner.run` (default Sunday 17:00)
 - reviews: `reviews.run` (default Monday 05:00)
 
@@ -72,6 +75,7 @@ or `<project>/.claude/skills/*-<role>/SKILL.md` → `~/.claude/commands/<project
 ```
 node worker.mjs                        # one pass       · --dry-run prints a sample prompt and the tool lists
 node plan.mjs --dry-run                # plan next week without posting · --week YYYY-MM-DD · --force
+node rollover.mjs --dry-run            # what today's roll-forward would carry · --date YYYY-MM-DD · --fixture FILE
 node weekly.mjs                        # review last week · --week YYYY-MM-DD · --only <id> · --dry-run [--offline]
 node transcripts.mjs --days 7          # session counts per folder (no message text)
 node economics.mjs sync --dry-run      # evaluate unit-economics models without uploading · --project <id>

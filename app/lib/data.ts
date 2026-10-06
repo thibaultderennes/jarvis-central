@@ -1,6 +1,7 @@
 import { q, sql } from "./db";
 import { addDays, mondayOf, today, TZ } from "./time";
 import { itemUpdate, projectUpsert } from "./sqlbuild";
+import type { BuildMode } from "./projectSettings";
 
 export type Section = { id: string; name: string; note?: string; notes?: boolean; owner_default?: string };
 export type Project = {
@@ -9,7 +10,14 @@ export type Project = {
   deadlines: { date: string; label: string }[]; links: { label: string; url: string }[];
   sort: number; archived: boolean; updated_at: string;
   featured_rank: number | null; plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean;
+  /** Days between advisor reviews (7 = the Monday run); undefined until the 0.7.4 migration ran. */
+  review_every_days?: number;
+  /** How Jarvis builds this project; null = the worker's default (worker.build_mode). */
+  build_mode?: BuildMode | null;
+  /** Detected by agent/website.mjs on projects sync; null until the first sync after 0.8.0. */
+  site?: SiteInfo | null; site_url?: string;
 };
+export type SiteInfo = { code: { framework: string; path: string } | null; url: string | null; source: string | null; live: boolean; deploy: string | null; checked_at: string };
 export type ItemStatus = "todo" | "doing" | "done" | "cancelled";
 export type BuildStatus = "working" | "pr_open" | "merge_requested" | "merged" | "failed" | "sent_back";
 export type Item = {
@@ -34,9 +42,11 @@ export type Cost = {
 export type Todo = {
   id: string; date: string | null; title: string; kind: "life" | "work"; project_id: string | null;
   item_id: string | null; time: string | null; sort: number; done: boolean; done_at: string | null; created_at: string;
+  /** 'plan' = made by the Sunday planner, 'rollover' = added by the daily roll-forward, null = by hand. */
+  source?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null;
 };
 export type Message = {
-  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan" | "screen"; text: string; status: string; reply: string;
+  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan" | "screen" | "website" | "review" | "setup"; text: string; status: string; reply: string;
   meta: Record<string, unknown>; archived: boolean; created_at: string; updated_at: string; replied_at: string | null; opened_at: string | null; treated_at: string | null;
 };
 export type Review = {
@@ -51,7 +61,7 @@ const ts = (v: unknown): string | null => (v == null ? null : v instanceof Date 
 const normItem = (r: Record<string, unknown>) => ({ ...r, blocked_by: Array.isArray(r.blocked_by) ? r.blocked_by : [], due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at), note_sent_at: ts(r.note_sent_at), build_updated_at: ts(r.build_updated_at) }) as Item;
 const normSprint = (r: Record<string, unknown>) => ({ id: r.id, project_id: r.project_id, name: r.name, start: d10(r.start_date), end: d10(r.end_date), created_at: ts(r.created_at) }) as Sprint;
 const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
-const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at) }) as Todo;
+const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at), rollovers: Number(r.rollovers) || 0, rolled_from: d10(r.rolled_from), rolled_at: d10(r.rolled_at) }) as Todo;
 const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at), opened_at: ts(r.opened_at), treated_at: ts(r.treated_at) }) as Message;
 const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at) }) as Review;
 /** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
@@ -214,14 +224,27 @@ export async function getTodos(from: string | null, to: string | null, includeSo
     : await sql()`select * from todos where date between ${from} and ${to} and (project_id is null or project_id not in (select id from projects where archived)) order by date, sort, created_at`;
   return rows.map(normTodo);
 }
-export async function addTodo(t: { date: string | null; title: string; kind?: string; project_id?: string | null; item_id?: string | null; time?: string | null }): Promise<Todo> {
-  const [m] = t.date
+export async function addTodo(t: { date: string | null; title: string; kind?: string; project_id?: string | null; item_id?: string | null; time?: string | null; sort?: number | null; source?: string | null; rolled_from?: string | null; rolled_at?: string | null }): Promise<Todo> {
+  const [m] = typeof t.sort === "number" && Number.isFinite(t.sort) ? [{ s: t.sort }] : t.date
     ? await sql()`select coalesce(max(sort), 0) + 1 as s from todos where date = ${t.date}`
     : await sql()`select coalesce(max(sort), 0) + 1 as s from todos where date is null`;
   const kind = t.kind === "work" || t.project_id ? "work" : "life";
-  const rows = await sql()`insert into todos (date, title, kind, project_id, item_id, time, sort)
-    values (${t.date}, ${t.title}, ${kind}, ${t.project_id || null}, ${t.item_id || null}, ${t.time || null}, ${m.s}) returning *`;
+  const rows = await sql()`insert into todos (date, title, kind, project_id, item_id, time, sort, source, rolled_from, rolled_at)
+    values (${t.date}, ${t.title}, ${kind}, ${t.project_id || null}, ${t.item_id || null}, ${t.time || null}, ${m.s}, ${t.source || null}, ${t.rolled_from || null}, ${t.rolled_at || null}) returning *`;
   return normTodo(rows[0]);
+}
+/** Agent edit of a todo (the daily roll-forward): only the fields given change. Returns null when there's no such todo. */
+export async function patchTodo(id: string, p: { date?: string | null; sort?: number; time?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null }): Promise<Todo | null> {
+  const has = (k: keyof typeof p) => p[k] !== undefined;
+  const rows = await sql()`update todos set
+      date = case when ${has("date")} then ${p.date ?? null}::date else date end,
+      sort = case when ${has("sort")} then ${p.sort ?? null}::real else sort end,
+      time = case when ${has("time")} then ${p.time ?? null}::text else time end,
+      rollovers = case when ${has("rollovers")} then ${p.rollovers ?? 0}::int else rollovers end,
+      rolled_from = case when ${has("rolled_from")} then ${p.rolled_from ?? null}::date else rolled_from end,
+      rolled_at = case when ${has("rolled_at")} then ${p.rolled_at ?? null}::date else rolled_at end
+    where id = ${id} returning *`;
+  return rows[0] ? normTodo(rows[0]) : null;
 }
 
 /* ---------- messages ---------- */
@@ -252,7 +275,7 @@ export async function patchMessage(id: string, p: { status?: string; reply?: str
 }
 /** A message the agent leaves or queues: already answered (a note), or new work for the worker (a build run of an item). */
 export async function insertMessage(m: { text: string; project_id?: string | null; status?: string; reply?: string; meta?: Record<string, unknown>; mode?: string; item_id?: string | null; thread_id?: string | null }): Promise<{ id: string }> {
-  const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen"].includes(m.mode || "") ? m.mode! : "discuss";
+  const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen", "website", "review", "setup"].includes(m.mode || "") ? m.mode! : "discuss";
   const [row] = await sql()`insert into messages (text, project_id, status, reply, meta, mode, item_id, thread_id, replied_at)
     values (${m.text.slice(0, 4000)}, ${m.project_id || null}, ${status}, ${(m.reply || "").slice(0, 8000)}, ${JSON.stringify(m.meta || {})}, ${mode}, ${m.item_id || null}, ${m.thread_id || null}, ${status === "new" ? null : new Date().toISOString()}) returning id`;
   return { id: row.id as string };

@@ -4,6 +4,71 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.4 — 2026-10-06
+- **Build website / Try a new visual** (Reviews → Screenings). A Website card shows what Jarvis knows about the
+  project's site and one button: **Build website** when there's none, **Try a new visual** when there is one. The Mac
+  worker builds it from the project's docs on a `jarvis/website-…` branch and opens a PR (never merged, never deployed),
+  with a pinned design skills pack: taste-skill (taste, redesign, image-to-code), Vercel's web design guidelines audit,
+  the awesome-design-md design systems and the Playwright CLI for screenshots. The site is detected on each projects
+  sync (site code, an address in `package.json` / the GitHub repo / PRD.md or README, whether it answers, a Vercel or
+  Netlify link); a **Website address** you type on the card wins over the guess.
+- **Start new project** on the Admin page: type a name and the Mac worker creates the folder in your projects folder,
+  adds it to the dashboard and runs the new **project setup session** (`agent/setup.mjs`, message mode `setup`). Claude
+  analyses the folder with pinned planning and writing skills from mattpocock/skills (MIT) and drafts the missing
+  foundation: PRD (value, pain, ideal customer, non-goals), CLAUDE.md, README, .gitignore, `docs/architecture.md`
+  (stack, data and auth, staging and production, error tracking), `.env.example`, brand doc, DESIGN.md. New files only,
+  on a `jarvis/setup-<id>` PR when the folder is a GitHub repo. After the upgrade each existing project gets one run. Its questions for you become decide items; what it
+  can't write becomes critical checklist items. It also runs on its own for a project folder loaded for the first time,
+  and for one updated with a foundation gap no earlier run handled (at most weekly). `node agent/setup.mjs check` shows
+  what it would do; `queue <id>` runs it by hand. `projects.mjs sync` now keeps a project name typed on the dashboard.
+- **Project Settings view**: calendar planning, hours per week, top 3, the advisor review, the checklist refresh
+  ("Plan this project" / "Refresh this project checklist", moved here from the page header) and the build mode. The
+  "At a glance" settings drawer now links to it.
+- **Review schedule per project**: run a project's advisor review every N days (default 7, the weekly run), or press
+  **Run now**. Projects on another cadence are reviewed by the worker when due, over their last N days
+  (`weekly.mjs --only <id> --days N`, `agent/reviewrun.mjs`).
+- **Build modes per project**: **Jarvis (Goibniu)** builds quick and direct (default). **Jarvis (Lugh)** loads 8
+  engineering skills from addyosmani/agent-skills (MIT, pinned) for small steps, tests first, debugging, code review,
+  simplification, docs, security and frontend work; slower and uses more tokens. The PR and the inbox reply name the
+  mode. Global default: `worker.build_mode`.
+- **Daily roll-forward**: once a day (first worker pass after `planner.rollover_at`, work days only), undone todos from
+  earlier days and overdue items you own with no todo go back to the top of today: critical first, then most overdue,
+  then priority, at most `planner.rollover_max_per_day` (5) and within `max_focus_minutes_per_day`. A todo carried
+  `planner.rollover_flag_after` (3) times is parked in Someday and its item flagged "check: re-scope". What doesn't fit
+  shows on Today as "N late tasks are waiting" (critical and most late first), so a full day never hides overdue work.
+  `node agent/rollover.mjs --dry-run` shows what today's run would do.
+- **The Monday Jarvis review looks wider.** New sections *Projects this week* and *Pain points* (what keeps coming back
+  in the reviews, the coaching report and the worker's failed runs), and, with `reviews.repo_scout` (on by default),
+  *Repos worth adding*: up to 3 GitHub repos (agent skills, plugins, CLIs, DESIGN.md libraries) that address those pain
+  points, with stars, licence, last commit and how they'd plug in. The scout searches read-only (WebSearch, WebFetch,
+  `gh search repos`, `gh repo view`), skips installed skills and `reviews.repo_scout_skip`, treats what it reads as
+  untrusted, and never installs anything.
+- **Audit prompts**: the HACKED prompt now has concrete checks for sessions and cookie flags, reset links, user
+  enumeration, lockout, uploads, webhooks, server-side prices, prompt injection, AI spend caps, body size limits, CORS,
+  CSRF, HSTS, admin routes, security logging and database least privilege; every verdict cites a file and line, with a
+  severity guide.
+- **"Who it's waiting on" chart**: owner colours are one slate ramp (`--own-you`, `--own-both`, `--own-claude`, light
+  and dark), checked with the dataviz validator, so amber means only "now"; segments run you → both → Claude.
+- Skill packs (`agent/skillpacks.mjs`): third-party skills are fetched at pinned commits into the cache and loaded for
+  one run with `claude --plugin-dir`; nothing is installed user-wide.
+- API: `PATCH /api/agent/todos` (date, sort, time, carry count); `POST /api/agent/todos` accepts `sort`, `source`,
+  `rolled_from`, `rolled_at`. New message modes `website`, `review`, `setup`.
+
+### Upgrade notes
+- Redeploy the site and `git pull` on the Mac at the same time (an older site stores the new message modes as
+  discussions; the version-skew guard keeps the roll-forward and scheduled reviews off until both match). The deploy
+  adds `projects.site`, `site_url`, `review_every_days` (default 7), `build_mode` (null = `worker.build_mode`) and
+  `todos.rollovers`, `rolled_from`, `rolled_at`.
+- New config keys, all with defaults, so an old config keeps working: `reviews.repo_scout`, `reviews.repo_scout_skip`,
+  `worker.build_mode`, `planner.rollover`, `rollover_at`, `rollover_max_per_day`, `rollover_flag_after`,
+  `project_setup.auto_on_load`, `auto_on_update`, `cooldown_days`, `check_minutes`, `model`. Set
+  `planner.rollover` or `project_setup.auto_on_*` to `false` to opt out.
+- Press "Refresh project folders" on Admin (or run `node agent/projects.mjs sync`) to detect existing websites.
+- After the upgrade every existing project gets one setup run, one at a time (each opens a PR or writes only new
+  files). Set `project_setup.auto_on_load: false` first if you'd rather start them by hand with
+  `node agent/setup.mjs queue <project-id>`.
+- Optional: `npm i -g @playwright/cli` on the Mac so website builds can screenshot what they built.
+
 ## 0.7.3 — 2026-10-05
 - **One dashboard: Home, Timeline and Stats are tabs of one page** (`/?tab=overview|timeline|stats`; the old `/timeline`
   and `/stats` links redirect, filters included). The **Now rail** above every tab replaces the four tiles: the next
