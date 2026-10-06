@@ -5,6 +5,8 @@ import * as D from "@/lib/data";
 import { addDays, daysBetween, fmtDate, today } from "@/lib/time";
 import Checklist from "@/components/Checklist";
 import Screenings, { type ScreenCard } from "@/components/Screenings";
+import WebsiteCard, { type WebsiteRun } from "@/components/WebsiteCard";
+import { siteSummary, websiteKind } from "@/lib/website";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
 import ProjectSettings from "@/components/ProjectSettings";
@@ -54,6 +56,8 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     return { kind, title, what, running: msgs.some((m) => m.project_id === id && m.mode === "screen" && m.meta?.kind === kind && ["new", "seen", "working"].includes(m.status)),
       last: last ? { date: last.created_at.slice(0, 10), verdict: last.verdict, fail: c.fail || 0, live: c.live || 0 } : null };
   });
+  const site = msgs.find((m) => m.project_id === id && m.mode === "website"); // newest first
+  const siteRun: WebsiteRun = site ? { status: site.status, created_at: site.created_at, pr_url: (site.meta?.pr_url as string) || null, reply: site.reply } : null;
   const open = items.filter(D.isOpen), dn = items.filter((i) => i.status === "done").length;
   const next = p.deadlines.filter((d) => d.date >= t).sort((a, b) => a.date.localeCompare(b.date))[0];
   const planning = msgs.some((m) => m.project_id === id && m.mode === "plan" && ["new", "seen", "working"].includes(m.status));
@@ -129,6 +133,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
               <Link className="chip" aria-pressed={kind === "screenings"} href={href({ v: "reviews", k: "screenings" })}>Screenings{screenings.length > 0 && ` (${screenings.length})`}</Link>
             </div>
             {kind === "screenings" && <>
+              <WebsiteCard projectId={id} kind={websiteKind(p)} summary={siteSummary(p)} siteUrl={p.site_url || ""} last={siteRun} />
               <Screenings projectId={id} cards={cards} />
               {screenings.length ? <ReviewPicker list={screenings} sel={sp.r} base={{ v: "reviews", k: "screenings" }} href={href} />
                 : <div className="panel empty">No screening yet. Run one above: Claude checks the folder against a researched check list, writes the report here and adds what to fix to the checklist.</div>}

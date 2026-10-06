@@ -9,7 +9,10 @@ export type Project = {
   deadlines: { date: string; label: string }[]; links: { label: string; url: string }[];
   sort: number; archived: boolean; updated_at: string;
   featured_rank: number | null; plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean;
+  /** Detected by agent/website.mjs on projects sync; null until the first sync after 0.8.0. */
+  site?: SiteInfo | null; site_url?: string;
 };
+export type SiteInfo = { code: { framework: string; path: string } | null; url: string | null; source: string | null; live: boolean; deploy: string | null; checked_at: string };
 export type ItemStatus = "todo" | "doing" | "done" | "cancelled";
 export type BuildStatus = "working" | "pr_open" | "merge_requested" | "merged" | "failed" | "sent_back";
 export type Item = {
@@ -36,7 +39,7 @@ export type Todo = {
   item_id: string | null; time: string | null; sort: number; done: boolean; done_at: string | null; created_at: string;
 };
 export type Message = {
-  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan" | "screen"; text: string; status: string; reply: string;
+  id: string; project_id: string | null; review_id: string | null; thread_id: string | null; item_id: string | null; mode: "auto" | "discuss" | "build" | "plan" | "screen" | "website"; text: string; status: string; reply: string;
   meta: Record<string, unknown>; archived: boolean; created_at: string; updated_at: string; replied_at: string | null; opened_at: string | null; treated_at: string | null;
 };
 export type Review = {
@@ -252,7 +255,7 @@ export async function patchMessage(id: string, p: { status?: string; reply?: str
 }
 /** A message the agent leaves or queues: already answered (a note), or new work for the worker (a build run of an item). */
 export async function insertMessage(m: { text: string; project_id?: string | null; status?: string; reply?: string; meta?: Record<string, unknown>; mode?: string; item_id?: string | null; thread_id?: string | null }): Promise<{ id: string }> {
-  const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen"].includes(m.mode || "") ? m.mode! : "discuss";
+  const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen", "website"].includes(m.mode || "") ? m.mode! : "discuss";
   const [row] = await sql()`insert into messages (text, project_id, status, reply, meta, mode, item_id, thread_id, replied_at)
     values (${m.text.slice(0, 4000)}, ${m.project_id || null}, ${status}, ${(m.reply || "").slice(0, 8000)}, ${JSON.stringify(m.meta || {})}, ${mode}, ${m.item_id || null}, ${m.thread_id || null}, ${status === "new" ? null : new Date().toISOString()}) returning id`;
   return { id: row.id as string };

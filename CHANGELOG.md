@@ -3,6 +3,19 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Build website / Try a new visual** (Reviews → Screenings). A Website card shows what Jarvis knows about the
+  project's site and one button: **Build website** when there's none, **Try a new visual** when there is one. The Mac
+  worker builds it from the project's docs on a `jarvis/website-…` branch and opens a PR (never merged, never deployed),
+  with a pinned design skills pack: taste-skill (taste, redesign, image-to-code), Vercel's web design guidelines audit,
+  the awesome-design-md design systems and the Playwright CLI for screenshots. The site is detected on each projects
+  sync (site code, an address in `package.json` / the GitHub repo / PRD.md or README, whether it answers, a Vercel or
+  Netlify link); a **Website address** you type on the card wins over the guess.
+
+### Upgrade notes
+- The two new `projects` columns (`site`, `site_url`) are added on the next deploy. Press "Refresh project folders" on
+  Admin (or run `node agent/projects.mjs sync`) to detect existing sites.
+- Optional: `npm i -g @playwright/cli` on the Mac so website builds can screenshot what they built; without it they
+  skip the visual check and say so.
 - **The Monday Jarvis review looks wider.** Two new sections, *Projects this week* (one line per active project from
   its review) and *Pain points* (what keeps coming back in the reviews, the coaching report and the worker's failed
   runs), and, with `reviews.repo_scout` (on by default), *Repos worth adding*: up to 3 GitHub repos (agent skills,

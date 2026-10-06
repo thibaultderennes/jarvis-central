@@ -238,3 +238,7 @@ create index if not exists items_sprint on items (sprint_id) where sprint_id is 
 -- meta.kind = vibecoded | prelaunch | rights. The type check is widened in place (drop + add, same end state every run).
 alter table reviews drop constraint if exists reviews_type_check;
 alter table reviews add constraint reviews_type_check check (type in ('project','recap','coaching','jarvis','doc','security','screening'));
+-- 0.7.4. Website builds (Reviews → Build website / Try a new visual). `site` is what agent/website.mjs detects in the
+-- folder on each projects sync; `site_url` is the address the owner types, which always wins over the guess.
+alter table projects add column if not exists site jsonb;
+alter table projects add column if not exists site_url text not null default '';
