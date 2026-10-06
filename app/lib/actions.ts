@@ -366,15 +366,16 @@ export async function requestScreening(project_id: string, kind: string) {
 }
 
 /** Reviews → Build website / Try a new visual: the Mac worker builds it with the design skills on a branch and opens a PR. */
-export async function requestWebsite(project_id: string): Promise<{ error?: string }> {
+export async function requestWebsite(project_id: string, opts: { ask?: string; keepColours?: boolean } = {}): Promise<{ error?: string }> {
   await requireSession();
   const p = await D.getProject(project_id);
   if (!p) return { error: "No such project." };
   const busy = await sql()`select id from messages where project_id = ${project_id} and mode = 'website' and status in ('new', 'seen', 'working') limit 1`;
   if (busy.length) return {};
   const kind = websiteKind(p);
-  await D.insertMessage({ text: kind === "redesign" ? `Try a new visual for ${p.name}'s website, using the design skills, and open a PR.` : `Build ${p.name}'s website from the project's docs, using the design skills, and open a PR.`,
-    project_id, status: "new", mode: "website", meta: { kind } });
+  const ask = String(opts.ask || "").trim().slice(0, 1000), keep_colours = kind === "redesign" && !!opts.keepColours;
+  await D.insertMessage({ text: (kind === "redesign" ? `Try a new visual for ${p.name}'s website: 3 distinct directions as previews, and open a PR.` : `Build ${p.name}'s website from the project's docs, using the design skills, and open a PR.`) + (ask ? `\n\nWhat should change: ${ask}` : "") + (keep_colours ? "\nKeep my colours." : ""),
+    project_id, status: "new", mode: "website", meta: { kind, ask, keep_colours } });
   await D.logActivity("project_website", `/p/${project_id}`, { project_id, kind });
   done();
   return {};

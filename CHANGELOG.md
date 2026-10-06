@@ -4,6 +4,18 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.4.5 — 2026-10-06
+- **Try a new visual now shows real alternatives.** It builds 3 clearly different directions of the home page (A safe
+  but fresh, B bold, C unexpected), each with its own palette, type and layout from a different design reference, as
+  previews under `/visuals/` next to the live site, which isn't touched. Only the name, logo and copy stay fixed; brand
+  rules that lock colours or fonts don't bind the previews unless you tick **Keep my colours**. A **What should change?**
+  box on the Website card goes straight into the brief. With the Playwright CLI installed the run screenshots the
+  current home page and each direction (desktop and phone), commits them and embeds them in the PR. Reply "apply B"
+  to make one the real site. (0.7.4's version restyled the existing pages and stayed too close to them.)
+
+### Upgrade notes
+- Install the Playwright CLI on the Mac (`npm i -g @playwright/cli`) so website runs can screenshot what they build.
+
 ## 0.7.4 — 2026-10-06
 - **Build website / Try a new visual** (Reviews → Screenings). A Website card shows what Jarvis knows about the
   project's site and one button: **Build website** when there's none, **Try a new visual** when there is one. The Mac
