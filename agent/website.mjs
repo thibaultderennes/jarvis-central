@@ -6,9 +6,9 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { cacheDir, makeLog } from "./lib.mjs";
 
-const log = makeLog("website");
+import { preparePack } from "./skillpacks.mjs";
+
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return null; } };
 const readJSON = (f) => { try { return JSON.parse(fs.readFileSync(f, "utf8")); } catch { return null; } };
 
@@ -85,52 +85,14 @@ export const SOURCES = [
     skills: { "web-design-guidelines": "skills/web-design-guidelines" } },
   { repo: "microsoft/playwright-cli", ref: "b85c7a736bb473bf55b584e54a09ffa698d6d871", licence: "Apache-2.0",
     skills: { "playwright-cli": "skills/playwright-cli" } },
-  { repo: "VoltAgent/awesome-design-md", ref: "13be5c05c63be24b57581162364167028020f043", licence: "MIT", designs: "design-md" },
+  { repo: "VoltAgent/awesome-design-md", ref: "13be5c05c63be24b57581162364167028020f043", licence: "MIT", extra: { designs: "design-md" } },
 ];
 export const PLUGIN_NAME = "jarvis-website";
 
-const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 180_000 }).trim();
-
-/** One repo at its pinned commit under the cache (shallow fetch of that commit only). */
-function fetchPinned({ repo, ref }) {
-  const dir = path.join(cacheDir("website", "repos"), repo.replace("/", "__"));
-  let head = null;
-  try { head = git(dir, "rev-parse", "HEAD"); } catch {}
-  if (head === ref) return dir;
-  fs.rmSync(dir, { recursive: true, force: true });
-  fs.mkdirSync(dir, { recursive: true });
-  git(dir, "init", "-q");
-  git(dir, "remote", "add", "origin", `https://github.com/${repo}.git`);
-  git(dir, "fetch", "-q", "--depth", "1", "origin", ref);
-  git(dir, "checkout", "-q", "FETCH_HEAD");
-  return dir;
-}
-
-/**
- * Builds the pack the website run loads: a local plugin (`claude --plugin-dir`) holding the skills, plus the
- * DESIGN.md reference library. Returns { pluginDir, designsDir, skills: {name: SKILL.md path} }.
- */
+/** The pack a website run loads: { pluginDir, designsDir, skills: {name: SKILL.md path} }. */
 export function prepareWebsiteSkills() {
-  const pluginDir = cacheDir("website", "plugin");
-  const skillsDir = path.join(pluginDir, "skills");
-  fs.rmSync(skillsDir, { recursive: true, force: true });
-  fs.mkdirSync(path.join(pluginDir, ".claude-plugin"), { recursive: true });
-  fs.writeFileSync(path.join(pluginDir, ".claude-plugin", "plugin.json"), JSON.stringify({
-    name: PLUGIN_NAME, version: "1.0.0", description: "Design skills for Jarvis website builds (fetched at pinned commits; see agent/website.mjs).",
-  }, null, 2));
-  const skills = {}; let designsDir = null;
-  for (const s of SOURCES) {
-    const dir = fetchPinned(s);
-    if (s.designs) { designsDir = path.join(dir, s.designs); continue; }
-    for (const [name, rel] of Object.entries(s.skills)) {
-      const src = path.join(dir, rel);
-      if (!fs.existsSync(path.join(src, "SKILL.md"))) { log("skill missing at the pinned commit", s.repo, rel); continue; }
-      fs.cpSync(src, path.join(skillsDir, name), { recursive: true });
-      skills[name] = path.join(skillsDir, name, "SKILL.md");
-    }
-  }
-  if (!Object.keys(skills).length) throw new Error("none of the website skills could be fetched");
-  return { pluginDir, designsDir, skills };
+  const { pluginDir, skills, extra } = preparePack(PLUGIN_NAME, SOURCES, "Design skills for Jarvis website builds (pinned; see agent/website.mjs).");
+  return { pluginDir, designsDir: extra.designs || null, skills };
 }
 
 /* ---------------- the run's prompt ---------------- */

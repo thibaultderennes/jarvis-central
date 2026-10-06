@@ -34,7 +34,7 @@
      **Try a new visual** (message `mode: 'website'`, `meta.kind` = `new` | `redesign`). The worker runs it like a build (a
      `jarvis/website-<id>` worktree, then a PR, never merged) with the design skills pack: taste-skill (taste, redesign,
      image-to-code), vercel-labs `web-design-guidelines` and the Playwright CLI skill, fetched at pinned commits into the cache
-     and loaded with `claude --plugin-dir`, plus the awesome-design-md DESIGN.md library as an extra read directory. On each
+     and loaded with `claude --plugin-dir` (`agent/skillpacks.mjs`), plus the awesome-design-md DESIGN.md library as an extra read directory. On each
      projects sync it also detects the site: site code (a web framework in a `package.json`, or an `index.html`), an address
      (`package.json` homepage, the GitHub repo homepage, a "Website: https://…" line in PRD.md / README.md / CLAUDE.md), whether
      it answers, and a Vercel / Netlify link. `node agent/website.mjs detect [id]` prints it; `node agent/website.mjs skills` fetches the pack.
