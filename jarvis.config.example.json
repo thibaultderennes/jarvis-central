@@ -45,6 +45,7 @@
     "refine_inbox_notes": false,
     "discuss_model": "sonnet",
     "build_model": null,
+    "build_mode": "goibniu",
     "timeout_minutes": 25
   },
 

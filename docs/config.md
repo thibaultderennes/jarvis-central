@@ -27,7 +27,7 @@ re-run it and redeploy after changing those.
 | `planner.rollover_at` | `"04:00"` | Earliest local time the roll-forward runs (the first worker pass after it, once a day). |
 | `planner.rollover_max_per_day` | `5` | Most todos carried into one day, so one bad day doesn't bury the next. |
 | `planner.rollover_flag_after` | `3` | A todo carried this many times and still not done is parked in Someday instead, and its checklist item is flagged "check: re-scope". |
-| `reviews.run` | Monday 05:00 | When the weekly reviews start. |
+| `reviews.run` | Monday 05:00 | When the weekly reviews start. A project whose Settings say "every N days" with N other than 7 is skipped here: the worker reviews it when it's due (checked hourly), over its last N days. Settings → Run now reviews one project straight away. |
 | `reviews.advisors` | `["ceo","cmo","po"]` | Which advisors review each active project. |
 | `reviews.stance` | sceptical | Instruction given to every advisor about how hard to push back. |
 | `reviews.concurrency` | `2` | Projects reviewed in parallel. |
@@ -39,7 +39,8 @@ re-run it and redeploy after changing those.
 | `worker.refine_inbox_notes` | `false` | `true` = also post an Inbox note each time a new item is refined (the result is always on the item itself). Replies to your comments on an item always go to the Inbox. |
 | `worker.discuss_model` | `"sonnet"` | Model for discussion messages (lighter on your plan). |
 | `worker.build_model` | `null` | Model for build messages (`null` = Claude Code's default). |
-| `worker.timeout_minutes` | `25` | Hard limit per message. |
+| `worker.build_mode` | `"goibniu"` | Build mode for projects that haven't picked one in Settings. `"goibniu"`: Jarvis builds quick and direct, no extra skills. `"lugh"`: the same run plus engineering skills from [addyosmani/agent-skills](https://github.com/addyosmani/agent-skills) (MIT, pinned in `agent/lugh.mjs`: incremental implementation, test-driven development, debugging, code review, simplification, docs, security, frontend UI); slower and uses more tokens. Applies to item builds and "Build it (PR)", not website builds. |
+| `worker.timeout_minutes` | `25` | Hard limit per message. A Lugh build gets 1.5 times this, a website build twice. |
 | `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Security tab. |
 | `audits.sync_minutes` | `60` | How often the worker mirrors those reports to the site (`0` = every worker pass). `node agent/audits.mjs sync` does it now. |
 | `economics.files` | `["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"]` | File names, relative to each project folder, that opt a project into unit economics: the first that exists is its model. See [`unit-economics.md`](unit-economics.md). |

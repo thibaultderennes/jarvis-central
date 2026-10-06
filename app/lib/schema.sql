@@ -248,3 +248,7 @@ alter table projects add column if not exists site_url text not null default '';
 alter table todos add column if not exists rollovers int not null default 0;
 alter table todos add column if not exists rolled_from date;
 alter table todos add column if not exists rolled_at date;
+-- 0.7.4. Project settings: how often the advisor review runs (7 = the Monday run; any other value, the worker runs it
+-- when due) and how Jarvis builds the project (build_mode 'goibniu' | 'lugh'; null = the worker's worker.build_mode).
+alter table projects add column if not exists review_every_days int not null default 7;
+alter table projects add column if not exists build_mode text;

@@ -44,6 +44,19 @@
      projects sync it also detects the site: site code (a web framework in a `package.json`, or an `index.html`), an address
      (`package.json` homepage, the GitHub repo homepage, a "Website: https://…" line in PRD.md / README.md / CLAUDE.md), whether
      it answers, and a Vercel / Netlify link. `node agent/website.mjs detect [id]` prints it; `node agent/website.mjs skills` fetches the pack.
+   - `reviewrun.mjs`: **advisor reviews outside the weekly run**. A project's Settings set `review_every_days` (default 7 =
+     the weekly run). For any other value the worker checks hourly and queues a message `mode: 'review'`
+     (`meta: {kind: 'scheduled', days}`) once the newest project review (or the last attempt) is that many days old;
+     Settings → **Run now** queues `meta.kind: 'now'`. The worker runs `weekly.mjs --only <id> --days <N>`: the same
+     advisors and synthesis over the last N days ending today (`week_start` = the first day, `meta.period_days` = N),
+     then replies with the verdict. The weekly run skips projects on their own schedule. `node agent/reviewrun.mjs due` lists them.
+   - `lugh.mjs`: **build modes**. Each project picks one in Settings (`projects.build_mode`; null = `worker.build_mode`,
+     default `goibniu`). **Jarvis (Goibniu)** is the plain build run. **Jarvis (Lugh)** is the same run with engineering
+     skills from addyosmani/agent-skills (MIT) at a pinned commit, loaded as the `jarvis-lugh` plugin (`agent/skillpacks.mjs`),
+     plus a prompt section that says which skill to follow at each step (thin slices, tests first, debugging, frontend,
+     security, then self-review, simplification and docs). Applies to code runs except website builds; Lugh gets 90 turns
+     and 1.5 × `worker.timeout_minutes`. The PR body and the reply name the mode; the message `meta.build_mode` records it.
+     `node agent/lugh.mjs skills` fetches the pack, `brief` prints the prompt section.
    - `jarvis.mjs`: CLI that Claude Code sessions use to read/edit checklists, answer the inbox, list audits, manage costs.
 3. **Your settings** `jarvis.config.json` (gitignored) — see `docs/config.md`.
 
@@ -58,7 +71,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 ```
 
 ## Data model (Postgres)
-- `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, site jsonb null /* detected: {code: {framework, path}, url, source, live, deploy, checked_at} */, site_url text /* typed by the owner; wins */, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
+- `projects(id text pk, name, kind 'checklist'|'running', featured_rank 1–3 null /* top 3 */, plan_enabled bool, weekly_minutes int null, reviews_enabled bool, review_every_days int default 7 /* 7 = the weekly run */, build_mode text null /* 'goibniu'|'lugh'; null = worker.build_mode */, site jsonb null /* detected: {code: {framework, path}, url, source, live, deploy, checked_at} */, site_url text /* typed by the owner; wins */, color, tagline, state, status, dir, sections jsonb, deadlines jsonb, links jsonb, sort int, archived bool, updated_at)`
   - `sections`: `[{id, name, note, notes: bool /* show a note box for the owner */, owner_default}]`
   - `deadlines`: `[{date, label, prd?}]` (`prd`: a milestone moved on the Timeline; the date PRD.md still has until the Mac worker writes the new date into that row, `agent/milestones.mjs`), `links`: `[{label, url}]`, `dir`: absolute path on the Mac (e.g. `/Users/alex/Projects/my-app`)
 - `items(project_id, id, section, title, detail, status 'todo'|'doing'|'done'|'cancelled', due date null, owner 'founder'|'claude'|'both'|null, critical bool, sort real, note text, created_at, updated_at, done_at, estimate_minutes, priority 1|2|3, refine 'pending'|'done'|'flagged'|'error', refine_note, refine_request /* the owner's comment awaiting Claude */, cancel_reason, duplicate_of /* id of the item it duplicated */, note_sent_at /* the note box was sent to Claude */, build_status, build_note, pr_url, build_updated_at, blocked_by text[] /* codes of items in the same project it waits on */, sprint_id uuid null)` pk `(project_id, id)`
@@ -86,7 +99,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   - inbox groups on the site: **New** (a reply not yet opened, or work still with Claude) → **Pending** (`opened_at` set
     once the reply was on screen) → **Treated** (`treated_at`, "Mark treated"; hidden = `archived`). `item_id` = the
     build run of a checklist item.
-  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'}`
+  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh'}`
 - `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at)`
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - `doc` = long-lived documents (strategy reviews). `meta.tabs` may hold `[{key, label, body_md}]`.
@@ -171,6 +184,7 @@ title contain every word (case- and accent-insensitive, archived projects left o
   texts, or touches production data or secrets. The only merge the worker script does is `gh pr merge` of a PR the
   owner approved on the item ("Approve & merge"); the item is then done.
 - Every pass, before the inbox: refine new items, sync audits, evaluate unit-economics models (hourly), fetch product metrics (daily), run a requested folder rescan, once a day the roll-forward (`rollover.mjs`), merge approved PRs, then
+  queue advisor reviews that are due on a project's own schedule (hourly), then
   queue at most one build run (in-progress items owned by Claude, sent-back PRs first, critical first).
 - Anything outside that → status `needs_you` with a clear explanation.
 
@@ -181,7 +195,7 @@ title contain every word (case- and accent-insensitive, archived projects left o
   earlier weekly reviews, then reconciles: ticks items verified done (evidence in `refine_note`, one click to undo),
   flags obsolete ones (`refine: 'flagged'`, nothing removed), adds what's missing; the report is a strategy document
   "Checklist refresh · date"; `node agent/planproject.mjs <id> --dry-run` shows what it would read;
-  `auto` = legacy), an optional `review_id` (discussion under a review) and `thread_id` (first message of an inbox
+  `review` = an advisor review of one project, see `reviewrun.mjs` above; `auto` = legacy), an optional `review_id` (discussion under a review) and `thread_id` (first message of an inbox
   conversation; `GET /api/agent/messages?thread=ID`). `worker.allow_build: false` disables build mode.
 
 ## Week plans
