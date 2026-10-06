@@ -27,6 +27,8 @@ re-run it and redeploy after changing those.
 | `reviews.advisors` | `["ceo","cmo","po"]` | Which advisors review each active project. |
 | `reviews.stance` | sceptical | Instruction given to every advisor about how hard to push back. |
 | `reviews.concurrency` | `2` | Projects reviewed in parallel. |
+| `reviews.repo_scout` | `true` | The Monday Jarvis review also searches GitHub and the web (read-only) for agent skills and tools that address the week's pain points, and proposes up to 3. `false` = no web access for that review. |
+| `reviews.repo_scout_skip` | `[]` | Repos (`owner/repo`) the scout should never propose again. Installed skills are skipped automatically. |
 | `worker.interval_seconds` | `60` | How often the inbox is checked. |
 | `worker.allow_build` | `true` | `false` = the worker only discusses, never edits code. |
 | `worker.refine_new_items` | `true` | Items you add on the site get steps, a section, priority, an estimate and a due date on a day with room. `false` = leave them as typed. |

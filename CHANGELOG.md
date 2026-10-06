@@ -3,6 +3,12 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **The Monday Jarvis review looks wider.** Two new sections, *Projects this week* (one line per active project from
+  its review) and *Pain points* (what keeps coming back in the reviews, the coaching report and the worker's failed
+  runs), and, with `reviews.repo_scout` (on by default), *Repos worth adding*: up to 3 GitHub repos (agent skills,
+  plugins, CLIs, DESIGN.md libraries) that address those pain points, with stars, licence, last commit and how they'd
+  plug in. The scout searches read-only (WebSearch, WebFetch, `gh search repos`, `gh repo view`), skips installed
+  skills and `reviews.repo_scout_skip`, treats what it reads as untrusted, and never installs anything.
 
 ## 0.7.3 — 2026-10-05
 - **One dashboard: Home, Timeline and Stats are tabs of one page** (`/?tab=overview|timeline|stats`; the old `/timeline`

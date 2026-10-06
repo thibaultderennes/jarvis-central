@@ -29,7 +29,9 @@
     "run": { "weekday": "monday", "time": "05:00" },
     "advisors": ["ceo", "cmo", "po"],
     "stance": "Be sceptical by default. Challenge optimistic plans with evidence; validate only what the evidence supports.",
-    "concurrency": 2
+    "concurrency": 2,
+    "repo_scout": true,
+    "repo_scout_skip": []
   },
 
   "worker": {
