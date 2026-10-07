@@ -17,7 +17,11 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   reply <message-id> "text" [--status answered|done|needs_you]
   todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
   todos [--from D] [--to D]                       default: today → +6 days
-  reviews [--type project|recap|coaching|jarvis|doc|security] [--project P] [--limit N] [--full]
+  reviews [--type project|recap|coaching|jarvis|doc|security|screening] [--project P] [--limit N] [--unacked] [--full]
+                                                  "new" marks the ones not acknowledged yet (Docs and reviews on the site)
+  ack <review-id> | unack <review-id>             acknowledge a report (it leaves the new count), or make it new again
+  proposals <review-id>                           the tasks a review proposes: already on the checklist, pushed, or to push (with a key)
+  push <review-id> <key> [--section S] [--owner founder|claude|both] [--estimate MIN]   push one proposal to the checklist (never twice)
   audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
   stats [--bucket day|week|month] [--n N] [--project P] [--items]   added / finished / cancelled per bucket (14 days, 12 weeks, 12 months)
   metrics <project> [--days N]                    product numbers per snapshot (users, active_users, visits, revenue…)
@@ -41,7 +45,7 @@ function parse(argv) {
     if (a.startsWith("--")) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel", "items"].includes(k)) { flags[k] = next; i++; }
+      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel", "items", "unacked"].includes(k)) { flags[k] = next; i++; }
       else flags[k] = true;
     } else pos.push(a);
   }
@@ -211,12 +215,37 @@ async function main() {
       return;
     }
     case "reviews": {
-      const rs = await api("GET", "/api/agent/reviews" + qs({ type: flags.type, project: flags.project, limit: flags.limit || 5 }));
+      const rs = await api("GET", "/api/agent/reviews" + qs({ type: flags.type, project: flags.project, limit: flags.limit || 5, unacked: flags.unacked ? "1" : undefined }));
       if (json) return out(JSON.stringify(rs, null, 2));
-      for (const r of rs) out(`${r.id}  ${pad(r.type, 8)} ${pad(r.project_id || "—", 10)} ${r.week_start || ""} ${r.verdict ? `[${r.verdict}] ` : ""}${r.title}${r.headline ? ` — ${r.headline}` : ""}`);
+      for (const r of rs) out(`${r.id}  ${r.acked_at ? "   " : "new"} ${pad(r.type, 8)} ${pad(r.project_id || "—", 10)} ${r.week_start || ""} ${r.verdict ? `[${r.verdict}] ` : ""}${r.title}${r.headline ? ` — ${r.headline}` : ""}`);
       if (flags.full && rs[0]) out(`\n${rs[0].body_md}`);
-      if (!rs.length) out("No reviews.");
+      if (!rs.length) out(flags.unacked ? "No reviews waiting to be acknowledged." : "No reviews.");
       return;
+    }
+    case "ack": case "unack": {
+      const id = need(rest[0], "<review-id>");
+      const { review } = await api("PATCH", "/api/agent/reviews", { id, acked: cmd === "ack" });
+      if (json) return out(JSON.stringify(review, null, 2));
+      return out(`${cmd === "ack" ? "Acknowledged" : "Marked as new"}: ${review.title}`);
+    }
+    case "proposals": {
+      const id = need(rest[0], "<review-id>");
+      const ps = await api("GET", "/api/agent/proposals" + qs({ review: id }));
+      if (json) return out(JSON.stringify(ps, null, 2));
+      if (!ps.length) return out("This review proposes no tasks.");
+      const LABEL = { pushable: "to push", pushed: "pushed", "on-checklist": "on list", text: "text" };
+      for (const p of ps) {
+        out(`${pad(LABEL[p.state] || p.state, 8)} ${pad(p.state === "pushable" ? p.key : "", 9)} ${p.title || p.text}${p.items.length ? `  → ${p.items.join(", ")}` : ""}`);
+        if (p.state === "pushable") out(`         ${p.source}${p.section ? ` · section ${p.section}` : ""}${p.owner ? ` · ${p.owner}` : ""}${p.estimate_minutes ? ` · ~${p.estimate_minutes} min` : ""}`);
+      }
+      return;
+    }
+    case "push": {
+      const id = need(rest[0], "<review-id>"), key = need(rest[1], "<key> (from: jarvis proposals <review-id>)");
+      try {
+        const { item } = await api("POST", "/api/agent/proposals", { review_id: id, key, section: flags.section, owner: flags.owner, estimate_minutes: flags.estimate });
+        return out(json ? JSON.stringify(item, null, 2) : `Added to ${item.project_id}/${item.section}: [${item.id}] ${item.title}`);
+      } catch (e) { out(`Not pushed: ${e.message}`); process.exit(1); }
     }
     case "audits": {
       const project = need(rest[0], "<project>");

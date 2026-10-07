@@ -44,7 +44,7 @@ Optional per project:
   Monday reviews use the tool's generic `personas/` and adapt them to the project.
 - `milestones` in the PRD as a table (`| date | milestone |`) — become the project's deadlines on the dashboard.
 - `docs/audits/*.md` (or `audits.dir`) — security audit reports, one file per run (`YYYY-MM-DD-….md`, first line an
-  H1). They appear on the project page's Security tab within an hour; `PROMPTS.md` and `README.md` there are ignored.
+  H1). They appear on the project page's Docs and reviews (Security audits) within an hour; `PROMPTS.md` and `README.md` there are ignored.
 
 ## Project kinds
 - `checklist` (default): active project with a checklist, deadlines, burn-up, weekly advisor review.
