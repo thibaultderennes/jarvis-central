@@ -2,6 +2,7 @@ import { q, sql } from "./db";
 import { addDays, mondayOf, today, TZ } from "./time";
 import { itemUpdate, projectUpsert } from "./sqlbuild";
 import type { BuildMode } from "./projectSettings";
+import { pushPlan, reviewProposals } from "./docsHub";
 
 export type Section = { id: string; name: string; note?: string; notes?: boolean; owner_default?: string };
 export type Project = {
@@ -53,6 +54,10 @@ export type Review = {
   id: string; type: "project" | "recap" | "coaching" | "jarvis" | "doc" | "security" | "screening"; project_id: string | null;
   week_start: string | null; title: string; verdict: string | null; headline: string; body_md: string;
   meta: Record<string, unknown>; created_at: string;
+  /** When the owner marked it as read on Docs and reviews; null = new. Undefined until the 0.7.4.6 migration ran. */
+  acked_at?: string | null;
+  /** Proposed tasks pushed to the checklist: {proposal key: item code} (lib/docsHub.ts). */
+  pushed?: Record<string, string>;
 };
 
 // Postgres `date` comes back as a Date or string depending on driver settings; normalise to YYYY-MM-DD.
@@ -63,7 +68,7 @@ const normSprint = (r: Record<string, unknown>) => ({ id: r.id, project_id: r.pr
 const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
 const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at), rollovers: Number(r.rollovers) || 0, rolled_from: d10(r.rolled_from), rolled_at: d10(r.rolled_at) }) as Todo;
 const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at), opened_at: ts(r.opened_at), treated_at: ts(r.treated_at) }) as Message;
-const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at) }) as Review;
+const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at), acked_at: ts(r.acked_at), pushed: r.pushed && typeof r.pushed === "object" ? r.pushed : {} }) as Review;
 /** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
 export const newestFileFirst = (a: Review, b: Review) => String(b.meta?.date || "").localeCompare(String(a.meta?.date || "")) || b.created_at.localeCompare(a.created_at);
 const normProject = (r: Record<string, unknown>) => ({ ...r, updated_at: ts(r.updated_at) }) as Project;
@@ -284,13 +289,19 @@ export async function insertMessage(m: { text: string; project_id?: string | nul
 export const inboxGroup = (m: Message): "new" | "pending" | "treated" => (m.treated_at || m.archived ? "treated" : m.opened_at && !["new", "seen", "working"].includes(m.status) ? "pending" : "new");
 
 /* ---------- reviews ---------- */
-export async function getReviews(opts: { type?: string; project?: string; limit?: number; week?: string } = {}): Promise<Review[]> {
+/**
+ * `light` leaves out body_md and meta.tabs (list views: a project can have hundreds of reports); `unacked` keeps only
+ * the ones the owner hasn't marked as read.
+ */
+export async function getReviews(opts: { type?: string; project?: string; limit?: number; week?: string; unacked?: boolean; light?: boolean } = {}): Promise<Review[]> {
   const where: string[] = [], params: unknown[] = [];
   if (opts.type) { params.push(opts.type); where.push(`type = $${params.length}`); }
   if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
   if (opts.week) { params.push(opts.week); where.push(`week_start = $${params.length}`); }
+  if (opts.unacked) where.push("acked_at is null");
   params.push(Math.min(opts.limit || 50, 500));
-  const rows = await q(`select * from reviews ${where.length ? "where " + where.join(" and ") : ""} order by week_start desc nulls last, created_at desc limit $${params.length}`, params);
+  const cols = opts.light ? "id, type, project_id, week_start, title, verdict, headline, '' as body_md, meta - 'tabs' as meta, created_at, acked_at, pushed" : "*";
+  const rows = await q(`select ${cols} from reviews ${where.length ? "where " + where.join(" and ") : ""} order by week_start desc nulls last, created_at desc limit $${params.length}`, params);
   return rows.map(normReview);
 }
 export async function getReview(id: string): Promise<Review | null> {
@@ -305,7 +316,8 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
       values (${r.type}, ${r.project_id || null}, ${r.week_start}, ${r.title}, ${r.verdict || null}, ${r.headline || ""}, ${r.body_md}, ${meta})
       on conflict (type, coalesce(project_id, ''), week_start) where type <> 'doc'
       do update set title = excluded.title, verdict = excluded.verdict, headline = excluded.headline,
-        body_md = excluded.body_md, meta = excluded.meta, created_at = now()
+        body_md = excluded.body_md, meta = excluded.meta, created_at = now(),
+        acked_at = case when reviews.body_md is distinct from excluded.body_md then null else reviews.acked_at end
       returning *`;
     return normReview(rows[0]);
   }
@@ -317,7 +329,8 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
       values (${r.type}, ${r.project_id || null}, null, ${r.title}, ${r.verdict || null}, ${r.headline || ""}, ${r.body_md}, ${meta})
       on conflict (type, coalesce(project_id, ''), (meta->>'file')) where meta->>'file' is not null
       do update set title = excluded.title, verdict = excluded.verdict, headline = excluded.headline,
-        body_md = excluded.body_md, meta = excluded.meta, created_at = now()
+        body_md = excluded.body_md, meta = excluded.meta, created_at = now(),
+        acked_at = case when reviews.body_md is distinct from excluded.body_md then null else reviews.acked_at end
       returning *`;
     return normReview(rows[0]);
   }
@@ -330,6 +343,62 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
     values (${r.type}, ${r.project_id || null}, ${r.week_start || null}, ${r.title}, ${r.verdict || null}, ${r.headline || ""}, ${r.body_md}, ${meta}) returning *`;
   return normReview(rows[0]);
 }
+/** Mark a report as read (or new again). Null when there's no such review. */
+export async function setReviewAck(id: string, acked: boolean): Promise<Review | null> {
+  if (!/^[0-9a-f-]{36}$/.test(id)) return null;
+  const rows = await sql()`update reviews set acked_at = ${acked ? new Date().toISOString() : null} where id = ${id} returning *`;
+  return rows[0] ? normReview(rows[0]) : null;
+}
+export class AlreadyPushedError extends Error { constructor(public existing: string) { super(`Already on the checklist as "${existing}"`); } }
+/**
+ * Push one task a review proposed to the checklist. The proposal is re-read from the stored review (never taken from
+ * the caller) and its key is claimed atomically before the item is created, so two clicks, or the site and the CLI,
+ * can't add it twice. An exact duplicate title records the existing item instead of adding another.
+ */
+export async function pushProposal(review_id: string, key: string, choice: { section?: string | null; owner?: unknown; estimate_minutes?: unknown } = {}, actor = "founder"): Promise<Item> {
+  const r = await getReview(review_id);
+  if (!r || !r.project_id) throw new PushError("No such review", 404);
+  const p = await getProject(r.project_id);
+  if (!p) throw new PushError("No such project", 404);
+  const items = await getItems({ project: r.project_id });
+  const plan = pushPlan(r, key, items, p.sections, choice);
+  if ("error" in plan) { if (plan.existing) throw new AlreadyPushedError(plan.existing); throw new PushError(plan.error, 400); }
+  // The claim is "pending:<time>"; one left behind by a push that died mid-way can be taken over after two minutes.
+  const [claimed] = await sql()`update reviews set pushed = coalesce(pushed, '{}'::jsonb) || jsonb_build_object(${key}::text, 'pending:' || now()::text)
+    where id = ${r.id} and (not (coalesce(pushed, '{}'::jsonb) ? ${key}::text)
+      or (case when pushed->>${key}::text like 'pending:%' then substr(pushed->>${key}::text, 9)::timestamptz < now() - interval '2 minutes' else false end))
+    returning id`;
+  if (!claimed) {
+    const [cur] = await sql()`select pushed->>${key}::text as v from reviews where id = ${r.id}`;
+    throw new AlreadyPushedError(String(cur?.v || "").startsWith("pending:") ? "a push still in progress" : String(cur?.v || "an earlier push"));
+  }
+  try {
+    const item = await addItem({ project_id: r.project_id, ...plan.item }, actor);
+    await sql()`update reviews set pushed = pushed || jsonb_build_object(${key}::text, ${item.id}::text) where id = ${r.id}`;
+    return item;
+  } catch (e) {
+    if (e instanceof DuplicateError) {
+      await sql()`update reviews set pushed = pushed || jsonb_build_object(${key}::text, ${e.item.id}::text) where id = ${r.id}`;
+      throw new AlreadyPushedError(e.item.id);
+    }
+    await sql()`update reviews set pushed = pushed - ${key}::text where id = ${r.id} and pushed->>${key}::text like 'pending:%'`;
+    throw e;
+  }
+}
+/** Every proposal of a review not on the checklist yet, each with its own defaults; same guard as one push. */
+export async function pushAllProposals(review_id: string, actor = "founder"): Promise<{ added: Item[]; already: number; failed: string[] }> {
+  const r = await getReview(review_id);
+  if (!r || !r.project_id) throw new PushError("No such review", 404);
+  const keys = reviewProposals(r, await getItems({ project: r.project_id })).filter((p) => p.state === "pushable").map((p) => p.key);
+  const added: Item[] = [], failed: string[] = [];
+  let already = 0;
+  for (const key of keys) {
+    try { added.push(await pushProposal(review_id, key, {}, actor)); }
+    catch (e) { if (e instanceof AlreadyPushedError) already++; else failed.push(e instanceof Error ? e.message : String(e)); }
+  }
+  return { added, already, failed };
+}
+export class PushError extends Error { constructor(msg: string, public status = 400) { super(msg); } }
 
 /* ---------- kv / activity ---------- */
 export async function kvGet<T = unknown>(key: string): Promise<{ value: T; updated_at: string } | null> {

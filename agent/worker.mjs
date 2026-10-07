@@ -21,6 +21,7 @@ import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
 import { prepareWebsiteSkills, websiteBrief, playwrightCommand, githubWebUrl } from "./website.mjs";
 import { prepareLughSkills, lughBrief, PLUGIN_NAME as LUGH_PLUGIN } from "./lugh.mjs";
+import { skillUse, missingSkillsPrompt } from "./skillpacks.mjs";
 import { BUILD_MODES, buildModeFor } from "./projectsettings.mjs";
 import { queueDueReviews, runProjectReview } from "./reviewrun.mjs";
 import { setupProject, queueSetupDue } from "./setup.mjs";
@@ -103,11 +104,33 @@ function prFor(repo, branch) {
 }
 
 /** Edits the run left uncommitted (a denied commit, a stop at the turn limit): commit them so the work reaches the PR. */
+// What a run leaves behind that never belongs in a PR: dependencies, browser-check snapshots, test reports, caches.
+const JUNK = ["node_modules", "**/node_modules", ".playwright-cli", "**/.playwright-cli", ".playwright-mcp", "**/.playwright-mcp", "test-results", "playwright-report", ".DS_Store", "**/.DS_Store"];
+
+/** The skills a run must open: website runs by kind (the browser check only when the Playwright CLI is there), Lugh its core four. */
+export function requiredSkills({ site, kind, pack, playwright }) {
+  const want = site
+    ? ["taste-skill", ...(kind === "redesign" ? ["redesign-skill"] : []), "image-to-code-skill", "web-design-guidelines", ...(playwright ? ["playwright-cli"] : [])]
+    : ["incremental-implementation", "test-driven-development", "code-review-and-quality", "code-simplification"];
+  return want.filter((n) => pack?.skills?.[n]);
+}
+
+/** Junk a run committed itself (e.g. `git add -A` picking up .playwright-cli/): untrack it in one last commit. */
+export function dropCommittedJunk(wt, base) {
+  const added = (tryGit(wt, "diff", "--name-only", "--diff-filter=A", `origin/${base}..HEAD`) || "").split("\n").filter(Boolean);
+  const isJunk = (f) => f.split("/").some((seg) => [".playwright-cli", ".playwright-mcp", "node_modules", "test-results", "playwright-report", ".DS_Store"].includes(seg));
+  const junk = added.filter(isJunk);
+  if (!junk.length) return 0;
+  for (let i = 0; i < junk.length; i += 100) git(wt, "rm", "-q", "--cached", "--", ...junk.slice(i, i + 100));
+  git(wt, "commit", "-q", "-m", "Drop tool output the run committed (browser snapshots, reports)\n\nRemoved by the Jarvis worker before opening the PR.");
+  return junk.length;
+}
+
 function commitLeftovers(wt, title) {
   const dirty = tryGit(wt, "status", "--porcelain");
   if (!dirty) return false;
   // node_modules are symlinks into the main checkout (linkNodeModules): a "node_modules/" ignore rule doesn't match a symlink
-  git(wt, "add", "-A", "--", ".", ":(exclude)node_modules", ":(exclude)**/node_modules");
+  git(wt, "add", "-A", "--", ".", ...JUNK.map((j) => `:(exclude)${j}`));
   if (!tryGit(wt, "diff", "--cached", "--name-only")) return false;
   git(wt, "commit", "-m", `${title}\n\nChanges the build run left uncommitted, committed by the Jarvis worker. Review before merging.`);
   return true;
@@ -204,7 +227,7 @@ async function handle(message, projects) {
   const project = projects.find((p) => p.id === message.project_id) || null;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "seen" });
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
-  if (message.mode === "screen") return screenProject(message, project, log); // Reviews → Screenings → Run
+  if (message.mode === "screen") return screenProject(message, project, log); // Docs and reviews → Screenings → Run
   if (message.mode === "review") return runProjectReview(message, project, log); // Settings → Run now, or the project's own schedule
   if (message.mode === "setup") return setupProject(message, project, log); // Start new project / a project loaded or updated (setup.mjs)
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : JARVIS_ROOT;
@@ -212,7 +235,7 @@ async function handle(message, projects) {
   // The build run of an in-progress item (queued by queueBuilds): one branch per item, so a PR sent back continues there.
   const item = message.item_id && project ? (await api("GET", "/api/agent/items" + qs({ project: project.id }))).find((i) => i.id === message.item_id) || null : null;
   // The owner picks: "discuss" (read-only, lighter model) or "build" (branch + PR). Old messages: "auto".
-  // Reviews → "Build website" / "Try a new visual": a code run with the design skills pack (agent/website.mjs).
+  // Docs and reviews → "Build website" / "Try a new visual": a code run with the design skills pack (agent/website.mjs).
   const website = message.mode === "website";
   if (website && (!repo || W.allow_build === false)) {
     const reply = `NEEDS YOU: ${!repo ? `${project?.name || "This project"} has no git repository with a remote, so the website can't be built on a branch. Push the folder to GitHub (or add a remote), then press the button again.` : "Builds are off on this computer (worker.allow_build is false)."}`;
@@ -255,16 +278,34 @@ async function handle(message, projects) {
     branch, repoWeb: githubWebUrl(repo?.origin) });
   if (lugh) prompt += "\n\n" + lughBrief({ pack: lugh, sentBack: !!item?.build_note });
   log("run", message.id, { project: project?.id, mode, cwd });
-  let res;
+  let res, skillsLine = "";
   try {
     // Discussions default to a lighter model to spare plan usage; code work uses worker.build_model (null = CLI default).
     const site = website && mode === "code";
     const plugins = site && pack ? [pack.pluginDir] : lugh ? [lugh.pluginDir] : [];
-    res = await runClaude({ prompt, cwd, allowedTools: mode === "code" ? [...codeTools(cwd), ...(site ? WEBSITE_TOOLS : [])] : READ_TOOLS, disallowedTools: DENY,
+    const runOpts = { cwd, allowedTools: mode === "code" ? [...codeTools(cwd), ...(site ? WEBSITE_TOOLS : []), ...(plugins.length ? ["Skill"] : [])] : READ_TOOLS, disallowedTools: DENY,
       addDirs: site && pack ? [pack.pluginDir, ...(pack.designsDir ? [pack.designsDir] : [])] : plugins, pluginDirs: plugins,
       model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: site ? 120 : lugh ? 90 : mode === "code" ? 60 : 30,
       // A website takes longer than an item: twice the usual limit; a Lugh build (tests, review, docs) half as long again.
-      timeoutMs: (W.timeout_minutes || 25) * runMultiplier({ site, lugh: !!lugh }) * 60_000, log });
+      timeoutMs: (W.timeout_minutes || 25) * runMultiplier({ site, lugh: !!lugh }) * 60_000, log };
+    res = await runClaude({ prompt, ...runOpts });
+    // Skill packs are only worth loading if the run opens them: check the transcript, and give a run that skipped required
+    // skills one follow-up turn (same session) to read and apply them. The PR and reply say which were used.
+    const used = site && pack ? pack : lugh;
+    if (used && mode === "code") {
+      const required = requiredSkills({ site, kind: message.meta?.kind, pack: used, playwright });
+      let u = skillUse(res.session_id, used, required);
+      if (u.found && u.missing.length && !res.is_error) {
+        log("skills skipped, follow-up turn", message.id, u.missing);
+        try {
+          const more = await runClaude({ prompt: missingSkillsPrompt(used, u.missing), resume: res.session_id, ...runOpts, maxTurns: 60 });
+          res = { ...more, cost_usd: (res.cost_usd || 0) + (more.cost_usd || 0), duration_s: (res.duration_s || 0) + (more.duration_s || 0) };
+          u = skillUse(res.session_id, used, required);
+        } catch (e) { log("skills follow-up failed", message.id, e.message); }
+      }
+      skillsLine = u.found ? `Skills used: ${u.used.length} of ${required.length}${u.used.length ? ` (${u.used.join(", ")})` : ""}${u.missing.length ? `; not used: ${u.missing.join(", ")}` : ""}.` : "";
+      if (skillsLine) log("skills", message.id, skillsLine);
+    }
   } catch (e) {
     if (wt) tryGit(repo.top, "worktree", "remove", "--force", wt), tryGit(repo.top, "branch", "-D", branch);
     throw e;
@@ -277,10 +318,12 @@ async function handle(message, projects) {
   if (wt) {
     try { leftovers = commitLeftovers(wt, item ? item.title : message.text.split("\n")[0].slice(0, 72)); }
     catch (e) { log("leftover commit failed", message.id, e.message); }
+    try { const n = dropCommittedJunk(wt, repo.base); if (n) log("dropped committed junk", message.id, n); }
+    catch (e) { log("junk cleanup failed", message.id, e.message); }
   }
   if (res.is_error && res.subtype === "error_max_turns") reply += "\n\n_Stopped at the turn limit; the work may be incomplete._";
   // The PR body and the inbox reply say which build mode ran.
-  const modeLine = buildMode ? `Built by ${BUILD_MODES[buildMode].label}${lugh ? ` with ${Object.keys(lugh.skills).length} skills from addyosmani/agent-skills (${LUGH_PLUGIN})` : ""}.` : "";
+  const modeLine = [buildMode ? `Built by ${BUILD_MODES[buildMode].label}${lugh ? ` with ${Object.keys(lugh.skills).length} skills from addyosmani/agent-skills (${LUGH_PLUGIN})` : ""}.` : "", skillsLine].filter(Boolean).join(" ");
   reply += lughNote;
   let pr_url = null, commits = 0;
   if (wt) {

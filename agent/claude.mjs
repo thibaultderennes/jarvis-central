@@ -8,13 +8,14 @@ export const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
  * Permission mode `dontAsk`: anything not in --allowedTools is denied without a prompt
  * (headless runs have nobody to answer one).
  */
-export function runClaude({ prompt, cwd, allowedTools = [], disallowedTools = [], addDirs = [], pluginDirs = [], tools, maxTurns = 60, timeoutMs = 25 * 60_000, model, log = () => {} }) {
+export function runClaude({ prompt, cwd, allowedTools = [], disallowedTools = [], addDirs = [], pluginDirs = [], resume = null, tools, maxTurns = 60, timeoutMs = 25 * 60_000, model, log = () => {} }) {
   const args = ["-p", prompt, "--output-format", "json", "--permission-mode", "dontAsk", "--max-turns", String(maxTurns)];
   if (tools !== undefined) args.push("--tools", tools); // "" = no tools at all (pure text/JSON calls)
   if (allowedTools.length) args.push("--allowedTools", ...allowedTools);
   if (disallowedTools.length) args.push("--disallowedTools", ...disallowedTools);
   for (const d of addDirs) args.push("--add-dir", d);
-  for (const d of pluginDirs) args.push("--plugin-dir", d); // a local plugin for this run only (skills)
+  for (const d of pluginDirs) args.push("--plugin-dir", d);
+  if (resume) args.push("--resume", resume); // continue that session (same transcript) with this prompt // a local plugin for this run only (skills)
   if (model) args.push("--model", model);
   const started = Date.now();
   return new Promise((resolve, reject) => {
@@ -37,7 +38,7 @@ export function runClaude({ prompt, cwd, allowedTools = [], disallowedTools = []
       try { j = JSON.parse(out); } catch {
         return reject(new Error(`claude exited ${code} without JSON output: ${(err || out).slice(-600)}`));
       }
-      resolve({ result: j.result ?? "", cost_usd: j.total_cost_usd ?? null, duration_s, is_error: !!j.is_error || j.subtype !== "success", subtype: j.subtype, raw: j });
+      resolve({ result: j.result ?? "", session_id: j.session_id ?? null, cost_usd: j.total_cost_usd ?? null, duration_s, is_error: !!j.is_error || j.subtype !== "success", subtype: j.subtype, raw: j });
     });
   });
 }

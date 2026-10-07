@@ -8,7 +8,6 @@ import { cap, REVIEW_WHEN } from "@/lib/instance";
 import { Glyph, HeaderVec } from "@/components/brand";
 
 const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document", security: "Security audit", screening: "Screening" };
-const PROJECT_TAB: Record<string, string> = { doc: "strategy", security: "security", screening: "screenings" };
 const ORDER = ["recap", "coaching", "jarvis", "project"];
 
 export default async function Reviews({ searchParams }: { searchParams: Promise<{ id?: string; type?: string }> }) {
@@ -27,7 +26,7 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
   const thread = sel ? await D.getMessages({ review: sel.id, limit: 100 }) : [];
   if (sel) return (
     <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
-      <div className="daynav" style={{ marginTop: 16 }}><Link href="/reviews">‹ All reviews</Link>{sel.project_id && <Link href={`/p/${sel.project_id}?tab=${PROJECT_TAB[sel.type] || "reviews"}&r=${sel.id}`}>Open in {byId[sel.project_id]?.name}</Link>}</div>
+      <div className="daynav" style={{ marginTop: 16 }}><Link href="/reviews">‹ All reviews</Link>{sel.project_id && <Link href={`/p/${sel.project_id}?v=docs&r=${sel.id}`} title="Acknowledge it and push its proposed tasks there">Open in {byId[sel.project_id]?.name}</Link>}</div>
       <article className="panel" style={{ padding: "20px 24px" }} data-c={color(sel)}>
         <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
           <i className="dot" /><span className="lbl">{TYPE[sel.type]}{sel.week_start ? ` · week of ${fmtDate(sel.week_start, { month: "long", day: "numeric" })}` : ""}</span>

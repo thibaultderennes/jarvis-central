@@ -4,6 +4,34 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.4.6 — 2026-10-07
+- **Skills are checked, not assumed.** Website, Lugh and project setup runs must open their skills first; afterwards the
+  worker reads the run's transcript, and a run that skipped a required skill gets one follow-up turn (same session) to
+  read it and apply it. The PR and reply say "Skills used: X of N". (A 0.7.4 website run opened 1 of its 5 skills.) The
+  `Skill` tool is now allowed in those runs.
+- **Runs never ship tool output.** Browser-check snapshots (`.playwright-cli/`), test reports, `node_modules` and
+  `.DS_Store` are left out of the leftover commit, and any the run committed itself are removed in a last commit before
+  the PR opens.
+- **Refresh project folders proposes every new folder**, even when `projects.include` lists only older ones; a project
+  you approve stays registered (sync no longer archives it for being outside the include list).
+- **Docs and reviews**: each project has one place for all its reports (advisor reviews, strategy docs, plans, project
+  setup, screenings with the Website card, security audits), newest first, with a kind filter and an "Unread" filter and
+  count. It replaces the Docs and Reviews views; old links still open it. **Mark as read** / Mark as unread on every
+  report (a report re-posted with new content counts as unread again). Under each report, its proposed tasks: what a
+  run already added links to the checklist; "new item" proposals get **Push to checklist** (section, owner, estimate),
+  or **Add all to checklist** in one click, and can't be added twice. The report's header (read state, Add all, a jump
+  to the tasks) stays in view while you scroll it. Advisor review syntheses now return their proposals as data. CLI: `reviews --unacked`,
+  `ack` / `unack <id>` (mark as read / unread), `proposals <id>`, `push <id> <key>`, `push <id> --all`. API: `PATCH /api/agent/reviews`,
+  `GET|POST /api/agent/proposals`, `GET /api/agent/reviews?unacked=1`. The project description moved to Settings.
+- **Home is one page.** Overview, Timeline and Stats are no longer tabs: every box is on one grid, **your top 3 first**,
+  then needs you, reviews and sprints, the timeline and the stats, with jump links under the date (old `?tab=`
+  links land on their section). **↑ / ↓ on every box** swaps it with its neighbour without Customize, and a
+  box dragged in Customize scrolls the page near its edges. A layout saved per tab before this starts from the new default.
+### Upgrade notes
+- The deploy adds `reviews.acked_at` and `reviews.pushed`; reports older than 7 days start as read.
+- Run `node agent/install-skill.mjs` (or `agent/install.sh`) so the Claude Code skill lists `ack`, `unack`,
+  `proposals` and `push`.
+
 ## 0.7.4.5 — 2026-10-06
 - **Try a new visual now shows real alternatives.** It builds 3 clearly different directions of the home page (A safe
   but fresh, B bold, C unexpected), each with its own palette, type and layout from a different design reference, as

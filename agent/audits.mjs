@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 // Security audit reports. Each project keeps them as markdown files in its folder (`audits.dir`, default docs/audits,
 // one file per run such as 2026-10-01-sued-hacked.md, usually written by a scheduled audit that opens a PR). This
-// script mirrors them to the site as reviews of type "security" (the project page's Security tab): one review per
+// script mirrors them to the site as reviews of type "security" (the project page's Docs and reviews (Security audits)): one review per
 // file, keyed by the file's path relative to the project folder, so a re-run updates instead of duplicating, and a
 // file whose content hash matches the stored one is skipped. The inbox worker runs it once an hour
 // (`audits.sync_minutes`); nothing is ever deleted on the site.

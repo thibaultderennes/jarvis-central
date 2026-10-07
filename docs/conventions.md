@@ -5,7 +5,8 @@ These are the few rules the whole tool relies on. Setup enforces them; everythin
 ## One projects folder
 - `projects_root` in `jarvis.config.json` (e.g. `~/Projects`) holds **one folder per project**.
 - Every direct subfolder is a project, except hidden folders (`.something`), anything in `projects.exclude`,
-  and — when `projects.include` is non-empty — anything not listed there.
+  and — when `projects.include` is non-empty — anything not listed there when `projects.mjs sync` runs (Admin's
+  "Refresh project folders" ignores the include list and proposes every new folder; approved ones stay).
 - The project **id** is the folder name lowercased and slugified (`My App` → `my-app`). `projects.overrides`, keyed by
   folder name or id, can change the display name, colour, tagline, kind, the **id** itself (`"id": "acme"` for a
   folder named `ACME-2024`) and point at a **subfolder** (`"dir": "app"` when the code lives in `MyProject/app`).
@@ -43,7 +44,7 @@ Optional per project:
   Monday reviews use the tool's generic `personas/` and adapt them to the project.
 - `milestones` in the PRD as a table (`| date | milestone |`) — become the project's deadlines on the dashboard.
 - `docs/audits/*.md` (or `audits.dir`) — security audit reports, one file per run (`YYYY-MM-DD-….md`, first line an
-  H1). They appear on the project page's Security tab within an hour; `PROMPTS.md` and `README.md` there are ignored.
+  H1). They appear on the project page's Docs and reviews (Security audits) within an hour; `PROMPTS.md` and `README.md` there are ignored.
 
 ## Project kinds
 - `checklist` (default): active project with a checklist, deadlines, burn-up, weekly advisor review.

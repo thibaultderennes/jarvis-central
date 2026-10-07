@@ -8,6 +8,7 @@ import { VERSION } from "@/lib/instance";
 import { pruneClickEvents, usageSummary } from "@/lib/usage";
 import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
 import { today } from "@/lib/time";
+import { reviewProposals } from "@/lib/docsHub";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -168,7 +169,34 @@ async function handle(req: NextRequest, ctx: Ctx) {
     }
 
     case "GET reviews": if (sp.get("id")) { const r = await D.getReview(sp.get("id")!); return r ? J([r]) : J([]); }
-      return J(await D.getReviews({ type: sp.get("type") || undefined, project: sp.get("project") || undefined, limit: +(sp.get("limit") || 20), week: sp.get("week") || undefined }));
+      return J(await D.getReviews({ type: sp.get("type") || undefined, project: sp.get("project") || undefined, limit: +(sp.get("limit") || 20), week: sp.get("week") || undefined, unacked: sp.get("unacked") === "1" }));
+    case "PATCH reviews": {
+      // Mark a report as read (Docs and reviews on the project page), or as unread again.
+      if (!b.id || typeof b.acked !== "boolean") return bad("id and acked (true or false) are required");
+      const r = await D.setReviewAck(String(b.id), b.acked);
+      return r ? J({ review: r }) : bad("No such review", 404);
+    }
+    case "GET proposals": {
+      // The tasks one review proposes, with their state against the checklist (lib/docsHub.ts).
+      const r = await D.getReview(sp.get("review") || "");
+      if (!r) return bad("review (an id) required", 404);
+      const items = r.project_id ? await D.getItems({ project: r.project_id }) : [];
+      return J(reviewProposals(r, items));
+    }
+    case "POST proposals": {
+      // {review_id, all: true}: every proposal not on the checklist yet, each with its own defaults.
+      if (b.review_id && b.all === true) {
+        try { const r = await D.pushAllProposals(String(b.review_id), "agent"); return J({ items: r.added, already: r.already, failed: r.failed }, 201); }
+        catch (e) { if (e instanceof D.PushError) return bad(e.message, e.status); throw e; }
+      }
+      if (!b.review_id || typeof b.key !== "string") return bad("review_id and key are required");
+      try { return J({ item: await D.pushProposal(String(b.review_id), b.key, { section: b.section, owner: b.owner, estimate_minutes: b.estimate_minutes }, "agent") }, 201); }
+      catch (e) {
+        if (e instanceof D.AlreadyPushedError) return J({ error: e.message, existing: e.existing }, 409);
+        if (e instanceof D.PushError) return bad(e.message, e.status);
+        throw e;
+      }
+    }
     case "POST reviews": {
       if (!b.type || !b.title || typeof b.body_md !== "string") return bad("type, title and body_md are required");
       if (!["project", "recap", "coaching", "jarvis", "doc", "security", "screening"].includes(b.type)) return bad("unknown review type");

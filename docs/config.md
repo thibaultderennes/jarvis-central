@@ -11,7 +11,7 @@ re-run it and redeploy after changing those.
 | `projects_root` | `"~/Projects"` | The folder whose subfolders are your projects. |
 | `timezone` | `"UTC"` | IANA zone for every date, the planner and the schedules (`America/New_York`, `Europe/Paris`…). |
 | `site_url` | — | Your deployment URL; written after the first deploy. |
-| `projects.include` | `[]` | If non-empty, only these folder names are projects. |
+| `projects.include` | `[]` | If non-empty, `projects.mjs sync` registers only these folder names. A project already on the dashboard always stays, and Admin's "Refresh project folders" still proposes every other folder, so you can approve one without editing this list. |
 | `projects.exclude` | `["node_modules", ".jarvis-worktrees"]` | Folder names to skip. |
 | `projects.overrides.<id>` | — | `name`, `kind` (`checklist`/`running`), `color` (`p1`…`p7`), `tagline`, `state`, `status`. |
 | `planner.run` | Sunday 17:00 | When next week is planned and written to your calendars. |
@@ -46,7 +46,7 @@ re-run it and redeploy after changing those.
 | `project_setup.cooldown_days` | `7` | Fewest days between two automatic runs on the same project. |
 | `project_setup.check_minutes` | `60` | How often the worker checks registered projects for an update run (new projects are picked up every pass). |
 | `project_setup.model` | `null` | Model for the setup session (`null` = `worker.build_model`, then Claude Code's default). |
-| `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Security tab. |
+| `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Docs and reviews (Security audits). |
 | `audits.sync_minutes` | `60` | How often the worker mirrors those reports to the site (`0` = every worker pass). `node agent/audits.mjs sync` does it now. |
 | `economics.files` | `["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"]` | File names, relative to each project folder, that opt a project into unit economics: the first that exists is its model. See [`unit-economics.md`](unit-economics.md). |
 | `economics.models` | `{}` | A model path per project id that replaces `economics.files` for that project, e.g. `{"my-app": "docs/finance/jarvis.economics.cjs"}`. Must stay inside the project folder. |

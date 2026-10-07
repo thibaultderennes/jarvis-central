@@ -14,7 +14,7 @@ API contract: `../docs/architecture.md`.
 | `economics.mjs` | Evaluates each project's unit-economics model file (`jarvis.economics.*` or `economics.models.<id>`; see `docs/unit-economics.md`) and uploads it to the Finances tab; `sync [--project id] [--dry-run]`, `eval <file>` |
 | `metrics.mjs` | Fetches each project's product numbers from its source in `metrics.sources.<id>` (URL or command; see `docs/metrics.md`) and posts the day's snapshot for the Stats view; `sync [--project id] [--dry-run]` |
 | `milestones.mjs` | Milestones moved on the Timeline → the new date written into that PRD.md row (file only, no commit); the worker runs it every pass, `sync` and plans before reading the PRD |
-| `audits.mjs` | Mirrors each project's security audit reports (`audits.dir`, default `docs/audits/*.md`) to the site's Security tab; `sync [--project id] [--dry-run]` runs it by hand |
+| `audits.mjs` | Mirrors each project's security audit reports (`audits.dir`, default `docs/audits/*.md`) to the project page's Docs and reviews (Security audits); `sync [--project id] [--dry-run]` runs it by hand |
 | `plan.mjs` | Weekly planner: estimates open items, packs them around your calendar → todos + calendars |
 | `rollover.mjs` | Daily roll-forward: unfinished todos and overdue items back to the top of today by priority, within the day's caps; the worker runs it once a day (rule in `docs/config.md`) |
 | `weekly.mjs` | Weekly reviews: CEO / CMO / PO advisors per project + synthesis, recap, "working with AI" coaching, Jarvis usage |

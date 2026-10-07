@@ -1,50 +1,68 @@
-// The dashboard layout (lib/dashLayout.ts): what the browser sends is cleaned before it is saved, and boxes never overlap.
+// The dashboard layout (lib/dashLayout.ts): Home is one page; what the browser sends is cleaned before it is saved,
+// and boxes never overlap.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { BOXES, defaultLayout, sanitizeLayout, sanitizeTab, settle } from "../lib/dashLayout.ts";
+import { BOXES, OLD_TAB_ANCHOR, SECTIONS, defaultLayout, sanitizeLayout, sanitizeTab, settle } from "../lib/dashLayout.ts";
 
 const overlap = (l) => l.some((a, i) => l.some((b, j) => i < j && a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + (b.min ? 1 : b.h) && b.y < a.y + (a.min ? 1 : a.h)));
 
-test("defaults: every box on its own tab, none overlapping", () => {
-  const d = defaultLayout();
-  for (const [tab, list] of Object.entries(d)) {
-    for (const p of list) assert.equal(BOXES[p.id].tab, tab);
-    assert.equal(overlap(list), false, `${tab} overlaps`);
-  }
-  assert.equal(Object.values(d).flat().length, Object.keys(BOXES).length);
+test("defaults: one page with every box, top 3 first, none overlapping", () => {
+  const d = defaultLayout().home;
+  assert.equal(d.length, Object.keys(BOXES).length);
+  assert.equal(overlap(d), false);
+  const top3 = d.find((p) => p.id === "top3");
+  assert.deepEqual([top3.x, top3.y], [0, 0]);
+  assert.ok(d.every((p) => p.id === "top3" || p.y >= top3.h), "nothing above the top 3");
 });
 
-test("sanitizeTab drops unknown, foreign and repeated boxes and clamps to the grid", () => {
-  const l = sanitizeTab("overview", [
-    { id: "needs", x: 11, y: -3, w: 99, h: 0 }, { id: "needs", x: 0, y: 0, w: 4, h: 4 }, { id: "timeline", x: 0, y: 0, w: 4, h: 4 },
+test("sections point at real boxes, and old tab links land on them", () => {
+  for (const s of SECTIONS) assert.ok(BOXES[s.box], s.id);
+  for (const a of Object.values(OLD_TAB_ANCHOR)) assert.ok(BOXES[a.replace("box-", "")], a);
+});
+
+test("sanitizeTab drops unknown and repeated boxes and clamps to the grid", () => {
+  const l = sanitizeTab("home", [
+    { id: "needs", x: 11, y: -3, w: 99, h: 0 }, { id: "needs", x: 0, y: 0, w: 4, h: 4 },
     { id: "<script>", x: 0, y: 0, w: 4, h: 4 }, { id: "reviews", x: "3", y: "2", w: "5", h: "3", min: 1 },
   ]);
   assert.deepEqual(l, [{ id: "needs", w: 12, x: 0, y: 0, h: 1 }, { id: "reviews", w: 5, x: 3, y: 2, h: 3, min: true }]);
-  assert.deepEqual(sanitizeTab("stats", "nope").map((p) => p.id), Object.keys(BOXES).filter((k) => BOXES[k].tab === "stats"));
+  assert.deepEqual(sanitizeTab("home", "nope").map((p) => p.id), Object.keys(BOXES));
 });
 
-test("sanitizeLayout fills missing tabs with their defaults and keeps an emptied tab empty", () => {
-  const l = sanitizeLayout({ overview: [] });
-  assert.deepEqual(l.overview, []);
-  assert.deepEqual(l.timeline, defaultLayout().timeline);
+test("sanitizeLayout: an old per-tab layout gives the new default; an emptied page stays empty", () => {
+  assert.deepEqual(sanitizeLayout({ overview: [{ id: "needs", x: 0, y: 0, w: 4, h: 4 }], stats: [] }), defaultLayout());
+  assert.deepEqual(sanitizeLayout({ home: [] }).home, []);
   assert.deepEqual(sanitizeLayout(null), defaultLayout());
 });
 
 test("settle: a dropped box keeps its place, the ones under it move down, nothing overlaps", () => {
-  const start = defaultLayout().overview;
-  const dropped = start.map((p) => (p.id === "top3" ? { ...p, x: 0, y: 0 } : p));
-  const out = settle(dropped, "top3");
+  const start = defaultLayout().home;
+  const dropped = start.map((p) => (p.id === "timeline" ? { ...p, x: 0, y: 0 } : p));
+  const out = settle(dropped, "timeline");
   assert.equal(overlap(out), false);
-  const top3 = out.find((p) => p.id === "top3");
-  assert.deepEqual([top3.x, top3.y], [0, 0]);
-  assert.ok(out.find((p) => p.id === "needs").y >= top3.h);
+  const tl = out.find((p) => p.id === "timeline");
+  assert.deepEqual([tl.x, tl.y], [0, 0]);
+  assert.ok(out.find((p) => p.id === "top3").y >= tl.h);
 });
 
 test("settle floats boxes up into the space a removed box leaves", () => {
-  const out = settle(defaultLayout().overview.filter((p) => p.id !== "needs"), null);
+  const out = settle(defaultLayout().home.filter((p) => p.id !== "top3"), null);
   assert.equal(overlap(out), false);
-  // top3 spans all 12 columns, so it rises only to just below reviews + sprints (rows 0–5 on columns 7–11)
-  assert.equal(out.find((p) => p.id === "top3").y, 6);
+  assert.equal(out.find((p) => p.id === "needs").y, 0);
   const narrow = settle([{ id: "reviews", x: 0, y: 9, w: 5, h: 3 }], null);
   assert.equal(narrow[0].y, 0, "a lone box floats to the top");
+});
+
+test("nudge: ↑ and ↓ swap a box with its neighbour in reading order, nothing overlaps", async () => {
+  const { nudge, readingOrder } = await import("../lib/dashLayout.ts");
+  const d = defaultLayout().home;
+  const ids = (l) => readingOrder(l).map((p) => p.id);
+  const up = nudge(d, "timeline", -1);
+  assert.equal(overlap(up), false);
+  assert.ok(ids(up).indexOf("timeline") < ids(d).indexOf("timeline"), "timeline moved up");
+  const down = nudge(d, "top3", 1);
+  assert.equal(overlap(down), false);
+  assert.ok(ids(down).indexOf("top3") > 0, "top3 is no longer first");
+  assert.equal(nudge(d, "top3", -1), null, "first box can't go up");
+  assert.equal(nudge(d, ids(d).at(-1), 1), null, "last box can't go down");
 });

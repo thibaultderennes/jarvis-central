@@ -110,11 +110,15 @@ Synthesise their reports for ${OWNER}. Stance: ${STANCE} Use only what the repor
 body_md sections, as "## " headings:
 ## Where they agree
 ## Where they disagree — name who says what, and say which side the evidence favours.
-## Top 3 for this week — each with a checklist code in backticks or "new item:".
+## Top 3 for this week — each with a checklist code in backticks or "new item: <title>".
 ## Questions for you — merged and de-duplicated from all three.
 
+"proposals" repeats each Top 3 entry marked "new item:" as data, so ${OWNER} can push it to the checklist in one click (none → []).
+Sections of this checklist: ${(p.sections || []).map((s) => `${s.id} (${s.name})`).join(", ") || "(none)"}.
+
 Output ONLY one JSON object, no prose before or after, no code fences:
-{"verdict": "on-track" | "at-risk" | "off-track", "headline": "<overall, one sentence, max 120 chars>", "body_md": "<markdown>"}
+{"verdict": "on-track" | "at-risk" | "off-track", "headline": "<overall, one sentence, max 120 chars>", "body_md": "<markdown>",
+ "proposals": [{"title": "<the new item's title, same words as in Top 3, max 100 chars>", "detail": "<what done looks like, 1-3 sentences>", "section": "<a section id above>", "owner": "founder" | "claude" | "both", "estimate_minutes": <number or null>}]}
 
 # The reports
 

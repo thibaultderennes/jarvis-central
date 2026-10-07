@@ -31,15 +31,20 @@ const COLORS = ["p1", "p2", "p3", "p4", "p5", "p6", "p7"];
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return null; } };
 const git = (dir, ...args) => { try { return execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"], timeout: 10_000 }).trim(); } catch { return null; } };
 
-/** Every project folder under projects_root, per the conventions (hidden / excluded / include-list). */
-export function scanProjects() {
+/**
+ * Every project folder under projects_root, per the conventions (hidden / excluded / include-list). A registered project
+ * (`keep`: ids) always passes the include list, so approving a folder on Admin sticks; `ignoreInclude` (the Admin
+ * refresh) looks at every folder, so one created after the include list was written is still proposed.
+ */
+export function scanProjects({ ignoreInclude = false, keep = [] } = {}) {
   if (!fs.existsSync(PROJECTS_ROOT)) throw new Error(`projects_root doesn't exist: ${PROJECTS_ROOT} (set it in jarvis.config.json)`);
   const include = (CONFIG.projects?.include || []).map(String);
   const exclude = new Set((CONFIG.projects?.exclude || []).map(String));
   const overrides = CONFIG.projects?.overrides || {};
+  const keepIds = new Set(keep.map(String));
   return fs.readdirSync(PROJECTS_ROOT, { withFileTypes: true })
     .filter((e) => e.isDirectory() && !e.name.startsWith(".") && !exclude.has(e.name))
-    .filter((e) => !include.length || include.includes(e.name) || include.includes(slugify(e.name)))
+    .filter((e) => ignoreInclude || !include.length || include.includes(e.name) || include.includes(slugify(e.name)) || keepIds.has(slugify(e.name)) || keepIds.has((overrides[e.name] || overrides[slugify(e.name)] || {}).id))
     .map((e) => {
       // Overrides are keyed by folder name or by slug; they may set a different id and a subfolder (`dir`).
       const o = overrides[e.name] || overrides[slugify(e.name)] || {};
@@ -132,13 +137,13 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
   let existing = [], ignored = [];
   try { [existing, ignored] = await Promise.all([api("GET", "/api/agent/projects?all=1"), ignoredProjects()]); } catch (e) { if (!dry) throw e; print(`(dry run: API unavailable — ${e.message})`); }
   const skip = new Set(ignored.flatMap((x) => [x.id, x.folder].filter(Boolean)));
-  const ps = scanProjects().filter((p) => !skip.has(p.id) && !skip.has(p.folder));
+  const ps = scanProjects({ ignoreInclude: !addNew, keep: existing.filter((e) => !e.archived).map((e) => e.id) }).filter((p) => !skip.has(p.id) && !skip.has(p.folder));
   // Milestones moved on the Timeline go into PRD.md first, so the parse below keeps them instead of reverting.
   if (!dry) await applyMilestoneMoves(existing, (...a) => print(a.map((x) => (typeof x === "string" ? x : JSON.stringify(x))).join(" ")));
   const byId = Object.fromEntries(existing.map((p) => [p.id, p]));
   const used = new Set(existing.filter((p) => !p.archived).map((p) => p.color));
   const nextColor = () => { const c = COLORS.find((x) => !used.has(x)) || COLORS[used.size % COLORS.length]; used.add(c); return c; };
-  // What the folder says about the project's website (Reviews → Build website / Try a new visual).
+  // What the folder says about the project's website (Docs and reviews → Build website / Try a new visual).
   const sites = await Promise.all(ps.map((p) => detectSite(p.dir, { remote: p.remote }).catch(() => null)));
   const payloads = ps.map((p, i) => {
     const cur = byId[p.id];

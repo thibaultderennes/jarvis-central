@@ -252,3 +252,10 @@ alter table todos add column if not exists rolled_at date;
 -- when due) and how Jarvis builds the project (build_mode 'goibniu' | 'lugh'; null = the worker's worker.build_mode).
 alter table projects add column if not exists review_every_days int not null default 7;
 alter table projects add column if not exists build_mode text;
+-- 0.7.4.6. Docs and reviews (one place per project): `acked_at` = when the owner marked a report as read (null = new);
+-- `pushed` = {proposal key: item code} for the tasks a review proposed that were pushed to the checklist (never twice).
+-- On first upgrade, reports older than 7 days start acknowledged so the count shows only recent ones (once: a kv marker).
+alter table reviews add column if not exists acked_at timestamptz;
+alter table reviews add column if not exists pushed jsonb not null default '{}';
+update reviews set acked_at = created_at where acked_at is null and created_at < now() - interval '7 days' and not exists (select 1 from kv where key = 'migrate.reviews_ack_backfill');
+insert into kv (key, value) values ('migrate.reviews_ack_backfill', to_jsonb(now())) on conflict (key) do nothing;
