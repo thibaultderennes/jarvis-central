@@ -11,7 +11,7 @@ re-run it and redeploy after changing those.
 | `projects_root` | `"~/Projects"` | The folder whose subfolders are your projects. |
 | `timezone` | `"UTC"` | IANA zone for every date, the planner and the schedules (`America/New_York`, `Europe/Paris`…). |
 | `site_url` | — | Your deployment URL; written after the first deploy. |
-| `projects.include` | `[]` | If non-empty, only these folder names are projects. |
+| `projects.include` | `[]` | If non-empty, `projects.mjs sync` registers only these folder names. A project already on the dashboard always stays, and Admin's "Refresh project folders" still proposes every other folder, so you can approve one without editing this list. |
 | `projects.exclude` | `["node_modules", ".jarvis-worktrees"]` | Folder names to skip. |
 | `projects.overrides.<id>` | — | `name`, `kind` (`checklist`/`running`), `color` (`p1`…`p7`), `tagline`, `state`, `status`. |
 | `planner.run` | Sunday 17:00 | When next week is planned and written to your calendars. |
