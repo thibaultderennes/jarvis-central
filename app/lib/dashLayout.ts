@@ -22,7 +22,7 @@ export const BOXES: Record<string, { tab: Tab; section: string; title: string; w
   needs: { tab: "home", section: "overview", title: "Needs you", what: "Decisions, pull requests to approve, replies you haven't opened", at: [0, 6, 7, 6] },
   reviews: { tab: "home", section: "overview", title: "This week's reviews", what: "The Monday reviews, recap and coaching", at: [7, 6, 5, 3] },
   sprints: { tab: "home", section: "overview", title: "Sprints this week", what: "Sprints running or starting this week, across projects", at: [7, 9, 5, 3] },
-  map: { tab: "home", section: "map", title: "Map", what: "One region per project: open work, fog where nothing moved, the trail to the next deadline", at: [0, 12, 12, 8] },
+  map: { tab: "home", section: "map", title: "Map", what: "Your projects as islands: land from work done on time, open work, fire for overdue, fog where nothing moved, the route to each deadline", at: [0, 12, 12, 8] },
   timeline: { tab: "home", section: "timeline", title: "Timeline", what: "Milestones, due dates, sprints and planned blocks, 10 weeks", at: [0, 20, 12, 8] },
   milestones: { tab: "home", section: "timeline", title: "Upcoming milestones", what: "The next dated milestones from each PRD", at: [0, 28, 7, 4] },
   calendar: { tab: "home", section: "timeline", title: "This week", what: "Calendar events and planned focus, 7 days", at: [7, 28, 5, 4] },

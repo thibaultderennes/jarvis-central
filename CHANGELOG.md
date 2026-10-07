@@ -23,11 +23,19 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   to the tasks) stays in view while you scroll it. Advisor review syntheses now return their proposals as data. CLI: `reviews --unacked`,
   `ack` / `unack <id>` (mark as read / unread), `proposals <id>`, `push <id> <key>`, `push <id> --all`. API: `PATCH /api/agent/reviews`,
   `GET|POST /api/agent/proposals`, `GET /api/agent/reviews?unacked=1`. The project description moved to Settings.
-- **Map (prototype)**: `/map` (⌘K → Map) shows one region per active project, sized by its open work, with open,
-  overdue and due-this-week counts, work done in the last 28 days, the next deadline and the latest review. Projects
-  where nothing was finished in 14 days are under fog. **Ground taken**: each region's trail runs to the next deadline;
-  only items finished on or before their due date take ground, late ones stay as lost steps, undated ones don't count.
-  Existing data only; no other page changed.
+- **Home is one page.** Overview, Timeline and Stats are no longer tabs: every box is on one grid, **your top 3 first**,
+  then needs you, reviews and sprints, the map, the timeline and the stats, with jump links under the date (old `?tab=`
+  links and `/map` land on their section). **↑ / ↓ on every box** swaps it with its neighbour without Customize, and a
+  box dragged in Customize scrolls the page near its edges. A layout saved per tab before this starts from the new default.
+- **The Map: an archipelago** (Home's Map box). One island per project. Land grows from what you finished in the last
+  180 days (on time counts full, late half, undated a quarter); huts, houses and towers stand for work done on time
+  (one hut per 5, five huts make a house, five houses a tower) and never disappear. Scaffolding marks open items,
+  lanterns items due within 7 days, fire overdue work; a banner on the tallest building shows the latest review, with
+  a storm cloud over off-track and a cloud over at-risk; fog covers an island after 14 quiet days. Each island has a
+  route of stones to a buoy at its next deadline (a boat marks today), your ship is anchored at the next stop, and
+  islands sharing a deadline day are linked. New buildings pop in with "+N since your last visit". **Map / List**
+  switch (List = the cards, also the screen-reader view); each island links to its project with a hover card of its
+  numbers. Server-rendered SVG, no new dependency.
 
 ### Upgrade notes
 - The deploy adds `reviews.acked_at` and `reviews.pushed`; reports older than 7 days start as read.
