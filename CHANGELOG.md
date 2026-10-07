@@ -4,6 +4,35 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.4.6 — 2026-10-07
+- **Skills are checked, not assumed.** Website, Lugh and project setup runs must open their skills first; afterwards the
+  worker reads the run's transcript, and a run that skipped a required skill gets one follow-up turn (same session) to
+  read it and apply it. The PR and reply say "Skills used: X of N". (A 0.7.4 website run opened 1 of its 5 skills.) The
+  `Skill` tool is now allowed in those runs.
+- **Runs never ship tool output.** Browser-check snapshots (`.playwright-cli/`), test reports, `node_modules` and
+  `.DS_Store` are left out of the leftover commit, and any the run committed itself are removed in a last commit before
+  the PR opens.
+- **Refresh project folders proposes every new folder**, even when `projects.include` lists only older ones; a project
+  you approve stays registered (sync no longer archives it for being outside the include list).
+- **Docs and reviews**: each project has one place for all its reports (advisor reviews, strategy docs, plans, project
+  setup, screenings with the Website card, security audits), newest first, with a kind filter and a "Not acknowledged"
+  filter and count. It replaces the Docs and Reviews views; old links still open it. **Acknowledge** / Un-acknowledge
+  on every report (a report re-posted with new content counts as new again). Under each report, its proposed tasks: what
+  a run already added links to the checklist; "new item" proposals get **Push to checklist** (section, owner, estimate)
+  and can't be added twice. Advisor review syntheses now return their proposals as data. CLI: `reviews --unacked`,
+  `ack` / `unack <id>`, `proposals <id>`, `push <id> <key>`. API: `PATCH /api/agent/reviews`,
+  `GET|POST /api/agent/proposals`, `GET /api/agent/reviews?unacked=1`. The project description moved to Settings.
+- **Map (prototype)**: `/map` (⌘K → Map) shows one region per active project, sized by its open work, with open,
+  overdue and due-this-week counts, work done in the last 28 days, the next deadline and the latest review. Projects
+  where nothing was finished in 14 days are under fog. **Ground taken**: each region's trail runs to the next deadline;
+  only items finished on or before their due date take ground, late ones stay as lost steps, undated ones don't count.
+  Existing data only; no other page changed.
+
+### Upgrade notes
+- The deploy adds `reviews.acked_at` and `reviews.pushed`; reports older than 7 days start as acknowledged.
+- Run `node agent/install-skill.mjs` (or `agent/install.sh`) so the Claude Code skill lists `ack`, `unack`,
+  `proposals` and `push`.
+
 ## 0.7.4.5 — 2026-10-06
 - **Try a new visual now shows real alternatives.** It builds 3 clearly different directions of the home page (A safe
   but fresh, B bold, C unexpected), each with its own palette, type and layout from a different design reference, as

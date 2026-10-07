@@ -1,4 +1,4 @@
-// Reviews → "Build website" / "Try a new visual": what a project's website looks like from its folder, and the
+// Docs and reviews → "Build website" / "Try a new visual": what a project's website looks like from its folder, and the
 // design skills pack the worker loads for a website build run (worker.mjs, message mode "website").
 //
 //   node website.mjs detect [id]     what Jarvis detects for each project (or one)
@@ -65,7 +65,7 @@ async function isLive(url) {
 /**
  * What Jarvis knows about a project's website, stored on the project as `site` by projects sync:
  * { code: {framework, path} | null, url, source, live, deploy, checked_at }. The owner's own address (`site_url`,
- * set on the Reviews page) always wins on the site; this is only the guess.
+ * set on the Website card) always wins on the site; this is only the guess.
  */
 export async function detectSite(dir, { remote = null } = {}) {
   if (!dir || !fs.existsSync(dir)) return null;
@@ -119,7 +119,7 @@ export function websiteBrief({ project, kind, site, siteUrl, pack, playwright, a
     : "The Playwright CLI isn't installed on this computer, so you can't screenshot: say so in your final message (install it with `npm i -g @playwright/cli`).";
   const askLine = ask ? `\n\n**What the owner wants changed (their words, the most important input):** ${ask}` : "";
   if (!redesign) return `## Website build (Build website)
-The owner pressed "Build website" on ${project.name}'s Reviews page. It has no website yet${site?.code ? ` (but ${site.code.framework} code exists in \`${site.code.path}\`: build on it)` : ""}. Build its first public website.${askLine}
+The owner pressed "Build website" on ${project.name}'s Docs and reviews page (Screenings). It has no website yet${site?.code ? ` (but ${site.code.framework} code exists in \`${site.code.path}\`: build on it)` : ""}. Build its first public website.${askLine}
 
 0. **Open the skills before anything else.** Read each SKILL.md named below in full with Read (taste, image-to-code, web design guidelines${playwright ? ", Playwright CLI" : ""}). The worker checks the run's transcript: a skill you never opened counts as not used, and you'll be sent back to apply it.
 1. **Read everything about the project first**: PRD.md, CLAUDE.md, README, DESIGN.md or any brand/design doc, docs/, and the existing UI code. The site's message, audience, offer and call to action come from these docs only. Never invent features, numbers, testimonials, logos of customers, prices or claims; where the docs don't say, write \`TODO(owner): …\` in the copy.
@@ -134,7 +134,7 @@ The owner pressed "Build website" on ${project.name}'s Reviews page. It has no w
 Final message: a **Skills used** section (each skill and the concrete change it led to), what you built (files), the design reference you used and why, the guideline findings fixed and left, every \`TODO(owner)\` you left, how to preview it locally${shotsUrl("visuals/screenshots/") ? `, and a **Screenshots** section embedding each committed screenshot as a Markdown image with the URL form ${shotsUrl("visuals/screenshots/<file>.png")}` : ""}.`;
 
   return `## Website build (Try a new visual)
-The owner pressed "Try a new visual" on ${project.name}'s Reviews page. The project already has a website${url ? ` (${url}${siteUrl ? ", set by the owner" : site?.source ? `, found in ${site.source}` : ""})` : ""}${site?.code ? `; its code is ${site.code.framework} in \`${site.code.path}\`` : ""}. They want to SEE genuinely different looks, not a polish of the current one. A restyle that keeps the same colours, type and layout is a failed run.${askLine}
+The owner pressed "Try a new visual" on ${project.name}'s Docs and reviews page (Screenings). The project already has a website${url ? ` (${url}${siteUrl ? ", set by the owner" : site?.source ? `, found in ${site.source}` : ""})` : ""}${site?.code ? `; its code is ${site.code.framework} in \`${site.code.path}\`` : ""}. They want to SEE genuinely different looks, not a polish of the current one. A restyle that keeps the same colours, type and layout is a failed run.${askLine}
 
 **What to build: 3 distinct directions (A, B, C) of the home page**, each a standalone preview next to the live site. Do not change the live pages, their shared CSS, components or routes: everything new lives under a \`visuals/\` path the site serves (for a static site, a \`visuals/\` folder in the folder it publishes; for a framework, a \`/visuals/a\`, \`/visuals/b\`, \`/visuals/c\` route with its own styles), plus an index page at \`/visuals/\` linking the three with one line each.
 

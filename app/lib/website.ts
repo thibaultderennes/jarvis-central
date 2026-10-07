@@ -1,4 +1,4 @@
-// Reviews → "Build website" / "Try a new visual". Pure helpers (no imports) so `npm test` can load them.
+// Docs and reviews → "Build website" / "Try a new visual". Pure helpers (no imports) so `npm test` can load them.
 
 export type SiteLike = { site?: { code: { framework: string; path: string } | null; url: string | null; source: string | null; live: boolean; deploy: string | null } | null; site_url?: string };
 

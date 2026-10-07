@@ -143,7 +143,7 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
   const byId = Object.fromEntries(existing.map((p) => [p.id, p]));
   const used = new Set(existing.filter((p) => !p.archived).map((p) => p.color));
   const nextColor = () => { const c = COLORS.find((x) => !used.has(x)) || COLORS[used.size % COLORS.length]; used.add(c); return c; };
-  // What the folder says about the project's website (Reviews → Build website / Try a new visual).
+  // What the folder says about the project's website (Docs and reviews → Build website / Try a new visual).
   const sites = await Promise.all(ps.map((p) => detectSite(p.dir, { remote: p.remote }).catch(() => null)));
   const payloads = ps.map((p, i) => {
     const cur = byId[p.id];

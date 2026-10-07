@@ -5,7 +5,7 @@ import { requestWebsite, setSiteUrl } from "@/lib/actions";
 
 export type WebsiteRun = { status: string; created_at: string; pr_url: string | null; reply: string } | null;
 
-/** Reviews → Build website / Try a new visual: what Jarvis knows about the site, the button, the last run. */
+/** Docs and reviews → Build website / Try a new visual: what Jarvis knows about the site, the button, the last run. */
 export default function WebsiteCard({ projectId, kind, summary, siteUrl, last }: { projectId: string; kind: "new" | "redesign"; summary: string; siteUrl: string; last: WebsiteRun }) {
   const router = useRouter();
   const [pending, start] = useTransition();

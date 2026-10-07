@@ -227,7 +227,7 @@ async function handle(message, projects) {
   const project = projects.find((p) => p.id === message.project_id) || null;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "seen" });
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
-  if (message.mode === "screen") return screenProject(message, project, log); // Reviews → Screenings → Run
+  if (message.mode === "screen") return screenProject(message, project, log); // Docs and reviews → Screenings → Run
   if (message.mode === "review") return runProjectReview(message, project, log); // Settings → Run now, or the project's own schedule
   if (message.mode === "setup") return setupProject(message, project, log); // Start new project / a project loaded or updated (setup.mjs)
   const dir = project?.dir && fs.existsSync(project.dir) ? project.dir : JARVIS_ROOT;
@@ -235,7 +235,7 @@ async function handle(message, projects) {
   // The build run of an in-progress item (queued by queueBuilds): one branch per item, so a PR sent back continues there.
   const item = message.item_id && project ? (await api("GET", "/api/agent/items" + qs({ project: project.id }))).find((i) => i.id === message.item_id) || null : null;
   // The owner picks: "discuss" (read-only, lighter model) or "build" (branch + PR). Old messages: "auto".
-  // Reviews → "Build website" / "Try a new visual": a code run with the design skills pack (agent/website.mjs).
+  // Docs and reviews → "Build website" / "Try a new visual": a code run with the design skills pack (agent/website.mjs).
   const website = message.mode === "website";
   if (website && (!repo || W.allow_build === false)) {
     const reply = `NEEDS YOU: ${!repo ? `${project?.name || "This project"} has no git repository with a remote, so the website can't be built on a branch. Push the folder to GitHub (or add a remote), then press the button again.` : "Builds are off on this computer (worker.allow_build is false)."}`;
