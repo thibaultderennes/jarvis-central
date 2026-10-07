@@ -10,6 +10,7 @@ import Timeline, { MilestoneList } from "@/components/Timeline";
 import { HBars, StackedColumns, type Series } from "@/components/Charts";
 import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
 import DailyStats from "@/components/DailyStats";
+import MapView from "@/components/MapView";
 import { EmptyArt } from "@/components/brand";
 
 /** What every box may read, loaded once per request and only when a box on the open tab asks for it. */
@@ -209,7 +210,10 @@ async function time(c: Ctx) {
   return rows.length ? <HBars rows={rows} format="minutes" /> : <div className="empty">This fills in after the first Monday review reads your Claude sessions for the week.</div>;
 }
 
-export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { needs, top3, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
+/** The Map box: one region per project (components/MapView.tsx). */
+async function map() { return <MapView />; }
+
+export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { map, needs, top3, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
 
 /** One-line hints shown in a box's title bar. */
 export async function hintsFor(c: Ctx, ids: string[]): Promise<Record<string, string>> {

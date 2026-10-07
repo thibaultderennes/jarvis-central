@@ -12,6 +12,7 @@ export const PAGES: { href: string; label: string; key?: string; words: string }
   { href: "/week", label: "Week", key: "w", words: "plan calendar" },
   { href: "/#box-timeline", label: "Timeline", key: "l", words: "milestones deadlines gantt sprints" },
   { href: "/inbox", label: "Inbox", key: "i", words: "messages claude replies" },
+  { href: "/#box-map", label: "Map", words: "projects regions game world trail milestones fog" },
   { href: "/reviews", label: "Reviews", words: "monday weekly reports audits" },
   { href: "/finance", label: "Finance", words: "costs subscriptions money" },
   { href: "/#box-burnups", label: "Stats", key: "s", words: "charts statistics insights burn" },

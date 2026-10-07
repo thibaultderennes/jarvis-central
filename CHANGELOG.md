@@ -3,6 +3,19 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **The Map: a pixel village world** (a new Map box on Home, after the overview; old `/map` links land on it). One village per project in one world of forest, a river with
+  bridges and roads between villages; its fenced ground grows with work done on time (late counts half, undated a
+  quarter, last 180 days). **Each building stands for one part of the project and opens it:** the town hall is the
+  checklist (it grows into a town hall with a clock as items get done on time; its flag is the latest review; crates,
+  lamps and fire mark open, due-soon and overdue items), the police station is security (audits and screenings: calm,
+  amber or red light), the bank is finances (coins for revenue, a red sign when costs aren't covered), the shop is
+  growth (lit when visits, signups or active users rise), houses are customers (one more per tenfold users) and the
+  workshop is Claude's builds (smoke while one runs, a parcel per pull request waiting for you). Anything not recorded
+  yet is an empty lot with a sign. Fog after 14 quiet days, a storm or cloud from the review, a road with stones to
+  each next deadline, and you standing at the nearest one. Dark mode shows the same world at night. Map / List switch,
+  "+N since your last visit", hover cards, every building a keyboard link. Tiles: Kenney's CC0 Tiny Town, Tiny Battle
+  and Tiny Dungeon packs (`app/public/map/`, licences included).
+
 
 ## 0.7.4.6 — 2026-10-07
 - **Skills are checked, not assumed.** Website, Lugh and project setup runs must open their skills first; afterwards the
