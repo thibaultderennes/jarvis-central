@@ -2,7 +2,7 @@ import { q, sql } from "./db";
 import { addDays, mondayOf, today, TZ } from "./time";
 import { itemUpdate, projectUpsert } from "./sqlbuild";
 import type { BuildMode } from "./projectSettings";
-import { pushPlan } from "./docsHub";
+import { pushPlan, reviewProposals } from "./docsHub";
 
 export type Section = { id: string; name: string; note?: string; notes?: boolean; owner_default?: string };
 export type Project = {
@@ -384,6 +384,19 @@ export async function pushProposal(review_id: string, key: string, choice: { sec
     await sql()`update reviews set pushed = pushed - ${key}::text where id = ${r.id} and pushed->>${key}::text like 'pending:%'`;
     throw e;
   }
+}
+/** Every proposal of a review not on the checklist yet, each with its own defaults; same guard as one push. */
+export async function pushAllProposals(review_id: string, actor = "founder"): Promise<{ added: Item[]; already: number; failed: string[] }> {
+  const r = await getReview(review_id);
+  if (!r || !r.project_id) throw new PushError("No such review", 404);
+  const keys = reviewProposals(r, await getItems({ project: r.project_id })).filter((p) => p.state === "pushable").map((p) => p.key);
+  const added: Item[] = [], failed: string[] = [];
+  let already = 0;
+  for (const key of keys) {
+    try { added.push(await pushProposal(review_id, key, {}, actor)); }
+    catch (e) { if (e instanceof AlreadyPushedError) already++; else failed.push(e instanceof Error ? e.message : String(e)); }
+  }
+  return { added, already, failed };
 }
 export class PushError extends Error { constructor(msg: string, public status = 400) { super(msg); } }
 

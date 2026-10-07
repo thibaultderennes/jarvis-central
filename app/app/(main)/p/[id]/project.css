@@ -73,7 +73,9 @@ a.pg-s:hover { background: var(--surface-2); }
 .hub .revrow:not(.new) .t b { font-weight: 500; color: var(--ink-2); }
 .hub-tags { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; }
 .hub-doc { padding: 20px 24px; }
-.hub-doc-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.hub-doc-h { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; position: sticky; top: 0; z-index: 4; margin: -20px -24px 0; padding: 12px 24px; background: var(--surface); border-bottom: 1px solid var(--line-2); border-radius: 8px 8px 0 0; }
+.hub-doc-act { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; justify-content: flex-end; }
+.hub-props { scroll-margin-top: 72px; }
 .hub-doc-h .sp { flex: 1; }
 .hub-ack { display: inline-flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .hub-head { font-size: 17px; font-weight: 600; margin: 12px 0 4px; max-width: 70ch; }

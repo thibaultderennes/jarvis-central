@@ -117,8 +117,8 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at, acked_at timestamptz null /* null = new on Docs and reviews */, pushed jsonb /* {proposal key: item code} */)`
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - **Docs and reviews** (the project page's `?v=docs`) lists a project's reports newest first (advisor reviews, strategy
-    docs, plans and refreshes, project setup, screenings, security audits), with a kind filter (`&k=`), a not-acknowledged
-    filter (`&f=new`) and count, and Acknowledge per report. Proposed tasks (`app/lib/docsHub.ts`): `meta.added` (codes a
+    docs, plans and refreshes, project setup, screenings, security audits), with a kind filter (`&k=`), an unread
+    filter (`&f=new`) and count, and Mark as read per report; its header (read state, Add all to checklist) stays in view while the report scrolls. Proposed tasks (`app/lib/docsHub.ts`): `meta.added` (codes a
     run already added: screenings, plans, setup) show as on the checklist; `meta.proposals`
     `[{title, detail?, section?, owner?, estimate_minutes?}]` (the advisor synthesis writes them) and "new item: …"
     entries under a "Top 3" heading can be pushed; other Top 3 entries show as text. A push records the key in
@@ -181,10 +181,11 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | POST | `/api/agent/costs` | `{name, amount, currency?, period?, project_id?, next_renewal?, notes?}` | `{cost}` |
 | PATCH | `/api/agent/costs` | `{id, ...fields}` | `{cost}` |
 | DELETE | `/api/agent/costs` | `?id=UUID` | `{ok}` |
-| GET | `/api/agent/reviews` | `?type=&project=&limit=` newest first; `&unacked=1` only the ones not acknowledged yet | `[{review}]` (with `acked_at`, `pushed`) |
+| GET | `/api/agent/reviews` | `?type=&project=&limit=` newest first; `&unacked=1` only the unread ones | `[{review}]` (with `acked_at`, `pushed`) |
 | POST | `/api/agent/reviews` | `{type, project_id?, week_start?, title, verdict?, headline?, body_md, meta?}` upsert (key: `week_start` for weekly types, else `meta.file` when set, else `id`, else insert); an upsert that changes `body_md` makes it new again (`acked_at` cleared) | `{review}` |
-| PATCH | `/api/agent/reviews` | `{id, acked: true\|false}` acknowledge a report, or make it new again | `{review}`; 404 when there's no such review |
+| PATCH | `/api/agent/reviews` | `{id, acked: true\|false}` mark a report as read, or as unread again | `{review}`; 404 when there's no such review |
 | GET | `/api/agent/proposals` | `?review=UUID` | `[{key, state 'pushable'\|'pushed'\|'on-checklist'\|'text', title?, text, detail?, section?, owner?, estimate_minutes?, source, items: [codes]}]` (`app/lib/docsHub.ts`) |
+| POST | `/api/agent/proposals` | `{review_id, all: true}` push every pushable proposal, each with its own defaults | `{items, already, failed}` 201 |
 | POST | `/api/agent/proposals` | `{review_id, key, section?, owner?, estimate_minutes?}` push one pushable proposal to the checklist (the proposal is re-read from the review; the key is claimed atomically) | `{item}` 201; 409 `{error, existing}` when it was already pushed or its title is already an item; 400 for a text-only proposal |
 | GET | `/api/agent/economics` | `?project=ID` (`&full=1` includes `data`) | `{project_id, file, sha, synced_at, error, error_at}`; 404 when none synced |
 | PUT | `/api/agent/economics` | `{project_id, file, sha, data}` (an evaluated model, `data.v = 1`, ≤ 2 MB) or `{project_id, file, error}` (keeps the last good data) | `{economics}` without `data` |

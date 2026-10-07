@@ -15,12 +15,13 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 - **Refresh project folders proposes every new folder**, even when `projects.include` lists only older ones; a project
   you approve stays registered (sync no longer archives it for being outside the include list).
 - **Docs and reviews**: each project has one place for all its reports (advisor reviews, strategy docs, plans, project
-  setup, screenings with the Website card, security audits), newest first, with a kind filter and a "Not acknowledged"
-  filter and count. It replaces the Docs and Reviews views; old links still open it. **Acknowledge** / Un-acknowledge
-  on every report (a report re-posted with new content counts as new again). Under each report, its proposed tasks: what
-  a run already added links to the checklist; "new item" proposals get **Push to checklist** (section, owner, estimate)
-  and can't be added twice. Advisor review syntheses now return their proposals as data. CLI: `reviews --unacked`,
-  `ack` / `unack <id>`, `proposals <id>`, `push <id> <key>`. API: `PATCH /api/agent/reviews`,
+  setup, screenings with the Website card, security audits), newest first, with a kind filter and an "Unread" filter and
+  count. It replaces the Docs and Reviews views; old links still open it. **Mark as read** / Mark as unread on every
+  report (a report re-posted with new content counts as unread again). Under each report, its proposed tasks: what a
+  run already added links to the checklist; "new item" proposals get **Push to checklist** (section, owner, estimate),
+  or **Add all to checklist** in one click, and can't be added twice. The report's header (read state, Add all, a jump
+  to the tasks) stays in view while you scroll it. Advisor review syntheses now return their proposals as data. CLI: `reviews --unacked`,
+  `ack` / `unack <id>` (mark as read / unread), `proposals <id>`, `push <id> <key>`, `push <id> --all`. API: `PATCH /api/agent/reviews`,
   `GET|POST /api/agent/proposals`, `GET /api/agent/reviews?unacked=1`. The project description moved to Settings.
 - **Map (prototype)**: `/map` (⌘K → Map) shows one region per active project, sized by its open work, with open,
   overdue and due-this-week counts, work done in the last 28 days, the next deadline and the latest review. Projects
@@ -29,7 +30,7 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   Existing data only; no other page changed.
 
 ### Upgrade notes
-- The deploy adds `reviews.acked_at` and `reviews.pushed`; reports older than 7 days start as acknowledged.
+- The deploy adds `reviews.acked_at` and `reviews.pushed`; reports older than 7 days start as read.
 - Run `node agent/install-skill.mjs` (or `agent/install.sh`) so the Claude Code skill lists `ack`, `unack`,
   `proposals` and `push`.
 

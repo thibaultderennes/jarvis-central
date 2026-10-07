@@ -22,7 +22,7 @@ import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
 import { effectiveBuildMode, isBuildMode, nextReview, reviewEvery } from "@/lib/projectSettings";
 import { filterHub, HUB_KINDS, hubDate, hubKind, hubList, isHubKind, reviewProposals, type HubKind } from "@/lib/docsHub";
-import { AckButton, Proposals } from "@/components/ReviewActions";
+import { AckButton, AddAllButton, Proposals } from "@/components/ReviewActions";
 import "./project.css";
 import "../../finance/finance.css";
 
@@ -81,7 +81,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
   const menu: { v: View; label: string; count?: number; title?: string }[] = [
     { v: "checklist", label: "Checklist", count: open.length },
     { v: "timeline", label: "Timeline" },
-    { v: "docs", label: "Docs and reviews", count: unacked || undefined, title: unacked ? `${unacked} not acknowledged yet` : undefined },
+    { v: "docs", label: "Docs and reviews", count: unacked || undefined, title: unacked ? `${unacked} unread` : undefined },
     { v: "finance", label: "Finances", count: costs.filter((c) => c.active).length || undefined },
     { v: "stats", label: "Stats" },
     { v: "settings", label: "Settings" },
@@ -266,7 +266,7 @@ async function Stats({ project, today: t }: { project: D.Project; today: string 
 
 /**
  * Docs and reviews: every report of the project in one list, newest first (advisor reviews, strategy docs, plans,
- * project setup, screenings, security audits), with a kind filter, a "new" filter and count, Acknowledge per report,
+ * project setup, screenings, security audits), with a kind filter, an unread filter and count, Mark as read per report,
  * and the tasks each one proposes (Push to checklist, or links to what's already on it).
  */
 async function DocsView({ p, hub, items, kind, onlyNew, sel, subtab, href, empty, screeningTools }: {
@@ -289,13 +289,13 @@ async function DocsView({ p, hub, items, kind, onlyNew, sel, subtab, href, empty
           <Link className="chip" aria-pressed={!kind} href={q({ k: undefined })}>All{hub.length > 0 && ` (${hub.length})`}</Link>
           {kinds.map((k) => <Link key={k.id} className="chip" aria-pressed={kind === k.id} href={q({ k: k.id })}>{k.label}{counts.get(k.id) ? ` (${counts.get(k.id)})` : ""}</Link>)}
         </div>
-        <Link className="chip" aria-pressed={onlyNew} href={q({ f: onlyNew ? undefined : "new" })} title="Reports you haven't acknowledged yet">
-          Not acknowledged ({fresh})
+        <Link className="chip" aria-pressed={onlyNew} href={q({ f: onlyNew ? undefined : "new" })} title="Reports you haven't marked as read">
+          Unread ({fresh})
         </Link>
       </div>
       {kind === "screening" && screeningTools}
       {!list.length || !r ? (
-        <div className="panel empty">{onlyNew && hub.length ? <>Nothing new{kind ? ` in ${HUB_KINDS.find((k) => k.id === kind)?.label.toLowerCase()}` : ""}: you&apos;ve acknowledged every report. <Link href={q({ f: undefined })}>Show all</Link>.</> : kind ? empty[kind] : <>No reports for {p.name} yet. Advisor reviews, strategy docs, plans, project setup, screenings and security audits all land here.</>}</div>
+        <div className="panel empty">{onlyNew && hub.length ? <>Nothing new{kind ? ` in ${HUB_KINDS.find((k) => k.id === kind)?.label.toLowerCase()}` : ""}: you&apos;ve read every report. <Link href={q({ f: undefined })}>Show all</Link>.</> : kind ? empty[kind] : <>No reports for {p.name} yet. Advisor reviews, strategy docs, plans, project setup, screenings and security audits all land here.</>}</div>
       ) : (
         <div className="grid-review hub-grid">
           <nav className="panel revlist" aria-label="Reports">
@@ -304,7 +304,7 @@ async function DocsView({ p, hub, items, kind, onlyNew, sel, subtab, href, empty
                 <i className="dot" />
                 <span className="t"><b>{periodLabel(x)}</b><span>{[one(x), fmtDate(hubDate(x)), x.headline].filter(Boolean).join(" · ")}</span></span>
                 <span className="hub-tags">
-                  {!x.acked_at && <span className="pill">New</span>}
+                  {!x.acked_at && <span className="pill">Unread</span>}
                   {x.verdict && <span className={`verdict v-${x.verdict}`}>{x.verdict.replace("-", " ")}</span>}
                 </span>
               </Link>
@@ -325,6 +325,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
   const file = typeof r.meta?.file === "string" ? r.meta.file : null;
   const proposals = reviewProposals(r, items);
   const titles = Object.fromEntries(items.map((i) => [i.id, i.title]));
+  const toPush = proposals.filter((x) => x.state === "pushable").length;
   return (
     <article className="panel pb hub-doc">
       <div className="hub-doc-h">
@@ -332,7 +333,12 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
         <span className="lbl">{r.title}</span>
         <span className="hint">{fmtDate(hubDate(r))}{file ? ` · ${file}` : ""}</span>
         <span className="sp" />
-        <AckButton id={r.id} ackedOn={r.acked_at ? fmtDate(r.acked_at.slice(0, 10)) : null} />
+        {/* Stays at the top of the report while you scroll it: read state, and the proposed tasks in one click. */}
+        <span className="hub-doc-act">
+          {toPush > 0 && <a className="btn sm ghost" href={`#props-${r.id}`}>{proposals.length} proposed task{proposals.length === 1 ? "" : "s"} ↓</a>}
+          <AddAllButton reviewId={r.id} count={toPush} />
+          <AckButton id={r.id} ackedOn={r.acked_at ? fmtDate(r.acked_at.slice(0, 10)) : null} />
+        </span>
       </div>
       {r.headline && <p className="hub-head">{r.headline}</p>}
       {tabs.length > 0 && (

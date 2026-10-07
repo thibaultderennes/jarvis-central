@@ -281,7 +281,7 @@ export async function markTreated(id: string, treated = true) {
 }
 
 /* ---------- docs and reviews (the project page's one place for every report) ---------- */
-/** Acknowledge a report (it leaves the "new" count) or make it new again. */
+/** Mark a report as read (it leaves the unread count) or as unread again. */
 export async function ackReview(id: string, acked: boolean): Promise<{ error?: string }> {
   await requireSession();
   const r = await D.setReviewAck(id, !!acked);
@@ -302,6 +302,23 @@ export async function pushReviewTask(review_id: string, key: string, choice: { s
   } catch (e) {
     if (e instanceof D.AlreadyPushedError) { done(); return { error: `Already on the checklist as "${e.existing}".`, existing: e.existing }; }
     if (e instanceof D.PushError) return { error: e.message };
+    throw e;
+  }
+}
+
+/**
+ * "Add all to checklist": every proposal of the review that isn't on the checklist yet, each with its own defaults
+ * (its section, owner and estimate, else the section's default owner). The same double-push guard as one push.
+ */
+export async function pushAllReviewTasks(review_id: string): Promise<{ error?: string; added: number; already: number; failed: string[] }> {
+  await requireSession();
+  try {
+    const r = await D.pushAllProposals(review_id);
+    if (r.added.length) await D.logActivity("review_push_all", `/p/${r.added[0].project_id}`, { added: r.added.length });
+    done();
+    return { added: r.added.length, already: r.already, failed: r.failed };
+  } catch (e) {
+    if (e instanceof D.PushError) return { error: e.message, added: 0, already: 0, failed: [] };
     throw e;
   }
 }

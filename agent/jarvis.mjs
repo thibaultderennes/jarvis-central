@@ -18,10 +18,11 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
   todos [--from D] [--to D]                       default: today → +6 days
   reviews [--type project|recap|coaching|jarvis|doc|security|screening] [--project P] [--limit N] [--unacked] [--full]
-                                                  "new" marks the ones not acknowledged yet (Docs and reviews on the site)
-  ack <review-id> | unack <review-id>             acknowledge a report (it leaves the new count), or make it new again
+                                                  "new" marks the unread ones (Docs and reviews on the site)
+  ack <review-id> | unack <review-id>             mark a report as read (it leaves the unread count), or as unread again
   proposals <review-id>                           the tasks a review proposes: already on the checklist, pushed, or to push (with a key)
   push <review-id> <key> [--section S] [--owner founder|claude|both] [--estimate MIN]   push one proposal to the checklist (never twice)
+  push <review-id> --all                          push every proposal not on the checklist yet, each with its own defaults
   audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
   stats [--bucket day|week|month] [--n N] [--project P] [--items]   added / finished / cancelled per bucket (14 days, 12 weeks, 12 months)
   metrics <project> [--days N]                    product numbers per snapshot (users, active_users, visits, revenue…)
@@ -219,14 +220,14 @@ async function main() {
       if (json) return out(JSON.stringify(rs, null, 2));
       for (const r of rs) out(`${r.id}  ${r.acked_at ? "   " : "new"} ${pad(r.type, 8)} ${pad(r.project_id || "—", 10)} ${r.week_start || ""} ${r.verdict ? `[${r.verdict}] ` : ""}${r.title}${r.headline ? ` — ${r.headline}` : ""}`);
       if (flags.full && rs[0]) out(`\n${rs[0].body_md}`);
-      if (!rs.length) out(flags.unacked ? "No reviews waiting to be acknowledged." : "No reviews.");
+      if (!rs.length) out(flags.unacked ? "No unread reviews." : "No reviews.");
       return;
     }
     case "ack": case "unack": {
       const id = need(rest[0], "<review-id>");
       const { review } = await api("PATCH", "/api/agent/reviews", { id, acked: cmd === "ack" });
       if (json) return out(JSON.stringify(review, null, 2));
-      return out(`${cmd === "ack" ? "Acknowledged" : "Marked as new"}: ${review.title}`);
+      return out(`${cmd === "ack" ? "Marked as read" : "Marked as unread"}: ${review.title}`);
     }
     case "proposals": {
       const id = need(rest[0], "<review-id>");
@@ -241,6 +242,13 @@ async function main() {
       return;
     }
     case "push": {
+      if (flags.all) {
+        const id = need(rest[0], "<review-id>");
+        const r = await api("POST", "/api/agent/proposals", { review_id: id, all: true });
+        if (json) return out(JSON.stringify(r, null, 2));
+        for (const it of r.items) out(`Added to ${it.project_id}/${it.section}: [${it.id}] ${it.title}`);
+        return out(`${r.items.length} added${r.already ? `, ${r.already} already on the checklist` : ""}${r.failed.length ? `, ${r.failed.length} failed: ${r.failed[0]}` : ""}.`);
+      }
       const id = need(rest[0], "<review-id>"), key = need(rest[1], "<key> (from: jarvis proposals <review-id>)");
       try {
         const { item } = await api("POST", "/api/agent/proposals", { review_id: id, key, section: flags.section, owner: flags.owner, estimate_minutes: flags.estimate });

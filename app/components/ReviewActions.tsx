@@ -1,22 +1,43 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { ackReview, pushReviewTask } from "@/lib/actions";
+import { ackReview, pushAllReviewTasks, pushReviewTask } from "@/lib/actions";
 import { OWNERS, type Proposal } from "@/lib/docsHub";
 import { Ack, imeGuard, useSubmit } from "./Submit";
 
-/** Acknowledge a report (it leaves the "new" count on Docs and reviews) or make it new again. */
+/** Mark a report as read (it leaves the unread count on Docs and reviews) or as unread again. */
 export function AckButton({ id, ackedOn }: { id: string; ackedOn: string | null }) {
   const s = useSubmit();
   return (
     <span className="hub-ack">
-      {ackedOn && <span className="hint">Acknowledged {ackedOn}</span>}
+      {ackedOn && <span className="hint">Read {ackedOn}</span>}
       <button className={`btn sm${ackedOn ? " ghost" : ""}`} disabled={s.pending}
-        onClick={() => s.submit(() => ackReview(id, !ackedOn), { ok: ackedOn ? "Marked as new" : "Acknowledged" })}
-        title={ackedOn ? "Put it back in the new count" : "You've read it: it leaves the new count"}>
-        {ackedOn ? "Un-acknowledge" : "Acknowledge"}
+        onClick={() => s.submit(() => ackReview(id, !ackedOn), { ok: ackedOn ? "Marked as unread" : "Marked as read" })}
+        title={ackedOn ? "Put it back in the unread count" : "You've gone through it: it leaves the unread count"}>
+        {ackedOn ? "Mark as unread" : "Mark as read"}
       </button>
       <Ack s={s} />
+    </span>
+  );
+}
+
+/** "Add all to checklist": every proposed task not on the checklist yet, each with its suggested section, owner and estimate. */
+export function AddAllButton({ reviewId, count }: { reviewId: string; count: number }) {
+  const s = useSubmit();
+  if (!count) return null;
+  return (
+    <span className="hub-ack">
+      <button className="btn sm" disabled={s.pending}
+        onClick={() => s.submit(async () => {
+          const r = await pushAllReviewTasks(reviewId);
+          if (r.error) return { error: r.error };
+          if (r.failed.length) return { error: `Added ${r.added}; ${r.failed.length} couldn't be added: ${r.failed[0]}` };
+          return {};
+        }, { ok: `Added ${count === 1 ? "the task" : `all ${count} tasks`} to the checklist` })}
+        title="Adds every proposed task below that isn't on the checklist yet, with its suggested section, owner and estimate. Change one first with its own row if you want different settings.">
+        Add all {count} to checklist
+      </button>
+      <Ack s={s} busy="Adding…" />
     </span>
   );
 }
