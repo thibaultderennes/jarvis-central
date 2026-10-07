@@ -231,7 +231,7 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
   }
   const cost = reports.reduce((s, r) => s + (r.cost_usd || 0), 0) + (syn.cost_usd || 0);
   const tabs = reports.map((r) => ({ key: r.key, label: r.label, body_md: r.error ? `_This advisor's run failed: ${r.error}_` : r.body_md, verdict: r.verdict || null, headline: r.headline || null }));
-  const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: { ...b.meta, cost_usd: Math.round(cost * 100) / 100, tabs } };
+  const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: { ...b.meta, cost_usd: Math.round(cost * 100) / 100, tabs, ...(Array.isArray(syn.proposals) && syn.proposals.length ? { proposals: syn.proposals.slice(0, 5) } : {}) } };
   if (!DRY) await api("POST", "/api/agent/reviews", post);
   log(`${p.id} review ${DRY ? "built (dry run, not posted)" : "posted"}`, { verdict: syn.verdict, cost_usd: post.meta.cost_usd, failed: reports.filter((r) => r.error).map((r) => r.key) });
   return { p, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: b.meta };

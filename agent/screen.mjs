@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 // Screenings: on-demand reviews that check a project folder against a researched check list in `screenings/<kind>.md`
-// (Run on the project's Reviews → Screenings view). Claude reads the folder read-only, marks every check
+// (Run on the project's Docs and reviews → Screenings view). Claude reads the folder read-only, marks every check
 // fail / warn / pass / n/a / needs the live site, with file evidence, and proposes checklist items for what to fix;
 // blockers come back critical, choices the owner has to make go to the decide section. Items are validated and
 // scheduled exactly like "Plan this project" (agent/planproject.mjs). The report is saved as review type 'screening'.
@@ -126,7 +126,7 @@ ${kind === "rights" ? "\n_Not legal advice: have a lawyer confirm every blocker 
     type: "screening", project_id: project.id, title: `${k.title} · ${g.today}`, verdict, headline: out.headline || "", body_md: body,
     meta: { kind, counts, added: added.map((i) => i.id), cost_usd: res.cost_usd, duration_s: res.duration_s },
   });
-  const reply = `**${out.headline || `${k.title} done.`}**\n\n${counts.fail} failed, ${counts.warn} to watch, ${counts.live} to check on the live site, ${counts.pass} passed. Added ${added.length} item${added.length === 1 ? "" : "s"} to ${project.name}'s checklist. The full report is under the project's Reviews → Screenings.`;
+  const reply = `**${out.headline || `${k.title} done.`}**\n\n${counts.fail} failed, ${counts.warn} to watch, ${counts.live} to check on the live site, ${counts.pass} passed. Added ${added.length} item${added.length === 1 ? "" : "s"} to ${project.name}'s checklist. The full report is under the project's Docs and reviews → Screenings.`;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "done", reply, meta: { mode: "screen", kind, review_id: review?.id, cost_usd: res.cost_usd, duration_s: res.duration_s } });
   log("screening done", project.id, kind, { counts, added: added.length, cost_usd: res.cost_usd });
 }
@@ -134,7 +134,7 @@ ${kind === "rights" ? "\n_Not legal advice: have a lawyer confirm every blocker 
 if (import.meta.url === `file://${process.argv[1]}`) {
   const [id, kind] = process.argv.slice(2);
   if (!id || !KINDS[kind] || !process.argv.includes("--dry-run")) {
-    console.log(`Usage: node screen.mjs <project-id> <${Object.keys(KINDS).join("|")}> --dry-run   (real runs start from the project's Reviews → Screenings)`);
+    console.log(`Usage: node screen.mjs <project-id> <${Object.keys(KINDS).join("|")}> --dry-run   (real runs start from the project's Docs and reviews → Screenings)`);
     process.exitCode = id ? 1 : 0;
   } else {
     (async () => {

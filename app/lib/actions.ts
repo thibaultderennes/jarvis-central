@@ -280,6 +280,32 @@ export async function markTreated(id: string, treated = true) {
   done();
 }
 
+/* ---------- docs and reviews (the project page's one place for every report) ---------- */
+/** Acknowledge a report (it leaves the "new" count) or make it new again. */
+export async function ackReview(id: string, acked: boolean): Promise<{ error?: string }> {
+  await requireSession();
+  const r = await D.setReviewAck(id, !!acked);
+  if (!r) return { error: "That report is gone." };
+  await D.logActivity(acked ? "review_ack" : "review_unack", r.project_id ? `/p/${r.project_id}` : "/reviews", { type: r.type });
+  done();
+  return {};
+}
+/** Push one task a review proposed to the checklist (section, owner and estimate as picked); never twice. */
+export async function pushReviewTask(review_id: string, key: string, choice: { section?: string; owner?: string; estimate_minutes?: string | number | null }): Promise<{ error?: string; id?: string; existing?: string }> {
+  await requireSession();
+  if (typeof key !== "string" || key.length > 80) return { error: "Unknown proposal." };
+  try {
+    const it = await D.pushProposal(review_id, key, { section: choice.section, owner: choice.owner, estimate_minutes: choice.estimate_minutes ?? undefined });
+    await D.logActivity("review_push", `/p/${it.project_id}`, { section: it.section });
+    done();
+    return { id: it.id };
+  } catch (e) {
+    if (e instanceof D.AlreadyPushedError) { done(); return { error: `Already on the checklist as "${e.existing}".`, existing: e.existing }; }
+    if (e instanceof D.PushError) return { error: e.message };
+    throw e;
+  }
+}
+
 /* ---------- telemetry (feeds the weekly Jarvis review) ---------- */
 export async function track(kind: string, page: string, detail: Record<string, unknown> = {}) {
   await requireSession();
@@ -353,7 +379,7 @@ export async function requestPlanning(project_id: string) {
   done();
 }
 
-/** Reviews → Screenings → Run: the Mac worker checks the folder against screenings/<kind>.md and adds the fixes to the checklist. */
+/** Docs and reviews → Screenings → Run: the Mac worker checks the folder against screenings/<kind>.md and adds the fixes to the checklist. */
 const SCREEN_KINDS = ["vibecoded", "prelaunch", "rights"];
 export async function requestScreening(project_id: string, kind: string) {
   await requireSession();
@@ -365,7 +391,7 @@ export async function requestScreening(project_id: string, kind: string) {
   done();
 }
 
-/** Reviews → Build website / Try a new visual: the Mac worker builds it with the design skills on a branch and opens a PR. */
+/** Docs and reviews → Screenings → Build website / Try a new visual: the Mac worker builds it with the design skills on a branch and opens a PR. */
 export async function requestWebsite(project_id: string, opts: { ask?: string; keepColours?: boolean } = {}): Promise<{ error?: string }> {
   await requireSession();
   const p = await D.getProject(project_id);
