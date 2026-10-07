@@ -37,12 +37,12 @@ test("sanitizeLayout: an old per-tab layout gives the new default; an emptied pa
 
 test("settle: a dropped box keeps its place, the ones under it move down, nothing overlaps", () => {
   const start = defaultLayout().home;
-  const dropped = start.map((p) => (p.id === "timeline" ? { ...p, x: 0, y: 0 } : p));
-  const out = settle(dropped, "timeline");
+  const dropped = start.map((p) => (p.id === "map" ? { ...p, x: 0, y: 0 } : p));
+  const out = settle(dropped, "map");
   assert.equal(overlap(out), false);
-  const tl = out.find((p) => p.id === "timeline");
-  assert.deepEqual([tl.x, tl.y], [0, 0]);
-  assert.ok(out.find((p) => p.id === "top3").y >= tl.h);
+  const map = out.find((p) => p.id === "map");
+  assert.deepEqual([map.x, map.y], [0, 0]);
+  assert.ok(out.find((p) => p.id === "top3").y >= map.h);
 });
 
 test("settle floats boxes up into the space a removed box leaves", () => {
@@ -57,9 +57,9 @@ test("nudge: ↑ and ↓ swap a box with its neighbour in reading order, nothing
   const { nudge, readingOrder } = await import("../lib/dashLayout.ts");
   const d = defaultLayout().home;
   const ids = (l) => readingOrder(l).map((p) => p.id);
-  const up = nudge(d, "timeline", -1);
+  const up = nudge(d, "map", -1);
   assert.equal(overlap(up), false);
-  assert.ok(ids(up).indexOf("timeline") < ids(d).indexOf("timeline"), "timeline moved up");
+  assert.ok(ids(up).indexOf("map") < ids(d).indexOf("map"), "map moved up");
   const down = nudge(d, "top3", 1);
   assert.equal(overlap(down), false);
   assert.ok(ids(down).indexOf("top3") > 0, "top3 is no longer first");
