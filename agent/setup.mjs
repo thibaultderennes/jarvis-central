@@ -26,7 +26,12 @@ import fs from "node:fs";
 import path from "node:path";
 import { api, qs, CONFIG, PROJECTS_ROOT, JARVIS_ROOT, OWNER, TZ, todayTZ, parseModelJSON, makeLog, cacheDir } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
-import { preparePack } from "./skillpacks.mjs";
+import { preparePack, skillUse } from "./skillpacks.mjs";
+
+/** Follow-up turn for a setup run that answered without opening its core skills: same session, JSON again. */
+const missingSetupSkillsPrompt = (pack, missing) => `You answered without opening these skills, which this run must use:
+${missing.map((n) => `- ${n}: \`${pack.skills[n]}\``).join("\n")}
+Read each SKILL.md in full now and apply it to your drafts and questions (it must change them, not just be acknowledged). Then output the full JSON object again, revised, and nothing else.`;
 import { FOUNDATION, detectFoundation, shouldRunSetup, validateProjectName, safeRelPath, appendSection } from "./foundation.mjs";
 import { DEFAULT_SECTIONS, sectionRoles } from "./structure.mjs";
 import { gather, normalizeItems, placeItems } from "./planproject.mjs";
@@ -296,12 +301,26 @@ async function runSetup({ message, project, dir, trigger, reason, isNew, log, re
   try { pack = prepareSetupSkills(); } catch (e) { log("setup skills failed", e.message); }
   const prompt = buildSetupPrompt({ project, dir, trigger, reason, fp, mine: g.mine, roles: g.roles, pack, isNew });
   log("setup run", project.id, { trigger, missing: fp.missing });
-  const res = await runClaude({
-    prompt, cwd: dir, model: S.model || W.build_model || undefined, maxTurns: 60, timeoutMs: (W.timeout_minutes || 25) * 60_000, log,
-    allowedTools: ["Read", "Grep", "Glob", "Bash(git log:*)", "Bash(git status:*)", "Bash(git show:*)", "Bash(ls:*)", "Bash(gh repo view:*)"],
+  const runOpts = {
+    cwd: dir, model: S.model || W.build_model || undefined, maxTurns: 60, timeoutMs: (W.timeout_minutes || 25) * 60_000, log,
+    allowedTools: ["Read", "Grep", "Glob", "Bash(git log:*)", "Bash(git status:*)", "Bash(git show:*)", "Bash(ls:*)", "Bash(gh repo view:*)", ...(pack ? ["Skill"] : [])],
     disallowedTools: ["Edit", "Write", "Bash(git push:*)", "Bash(git commit:*)", "Bash(rm:*)", "Bash(curl:*)"],
     addDirs: [TEMPLATES, ...(pack ? [pack.pluginDir] : [])], pluginDirs: pack ? [pack.pluginDir] : [],
-  });
+  };
+  let res = await runClaude({ prompt, ...runOpts });
+  // The skills must actually be opened (transcript check); one follow-up turn when the core ones were skipped.
+  const required = ["grilling", "to-spec", "writing-for-agents"].filter((n) => pack?.skills?.[n]);
+  let use = skillUse(res.session_id, pack, required);
+  if (use.found && use.missing.length && !res.is_error) {
+    log("setup skills skipped, follow-up turn", project.id, use.missing);
+    try {
+      const more = await runClaude({ ...runOpts, resume: res.session_id, maxTurns: 30, prompt: missingSetupSkillsPrompt(pack, use.missing) });
+      const j = (() => { try { return parseModelJSON(more.result); } catch { return null; } })();
+      if (j && (j.files || j.questions)) res = { ...more, cost_usd: (res.cost_usd || 0) + (more.cost_usd || 0) };
+      use = skillUse(more.session_id || res.session_id, pack, required);
+    } catch (e) { log("setup skills follow-up failed", e.message); }
+  }
+  if (use.found) log("setup skills", project.id, { used: use.used, missing: use.missing });
   const out = parseModelJSON(res.result);
 
   // Where the files go: a branch + PR in a repo with a remote; the folder itself otherwise (new files only).

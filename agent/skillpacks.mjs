@@ -3,6 +3,7 @@
 // Used by website builds (website.mjs); other runs declare their own SOURCES the same way.
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { cacheDir, makeLog } from "./lib.mjs";
 
@@ -50,3 +51,39 @@ export function preparePack(name, sources, description = "") {
   if (!Object.keys(skills).length) throw new Error(`none of the ${name} skills could be fetched`);
   return { pluginDir, skills, extra };
 }
+
+/**
+ * Which of `required` skills a finished run actually opened: a Read of the skill's SKILL.md (or any file in its folder)
+ * or a Skill tool call for it, found in the run's Claude Code transcript (~/.claude/projects/<cwd>/<session>.jsonl).
+ * Returns { used, missing, found } — found=false when the transcript couldn't be read (then nothing is reported missing).
+ */
+export function skillUse(sessionId, pack, required = Object.keys(pack?.skills || {})) {
+  const out = { used: [], missing: [], found: false };
+  if (!sessionId || !pack) return out;
+  const root = path.join(os.homedir(), ".claude", "projects");
+  let file = null;
+  try { for (const d of fs.readdirSync(root)) { const f = path.join(root, d, `${sessionId}.jsonl`); if (fs.existsSync(f)) { file = f; break; } } } catch {}
+  if (!file) return out;
+  out.found = true;
+  const seen = new Set();
+  const dirs = Object.fromEntries(Object.entries(pack.skills).map(([n, p]) => [n, path.dirname(p)]));
+  for (const line of fs.readFileSync(file, "utf8").split("\n")) {
+    if (!line.includes("tool_use")) continue;
+    let d; try { d = JSON.parse(line); } catch { continue; }
+    for (const c of d.message?.content || []) {
+      if (c?.type !== "tool_use") continue;
+      const i = c.input || {};
+      if (c.name === "Skill") { const s = String(i.skill || i.command || "").split(":").pop(); if (dirs[s]) seen.add(s); }
+      const fp = String(i.file_path || i.path || "");
+      if (fp) for (const [n, dir] of Object.entries(dirs)) if (fp.startsWith(dir + path.sep)) seen.add(n);
+    }
+  }
+  out.used = required.filter((n) => seen.has(n));
+  out.missing = required.filter((n) => pack.skills[n] && !seen.has(n));
+  return out;
+}
+
+/** The follow-up turn for a run that skipped skills: read them now and let them change the work. */
+export const missingSkillsPrompt = (pack, missing) => `You finished without opening these skills, which this run was required to use:
+${missing.map((n) => `- ${n}: \`${pack.skills[n]}\``).join("\n")}
+Read each SKILL.md in full now and apply it to the work already on this branch: its rules must visibly change the result (code, copy, layout, tests or docs), not just be acknowledged. Commit what changes. Then end with your full final message again, including a "## Skills used" section: each skill, and the concrete change it led to.`;
