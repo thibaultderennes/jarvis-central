@@ -52,3 +52,17 @@ test("settle floats boxes up into the space a removed box leaves", () => {
   const narrow = settle([{ id: "reviews", x: 0, y: 9, w: 5, h: 3 }], null);
   assert.equal(narrow[0].y, 0, "a lone box floats to the top");
 });
+
+test("nudge: ↑ and ↓ swap a box with its neighbour in reading order, nothing overlaps", async () => {
+  const { nudge, readingOrder } = await import("../lib/dashLayout.ts");
+  const d = defaultLayout().home;
+  const ids = (l) => readingOrder(l).map((p) => p.id);
+  const up = nudge(d, "map", -1);
+  assert.equal(overlap(up), false);
+  assert.ok(ids(up).indexOf("map") < ids(d).indexOf("map"), "map moved up");
+  const down = nudge(d, "top3", 1);
+  assert.equal(overlap(down), false);
+  assert.ok(ids(down).indexOf("top3") > 0, "top3 is no longer first");
+  assert.equal(nudge(d, "top3", -1), null, "first box can't go up");
+  assert.equal(nudge(d, ids(d).at(-1), 1), null, "last box can't go down");
+});

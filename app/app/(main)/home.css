@@ -40,6 +40,11 @@
 .dbb > .needs .needlist, .dbb > .needs .needmore { margin: 0 -16px; }
 .dbb > .revlist, .dbb > .empty { margin: 0 -4px; }
 .dbox.min .dbh { padding-bottom: 12px; }
+/* ↑ / ↓: quiet until the box is hovered or focused (always shown on touch screens, where there is no hover). */
+.dbh .dmv { opacity: 0; transition: opacity .12s; }
+.dbox:hover .dbh .dmv, .dbox:focus-within .dbh .dmv, .dash.editing .dbh .dmv { opacity: 1; }
+.dbh .dmv:disabled { opacity: 0 !important; pointer-events: none; }
+@media (hover: none) { .dbh .dmv { opacity: 1; } }
 .dash.editing .dbox { border-color: var(--doing); box-shadow: inset 0 0 0 1px var(--doing); }
 .dash.editing .dbh { cursor: grab; background: var(--doing-soft); border-radius: 8px 8px 0 0; touch-action: none; }
 .dash.editing .dbh:focus-visible { outline: 2px solid var(--doing); outline-offset: -2px; }

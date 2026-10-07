@@ -2,11 +2,11 @@
 import { useEffect, useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { resetDashboardTab, saveDashboardLayout } from "@/lib/actions";
-import { BOXES, settle, type Place, type Tab } from "@/lib/dashLayout";
+import { BOXES, nudge, readingOrder, settle, type Place, type Tab } from "@/lib/dashLayout";
 import { Icon } from "./icons";
 
 /**
- * The dashboard's boxes on a 12-column grid. Customize: drag a box by its title bar anywhere, drag its corner to resize,
+ * The dashboard's boxes on a 12-column grid. ↑ / ↓ on every box swap it with its neighbour (no Customize needed). Customize: drag a box by its title bar anywhere, drag its corner to resize,
  * fold it to its title, remove it, or add one back from the library; arrow keys move a focused title bar and Shift +
  * arrows resize it. Everything settles so boxes never overlap, and the tab's layout is saved on the site. Box bodies
  * are rendered on the server (`nodes`); this component only places them. Under 700px the boxes stack in order.
@@ -33,14 +33,24 @@ export default function DashCanvas({ tab, places: initial, nodes, hints }: { tab
     if (!editing || e.button !== 0 || (e.target as Element).closest("button")) return;
     e.preventDefault();
     const g = grid.current!.getBoundingClientRect(), col = (g.width + 12) / 12, row = 48 + 12;
-    const p0 = live.current.find((p) => p.id === id)!, sx = e.clientX, sy = e.clientY;
+    const p0 = live.current.find((p) => p.id === id)!, sx = e.clientX, sy = e.clientY + scrollY;
+    // Near the top or bottom edge the page scrolls by itself, so a box can travel the whole page in one drag.
+    let last: PointerEvent | null = null, raf = 0;
+    const edge = () => {
+      raf = 0;
+      if (!last) return;
+      const v = last.clientY < 72 ? -18 : last.clientY > innerHeight - 72 ? 18 : 0;
+      if (v) { scrollBy(0, v); mv(last); raf = requestAnimationFrame(edge); }
+    };
     const mv = (ev: PointerEvent) => {
-      const dx = Math.round((ev.clientX - sx) / col), dy = Math.round((ev.clientY - sy) / row);
+      last = ev;
+      if (!raf) raf = requestAnimationFrame(edge);
+      const dx = Math.round((ev.clientX - sx) / col), dy = Math.round((ev.clientY + scrollY - sy) / row);
       setPlaces(upd(id, (p) => mode === "size"
         ? { ...p, w: Math.max(2, Math.min(12 - p.x, p0.w + dx)), h: Math.max(1, p0.h + dy) }
         : { ...p, x: Math.max(0, Math.min(12 - p.w, p0.x + dx)), y: Math.max(0, p0.y + dy) }));
     };
-    const up = () => { removeEventListener("pointermove", mv); removeEventListener("pointerup", up); commit(live.current, id, mode === "size" ? "Resized" : "Moved"); };
+    const up = () => { cancelAnimationFrame(raf); last = null; removeEventListener("pointermove", mv); removeEventListener("pointerup", up); commit(live.current, id, mode === "size" ? "Resized" : "Moved"); };
     addEventListener("pointermove", mv); addEventListener("pointerup", up);
   };
   const keys = (id: string) => (e: React.KeyboardEvent) => {
@@ -69,6 +79,20 @@ export default function DashCanvas({ tab, places: initial, nodes, hints }: { tab
               {editing && <span className="dgrip" aria-hidden="true"><Icon n="drag" size={14} /></span>}
               <h2>{BOXES[p.id]?.title}</h2>
               {hints[p.id] && <span className="hint">{hints[p.id]}</span>}
+              {(() => {
+                const order = readingOrder(places), i = order.findIndex((x) => x.id === p.id), t = BOXES[p.id]?.title;
+                const go = (dir: -1 | 1) => {
+                  const next = nudge(live.current, p.id, dir);
+                  if (!next) return;
+                  setPlaces(next);
+                  start(async () => { const r = await saveDashboardLayout(tab, next).catch(() => ({ error: "Couldn't save the layout. Try again." })); setMsg(r.error || (dir < 0 ? `Moved ${t} up` : `Moved ${t} down`)); });
+                  requestAnimationFrame(() => document.getElementById(`box-${p.id}`)?.scrollIntoView({ block: "nearest", behavior: "smooth" }));
+                };
+                return <>
+                  <button className="dib dmv" onClick={() => go(-1)} disabled={i <= 0} aria-label={`Move ${t} up`} title="Move up">↑</button>
+                  <button className="dib dmv" onClick={() => go(1)} disabled={i >= order.length - 1} aria-label={`Move ${t} down`} title="Move down">↓</button>
+                </>;
+              })()}
               <button className="dib" onClick={() => commit(upd(p.id, (x) => ({ ...x, min: !x.min })), p.id, p.min ? "Unfolded" : "Folded")} aria-label={`${p.min ? "Unfold" : "Fold"} ${BOXES[p.id]?.title}`} aria-expanded={!p.min}>{p.min ? "+" : "−"}</button>
               {editing && <button className="dib" onClick={() => commit(live.current.filter((x) => x.id !== p.id), null, `Removed ${BOXES[p.id]?.title}: Add box brings it back`)} aria-label={`Remove ${BOXES[p.id]?.title}`}>×</button>}
             </div>

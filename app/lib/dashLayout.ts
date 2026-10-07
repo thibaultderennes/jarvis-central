@@ -83,3 +83,18 @@ export function settle(list: Place[], movedId: string | null): Place[] {
   }
   return items;
 }
+
+/** Reading order: top to bottom, then left to right. */
+export const readingOrder = (list: Place[]) => [...list].sort((a, b) => a.y - b.y || a.x - b.x);
+
+/**
+ * ↑ / ↓ on a box: swap it with its neighbour in reading order. Up takes the previous box's row (that box and the ones
+ * under it move down); down lets the next box take this one's row. Null when it's already first or last.
+ */
+export function nudge(list: Place[], id: string, dir: -1 | 1): Place[] | null {
+  const order = readingOrder(list), i = order.findIndex((p) => p.id === id), j = i + dir;
+  if (i < 0 || j < 0 || j >= order.length) return null;
+  const [mover, other] = dir < 0 ? [order[i], order[j]] : [order[j], order[i]];
+  const next = list.map((p) => (p.id === mover.id ? { ...p, y: other.y, x: Math.min(other.x, 12 - p.w) } : p));
+  return settle(next, mover.id);
+}
