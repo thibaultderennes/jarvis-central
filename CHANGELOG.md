@@ -4,6 +4,15 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.4.7 — 2026-10-07
+- **Screenshot pass** (Login, Home, Today, a project, Docs and reviews, Finance; desktop and phone; light and dark;
+  axe contrast check). Fixed what it found:
+  - A Home layout that held a box a release took out kept an empty band where it was: a saved layout now floats every
+    box up into free space when it's loaded.
+  - Contrast: past days on the timeline's day strip (1.5:1, now full ink-3), "Open project" on your top 3 (project
+    colours as text, 3.7:1: now ink with a project-colour underline), the "on track" pill (4.3:1) and the counts in a
+    project's menu in dark mode (4.5:1). Every checked page now has no contrast failure.
+
 ## 0.7.4.6 — 2026-10-07
 - **Skills are checked, not assumed.** Website, Lugh and project setup runs must open their skills first; afterwards the
   worker reads the run's transcript, and a run that skipped a required skill gets one follow-up turn (same session) to
