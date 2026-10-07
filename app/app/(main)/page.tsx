@@ -4,23 +4,26 @@ import * as D from "@/lib/data";
 import { calendarConfigured } from "@/lib/calendar";
 import { daysBetween, fmtDate, TZ, WD, weekday } from "@/lib/time";
 import { OWNER } from "@/lib/instance";
-import { BOXES, isTab, sanitizeLayout, type Tab } from "@/lib/dashLayout";
+import { redirect } from "next/navigation";
+import { BOXES, OLD_TAB_ANCHOR, SECTIONS, sanitizeLayout } from "@/lib/dashLayout";
 import DashCanvas from "@/components/DashCanvas";
 import { Glyph } from "@/components/brand";
 import { hintsFor, makeCtx, RENDER } from "./boxes";
 import "./home.css";
 
-const TAB_LABEL: Record<Tab, string> = { overview: "Overview", timeline: "Timeline", stats: "Stats" };
-
 /**
- * Home: one page, three tabs (Overview, Timeline, Stats; old /timeline and /stats links land on their tab). The Now
- * rail sits above every tab: the next thing to do in one sentence, today as a line, one summary line. Below it, the
- * tab's boxes on a grid you arrange with Customize (layout saved per tab in kv `dashboard.layout`).
+ * Home: one page. The Now rail (the next thing to do in one sentence, today as a line, one summary line), then every
+ * box on one grid you arrange with Customize: your top 3 first, then the overview, the map, the timeline and the stats
+ * (layout in kv `dashboard.layout`). The jump links under the title scroll to each section; old `?tab=` links and /map
+ * land on theirs.
  */
 export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string; w?: string; bucket?: string; proj?: string }> }) {
   await requireSession();
   const sp = await searchParams;
-  const tab: Tab = isTab(sp.tab) ? sp.tab : "overview";
+  if (sp.tab) {
+    const q = new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "tab" && typeof v === "string") as [string, string][]).toString();
+    redirect(`/${q ? `?${q}` : ""}#${OLD_TAB_ANCHOR[sp.tab] || "box-top3"}`);
+  }
   const c = makeCtx(sp);
   const [b, saved] = await Promise.all([c.base(), D.kvGet("dashboard.layout")]);
   const when = new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: TZ });
@@ -35,8 +38,8 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
     </>
   );
 
-  const places = sanitizeLayout(saved?.value)[tab];
-  const ids = Object.keys(BOXES).filter((id) => BOXES[id].tab === tab);
+  const places = sanitizeLayout(saved?.value).home;
+  const ids = Object.keys(BOXES);
   const [rendered, hints, rail] = await Promise.all([Promise.all(ids.map((id) => RENDER[id](c))), hintsFor(c, ids), nowRail(c)]);
   const nodes = Object.fromEntries(ids.map((id, i) => [id, rendered[i]]));
   const open = b.live.filter(D.isOpen).length;
@@ -48,12 +51,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
           <h1 className="page"><Glyph n="home" />{when}</h1>
           <div className="when">Week {isoWeek(c.t)} · {WD[weekday(c.t)]} · {open} open items across {b.projects.length} projects</div>
         </div>
-        <nav className="dtabs" aria-label="Dashboard">
-          {(Object.keys(TAB_LABEL) as Tab[]).map((k) => <Link key={k} href={k === "overview" ? "/" : `/?tab=${k}`} aria-current={tab === k ? "page" : undefined}>{TAB_LABEL[k]}</Link>)}
+        <nav className="dtabs" aria-label="Jump to">
+          {SECTIONS.filter((x) => places.some((p) => p.id === x.box)).map((x) => <a key={x.id} href={`#box-${x.box}`}>{x.label}</a>)}
         </nav>
       </div>
       {rail}
-      <DashCanvas tab={tab} places={places} nodes={nodes} hints={hints} />
+      <DashCanvas tab="home" places={places} nodes={nodes} hints={hints} />
     </>
   );
 }

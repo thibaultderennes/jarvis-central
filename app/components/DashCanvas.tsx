@@ -57,7 +57,7 @@ export default function DashCanvas({ tab, places: initial, nodes, hints }: { tab
       <div className="dash-tools">
         <span className="ack" role="status">{pending ? "Saving…" : msg}</span>
         {editing && <button className="btn sm ghost" onClick={() => setLib(true)}>Add box{missing.length ? ` (${missing.length})` : ""}</button>}
-        {editing && <button className="btn sm ghost" onClick={() => start(async () => { await resetDashboardTab(tab); router.refresh(); setMsg("Tab reset"); })}>Reset tab</button>}
+        {editing && <button className="btn sm ghost" onClick={() => start(async () => { await resetDashboardTab(tab); router.refresh(); setMsg("Layout reset"); })}>Reset layout</button>}
         <button className="btn sm" aria-pressed={editing} onClick={() => { setEditing(!editing); setLib(false); }}>{editing ? "Done" : "Customize"}</button>
       </div>
       <div className="dgrid" ref={grid}>
@@ -76,7 +76,7 @@ export default function DashCanvas({ tab, places: initial, nodes, hints }: { tab
             {editing && !p.min && <span className="drz" onPointerDown={down(p.id, "size")} aria-hidden="true" />}
           </section>
         ))}
-        {!places.length && <div className="panel empty" style={{ gridColumn: "1 / -1" }}>Every box on this tab is removed. Customize → Add box puts them back.</div>}
+        {!places.length && <div className="panel empty" style={{ gridColumn: "1 / -1" }}>Every box is removed. Customize → Add box puts them back.</div>}
       </div>
       {lib && (
         <aside className="dlib" aria-label="Add a box">
@@ -86,7 +86,7 @@ export default function DashCanvas({ tab, places: initial, nodes, hints }: { tab
               <span><b>{BOXES[id].title}</b><small>{BOXES[id].what}</small></span>
               <button className="btn sm" onClick={() => { const b = BOXES[id]; commit([{ id, x: 0, y: 0, w: b.at[2], h: b.at[3] }, ...live.current], id, `Added ${b.title} at the top`); }}>Add</button>
             </div>
-          )) : <p className="due">Every box of this tab is already on it.</p>}
+          )) : <p className="due">Every box is already on the page.</p>}
         </aside>
       )}
     </div>

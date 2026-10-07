@@ -1,35 +1,48 @@
-// The dashboard's tabs and boxes (Home = Overview · Timeline · Stats). Pure: no imports, so `npm test` loads it.
-// A layout is, per tab, the boxes on it with their place on a 12-column grid: x (0–11), y (row), w (columns), h (rows of
-// at least 48px; a row grows with its content), and whether it is folded to its title. Saved in kv `dashboard.layout`.
+// The dashboard: Home is one page (0.7.4.6 merged the Overview, Timeline and Stats tabs and added the Map). Pure: no
+// imports, so `npm test` loads it. A layout is the boxes on the page with their place on a 12-column grid: x (0–11),
+// y (row), w (columns), h (rows of at least 48px; a row grows with its content), and whether it is folded to its title.
+// Saved in kv `dashboard.layout` under `home`; layouts saved per tab before 0.7.4.6 are replaced by the new default.
 
-export const TABS = ["overview", "timeline", "stats"] as const;
+export const TABS = ["home"] as const;
 export type Tab = (typeof TABS)[number];
 export type Place = { id: string; x: number; y: number; w: number; h: number; min?: boolean };
 export type Layout = Record<Tab, Place[]>;
 
-/** Every box: which tab it belongs to, its title, what it shows (the "Add box" library) and where it starts. */
-export const BOXES: Record<string, { tab: Tab; title: string; what: string; at: [number, number, number, number] }> = {
-  needs: { tab: "overview", title: "Needs you", what: "Decisions, pull requests to approve, replies you haven't opened", at: [0, 0, 7, 6] },
-  reviews: { tab: "overview", title: "This week's reviews", what: "The Monday reviews, recap and coaching", at: [7, 0, 5, 3] },
-  sprints: { tab: "overview", title: "Sprints this week", what: "Sprints running or starting this week, across projects", at: [7, 3, 5, 3] },
-  top3: { tab: "overview", title: "Your top 3", what: "Your three main projects with pace against their next milestone", at: [0, 6, 12, 6] },
-  inbox: { tab: "overview", title: "Inbox", what: "The latest messages with Claude and where they stand", at: [0, 12, 12, 3] },
-  timeline: { tab: "timeline", title: "Timeline", what: "Milestones, due dates, sprints and planned blocks, 10 weeks", at: [0, 0, 12, 8] },
-  milestones: { tab: "timeline", title: "Upcoming milestones", what: "The next dated milestones from each PRD", at: [0, 8, 7, 4] },
-  calendar: { tab: "timeline", title: "This week", what: "Calendar events and planned focus, 7 days", at: [7, 8, 5, 4] },
-  burnups: { tab: "stats", title: "Will each project make its next deadline?", what: "Burn-ups against each next milestone", at: [0, 0, 12, 4] },
-  pace: { tab: "stats", title: "Pace vs needed", what: "Items finished per week against what the next deadline needs", at: [0, 4, 6, 5] },
-  owners: { tab: "stats", title: "Who it's waiting on", what: "Open checklist items by owner", at: [6, 4, 6, 5] },
-  finished: { tab: "stats", title: "Finished per week", what: "Checklist items done, last 4 weeks", at: [0, 9, 6, 5] },
-  daily: { tab: "stats", title: "Added and finished", what: "Items added and finished per day, week or month", at: [6, 9, 6, 5] },
-  rhythm: { tab: "stats", title: "Your rhythm", what: "Items finished, todos ticked and messages sent per day", at: [0, 14, 6, 4] },
-  ahead: { tab: "stats", title: "Work ahead", what: "Open items due in the next 4 weeks", at: [6, 14, 6, 5] },
-  time: { tab: "stats", title: "Where your time went", what: "Active minutes in Claude sessions per project, last week", at: [0, 18, 6, 4] },
+/** The page's sections, top to bottom: the jump links above the grid point at their first box. */
+export const SECTIONS = [
+  { id: "overview", label: "Overview", box: "top3" },
+  { id: "map", label: "Map", box: "map" },
+  { id: "timeline", label: "Timeline", box: "timeline" },
+  { id: "stats", label: "Stats", box: "burnups" },
+] as const;
+
+/** Every box: its section, its title, what it shows (the "Add box" library) and where it starts. Your top 3 comes first. */
+export const BOXES: Record<string, { tab: Tab; section: string; title: string; what: string; at: [number, number, number, number] }> = {
+  top3: { tab: "home", section: "overview", title: "Your top 3", what: "Your three main projects with pace against their next milestone", at: [0, 0, 12, 6] },
+  needs: { tab: "home", section: "overview", title: "Needs you", what: "Decisions, pull requests to approve, replies you haven't opened", at: [0, 6, 7, 6] },
+  reviews: { tab: "home", section: "overview", title: "This week's reviews", what: "The Monday reviews, recap and coaching", at: [7, 6, 5, 3] },
+  sprints: { tab: "home", section: "overview", title: "Sprints this week", what: "Sprints running or starting this week, across projects", at: [7, 9, 5, 3] },
+  map: { tab: "home", section: "map", title: "Map", what: "One region per project: open work, fog where nothing moved, the trail to the next deadline", at: [0, 12, 12, 8] },
+  timeline: { tab: "home", section: "timeline", title: "Timeline", what: "Milestones, due dates, sprints and planned blocks, 10 weeks", at: [0, 20, 12, 8] },
+  milestones: { tab: "home", section: "timeline", title: "Upcoming milestones", what: "The next dated milestones from each PRD", at: [0, 28, 7, 4] },
+  calendar: { tab: "home", section: "timeline", title: "This week", what: "Calendar events and planned focus, 7 days", at: [7, 28, 5, 4] },
+  burnups: { tab: "home", section: "stats", title: "Will each project make its next deadline?", what: "Burn-ups against each next milestone", at: [0, 32, 12, 4] },
+  pace: { tab: "home", section: "stats", title: "Pace vs needed", what: "Items finished per week against what the next deadline needs", at: [0, 36, 6, 5] },
+  owners: { tab: "home", section: "stats", title: "Who it's waiting on", what: "Open checklist items by owner", at: [6, 36, 6, 5] },
+  finished: { tab: "home", section: "stats", title: "Finished per week", what: "Checklist items done, last 4 weeks", at: [0, 41, 6, 5] },
+  daily: { tab: "home", section: "stats", title: "Added and finished", what: "Items added and finished per day, week or month", at: [6, 41, 6, 5] },
+  rhythm: { tab: "home", section: "stats", title: "Your rhythm", what: "Items finished, todos ticked and messages sent per day", at: [0, 46, 6, 4] },
+  ahead: { tab: "home", section: "stats", title: "Work ahead", what: "Open items due in the next 4 weeks", at: [6, 46, 6, 5] },
+  time: { tab: "home", section: "stats", title: "Where your time went", what: "Active minutes in Claude sessions per project, last week", at: [0, 51, 6, 4] },
+  inbox: { tab: "home", section: "overview", title: "Inbox", what: "The latest messages with Claude and where they stand", at: [6, 51, 6, 4] },
 };
+
+/** Where an old `?tab=` link lands on the one page. */
+export const OLD_TAB_ANCHOR: Record<string, string> = { overview: "box-top3", timeline: "box-timeline", stats: "box-burnups", map: "box-map" };
 
 export const isTab = (t: unknown): t is Tab => typeof t === "string" && (TABS as readonly string[]).includes(t);
 export const defaultTab = (tab: Tab): Place[] => Object.entries(BOXES).filter(([, b]) => b.tab === tab).map(([id, b]) => ({ id, x: b.at[0], y: b.at[1], w: b.at[2], h: b.at[3] }));
-export const defaultLayout = (): Layout => ({ overview: defaultTab("overview"), timeline: defaultTab("timeline"), stats: defaultTab("stats") });
+export const defaultLayout = (): Layout => ({ home: defaultTab("home") });
 
 const int = (v: unknown, lo: number, hi: number, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
 
@@ -48,7 +61,7 @@ export function sanitizeTab(tab: Tab, raw: unknown): Place[] {
 }
 export function sanitizeLayout(raw: unknown): Layout {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
-  return { overview: o.overview ? sanitizeTab("overview", o.overview) : defaultTab("overview"), timeline: o.timeline ? sanitizeTab("timeline", o.timeline) : defaultTab("timeline"), stats: o.stats ? sanitizeTab("stats", o.stats) : defaultTab("stats") };
+  return { home: o.home ? sanitizeTab("home", o.home) : defaultTab("home") };
 }
 
 const hOf = (p: Place) => (p.min ? 1 : p.h);
