@@ -24,22 +24,9 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   `ack` / `unack <id>` (mark as read / unread), `proposals <id>`, `push <id> <key>`, `push <id> --all`. API: `PATCH /api/agent/reviews`,
   `GET|POST /api/agent/proposals`, `GET /api/agent/reviews?unacked=1`. The project description moved to Settings.
 - **Home is one page.** Overview, Timeline and Stats are no longer tabs: every box is on one grid, **your top 3 first**,
-  then needs you, reviews and sprints, the map, the timeline and the stats, with jump links under the date (old `?tab=`
-  links and `/map` land on their section). **↑ / ↓ on every box** swaps it with its neighbour without Customize, and a
+  then needs you, reviews and sprints, the timeline and the stats, with jump links under the date (old `?tab=`
+  links land on their section). **↑ / ↓ on every box** swaps it with its neighbour without Customize, and a
   box dragged in Customize scrolls the page near its edges. A layout saved per tab before this starts from the new default.
-- **The Map: a pixel village world** (Home's Map box). One village per project in one world of forest, a river with
-  bridges and roads between villages; its fenced ground grows with work done on time (late counts half, undated a
-  quarter, last 180 days). **Each building stands for one part of the project and opens it:** the town hall is the
-  checklist (it grows into a town hall with a clock as items get done on time; its flag is the latest review; crates,
-  lamps and fire mark open, due-soon and overdue items), the police station is security (audits and screenings: calm,
-  amber or red light), the bank is finances (coins for revenue, a red sign when costs aren't covered), the shop is
-  growth (lit when visits, signups or active users rise), houses are customers (one more per tenfold users) and the
-  workshop is Claude's builds (smoke while one runs, a parcel per pull request waiting for you). Anything not recorded
-  yet is an empty lot with a sign. Fog after 14 quiet days, a storm or cloud from the review, a road with stones to
-  each next deadline, and you standing at the nearest one. Dark mode shows the same world at night. Map / List switch,
-  "+N since your last visit", hover cards, every building a keyboard link. Tiles: Kenney's CC0 Tiny Town, Tiny Battle
-  and Tiny Dungeon packs (`app/public/map/`, licences included).
-
 ### Upgrade notes
 - The deploy adds `reviews.acked_at` and `reviews.pushed`; reports older than 7 days start as read.
 - Run `node agent/install-skill.mjs` (or `agent/install.sh`) so the Claude Code skill lists `ack`, `unack`,

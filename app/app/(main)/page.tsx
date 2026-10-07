@@ -13,9 +13,9 @@ import "./home.css";
 
 /**
  * Home: one page. The Now rail (the next thing to do in one sentence, today as a line, one summary line), then every
- * box on one grid you arrange with Customize: your top 3 first, then the overview, the map, the timeline and the stats
- * (layout in kv `dashboard.layout`). The jump links under the title scroll to each section; old `?tab=` links and /map
- * land on theirs.
+ * box on one grid you arrange with Customize: your top 3 first, then the overview, the timeline and the stats
+ * (layout in kv `dashboard.layout`). The jump links under the title scroll to each section; old `?tab=` links land on
+ * theirs.
  */
 export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string; w?: string; bucket?: string; proj?: string }> }) {
   await requireSession();
