@@ -27,15 +27,18 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   then needs you, reviews and sprints, the map, the timeline and the stats, with jump links under the date (old `?tab=`
   links and `/map` land on their section). **↑ / ↓ on every box** swaps it with its neighbour without Customize, and a
   box dragged in Customize scrolls the page near its edges. A layout saved per tab before this starts from the new default.
-- **The Map: an archipelago** (Home's Map box). One island per project. Land grows from what you finished in the last
-  180 days (on time counts full, late half, undated a quarter); huts, houses and towers stand for work done on time
-  (one hut per 5, five huts make a house, five houses a tower) and never disappear. Scaffolding marks open items,
-  lanterns items due within 7 days, fire overdue work; a banner on the tallest building shows the latest review, with
-  a storm cloud over off-track and a cloud over at-risk; fog covers an island after 14 quiet days. Each island has a
-  route of stones to a buoy at its next deadline (a boat marks today), your ship is anchored at the next stop, and
-  islands sharing a deadline day are linked. New buildings pop in with "+N since your last visit". **Map / List**
-  switch (List = the cards, also the screen-reader view); each island links to its project with a hover card of its
-  numbers. Server-rendered SVG, no new dependency.
+- **The Map: a pixel village world** (Home's Map box). One village per project in one world of forest, a river with
+  bridges and roads between villages; its fenced ground grows with work done on time (late counts half, undated a
+  quarter, last 180 days). **Each building stands for one part of the project and opens it:** the town hall is the
+  checklist (it grows into a town hall with a clock as items get done on time; its flag is the latest review; crates,
+  lamps and fire mark open, due-soon and overdue items), the police station is security (audits and screenings: calm,
+  amber or red light), the bank is finances (coins for revenue, a red sign when costs aren't covered), the shop is
+  growth (lit when visits, signups or active users rise), houses are customers (one more per tenfold users) and the
+  workshop is Claude's builds (smoke while one runs, a parcel per pull request waiting for you). Anything not recorded
+  yet is an empty lot with a sign. Fog after 14 quiet days, a storm or cloud from the review, a road with stones to
+  each next deadline, and you standing at the nearest one. Dark mode shows the same world at night. Map / List switch,
+  "+N since your last visit", hover cards, every building a keyboard link. Tiles: Kenney's CC0 Tiny Town, Tiny Battle
+  and Tiny Dungeon packs (`app/public/map/`, licences included).
 
 ### Upgrade notes
 - The deploy adds `reviews.acked_at` and `reviews.pushed`; reports older than 7 days start as read.
