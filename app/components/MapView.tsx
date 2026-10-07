@@ -1,9 +1,10 @@
 import Link from "next/link";
-import { displayColor, getItems, getProjects, getReviews, splitFeatured } from "@/lib/data";
+import { displayColor, getCosts, getItems, getProjects, getReviews, splitFeatured } from "@/lib/data";
+import { getMetrics } from "@/lib/metrics";
 import { buildRegions, FOG_DAYS, nextStop, SOON_DAYS, totals, trailPoints, WINDOW_DAYS, type Region, type Trail } from "@/lib/map";
-import { areaWeight, HUT, islandRadius, LAND_DAYS, onTimeCount } from "@/lib/archipelago";
-import Archipelago, { ArchLegend, regionLabel, type Isle } from "@/components/Archipelago";
-import ArchipelagoShell from "@/components/ArchipelagoShell";
+import { areaWeight, bankState, hallTier, HALL, homesState, LAND_DAYS, onTimeCount, policeState, shopState, TOWN_HALL, workshopState, type Snap } from "@/lib/villages";
+import Villages, { VillageLegend, regionLabel, type Village } from "@/components/Villages";
+import VillagesShell from "@/components/VillagesShell";
 import { fmtDate, isoInTZ, today } from "@/lib/time";
 import "@/app/(main)/map/map.css";
 
@@ -90,10 +91,15 @@ function RegionCard({ r, stop }: { r: Region; stop: boolean }) {
   );
 }
 
-/** The map of projects: one island per active project (Home's Map box; /map redirects there), or the card list. */
+/** The map of projects: one village per active project (Home's Map box; /map redirects there), or the card list. */
 export default async function MapView() {
   const t = today();
-  const [projects, items, reviews] = await Promise.all([getProjects(), getItems(), getReviews({ type: "project", limit: 500 })]);
+  const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
+  const [projects, items, reviews, security, screenings, costs, metrics] = await Promise.all([
+    getProjects(), getItems(), getReviews({ type: "project", limit: 500 }),
+    getReviews({ type: "security", limit: 500, light: true }), getReviews({ type: "screening", limit: 500, light: true }),
+    getCosts(), getMetrics({ since, limit: 2000 }),
+  ]);
   const top = new Set(splitFeatured(projects).featured.map((p) => p.id));
   const rows = items.map((i) => ({ project_id: i.project_id, id: i.id, title: i.title, status: i.status, due: i.due, done_on: i.done_at ? isoInTZ(new Date(i.done_at)) : null }));
   const regions = buildRegions(
@@ -105,13 +111,26 @@ export default async function MapView() {
   regions.sort((a, b) => rank(a.id) - rank(b.id));
   const stop = nextStop(regions), sum = totals(regions);
 
-  const byProject = new Map<string, typeof rows>();
-  for (const r of rows) byProject.set(r.project_id, [...(byProject.get(r.project_id) || []), r]);
+  const group = <T extends { project_id: string | null }>(xs: T[]) => {
+    const m = new Map<string, T[]>();
+    for (const x of xs) if (x.project_id) m.set(x.project_id, [...(m.get(x.project_id) || []), x]);
+    return m;
+  };
+  const byProject = group(rows), itemsBy = group(items), checksBy = group([...security, ...screenings]), costsBy = group(costs);
+  const snapsBy = new Map<string, Snap[]>();
+  for (const s of metrics) snapsBy.set(s.project_id, [...(snapsBy.get(s.project_id) || []), s]);
   const lands = regions.map((r) => areaWeight(byProject.get(r.id) || [], t));
   const maxW = Math.max(0, ...lands.map((l) => l.weight));
-  const isles: Isle[] = regions.map((r, i) => ({
-    ...r, land: lands[i], onTimeAll: onTimeCount(byProject.get(r.id) || []), radius: islandRadius(lands[i].weight, maxW), top: top.has(r.id),
-  }));
+  const projectById = new Map(projects.map((p) => [p.id, p]));
+  const villages: Village[] = regions.map((r, i) => {
+    const onTimeAll = onTimeCount(byProject.get(r.id) || []), snaps = snapsBy.get(r.id) || [];
+    return {
+      ...r, land: lands[i], onTimeAll, top: top.has(r.id), hall: hallTier(onTimeAll),
+      police: policeState(checksBy.get(r.id) || []), bank: bankState(costsBy.get(r.id) || [], snaps),
+      shop: shopState(snaps, t), homes: homesState(snaps),
+      workshop: workshopState(itemsBy.get(r.id) || [], !!projectById.get(r.id)?.site?.code),
+    };
+  });
 
   const list = (
     <div className="mapv-list">
@@ -129,15 +148,15 @@ export default async function MapView() {
   );
   const map = (
     <div className="mapv-map">
-      <Archipelago isles={isles} stop={stop} today={t} />
-      <ArchLegend />
+      <Villages villages={villages} stop={stop} today={t} maxWeight={maxW} />
+      <VillageLegend />
     </div>
   );
 
   return (
     <div className="mapv">
       <p className="map-sum">
-        <span><b className="mono">{sum.regions}</b> {sum.regions === 1 ? "island" : "islands"}</span>
+        <span><b className="mono">{sum.regions}</b> {sum.regions === 1 ? "village" : "villages"}</span>
         <span><b className="mono">{sum.open}</b> open</span>
         <span className={sum.overdue ? "bad" : undefined}><b className="mono">{sum.overdue}</b> overdue</span>
         <span><b className="mono">{sum.fog}</b> in fog</span>
@@ -145,14 +164,14 @@ export default async function MapView() {
       </p>
 
       {regions.length
-        ? <ArchipelagoShell map={map} list={list} seen={isles.map((i) => ({ id: i.id, name: i.name, onTime: i.onTimeAll }))} />
+        ? <VillagesShell map={map} list={list} seen={villages.map((v) => ({ id: v.id, name: v.name, onTime: v.onTimeAll }))} />
         : <div className="panel empty">No active projects yet. Approve a project folder in <Link href="/admin">Admin</Link> and it appears here.</div>}
 
       <details className="map-how">
         <summary>How ground is taken</summary>
-        <p>Land is what you finished in the last {LAND_DAYS} days. An item done on or before its due date adds a full share, one done late half, one with no due date a quarter, so ticking off undated work barely grows the island. The island&apos;s radius follows the square root of that weight (its area tracks your work), scaled to your biggest island. Overdue work never shrinks land: it sets a building on fire instead.</p>
-        <p>Buildings count every item you ever finished on time: a hut for each {HUT}, five huts make a house, five houses a tower. Scaffolding marks open items, a lantern the ones due in {SOON_DAYS} days. Fog settles after {FOG_DAYS} days with nothing finished. Weather follows the latest review: a storm when it&apos;s off track, a light cloud when at risk.</p>
-        <p>The route to the buoy holds the items due between the previous deadline (or the last {WINDOW_DAYS} days when there is none) and the next one. An item takes ground only when you finish it on or before its due date. Finishing it late, or letting it pass its date, keeps it on the route as a lost step, so that milestone can no longer reach 100%. Items without a due date and cancelled items don&apos;t count. The boat marks today; your ship waits at the nearest deadline, the next stop. Islands whose deadlines fall on the same day are joined by a dashed line.</p>
+        <p>Each project is a village. Its fenced ground is what you finished in the last {LAND_DAYS} days: an item done on or before its due date adds a full share, one done late half, one with no due date a quarter, so ticking off undated work barely clears land. The plot&apos;s area follows that weight, scaled to your busiest village. Overdue work never takes ground away: it sets the town hall on fire instead.</p>
+        <p>Every building stands for one part of the project and opens it. The town hall is the checklist: it grows with every item you ever finished on time (a hall at {HALL}, a town hall with a clock at {TOWN_HALL}), crates on the square are open items, lamp posts the ones due in {SOON_DAYS} days, and its flag is the latest review. The police station shows the latest security audit and screenings, the bank your recurring costs against revenue, the shop whether visitors, signups or active users grew, the houses how many users you have (one house from 1, two from 10, three from 100), and the workshop Claude&apos;s builds and the pull requests waiting for you. A building with nothing recorded is an empty lot with a sign: nothing to judge yet. Fog settles after {FOG_DAYS} days with nothing finished; weather follows the latest review, a storm when it&apos;s off track, a cloud when at risk.</p>
+        <p>The road to the signpost holds the items due between the previous deadline (or the last {WINDOW_DAYS} days when there is none) and the next one. An item takes ground only when you finish it on or before its due date. Finishing it late, or letting it pass its date, keeps it on the road as a lost step, so that milestone can no longer reach 100%. Items without a due date and cancelled items don&apos;t count. The cart marks today; you stand at the nearest deadline, the next stop.</p>
       </details>
     </div>
   );

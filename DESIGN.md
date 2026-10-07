@@ -49,6 +49,11 @@ No other fonts. No serif, no italic display accents, no emoji in headings or lab
   round dots and pills.
 - Panels are bordered (`1px --line`), not shadowed.
 
+## Illustrations
+- The Map box (Home) is the one illustration exception to "tokens only": its world is drawn from Kenney's CC0 pixel
+  tiles (`app/public/map`, see the README there). Everything on top of the tiles (labels, cards, flags, lights, focus)
+  still uses the tokens.
+
 ## Icons and marks
 - Icons come from `components/icons.tsx` (the Lane set): stroke icons drawn for this product, one weight. No icon
   library.
