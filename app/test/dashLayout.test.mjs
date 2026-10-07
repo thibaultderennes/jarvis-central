@@ -25,7 +25,7 @@ test("sanitizeTab drops unknown and repeated boxes and clamps to the grid", () =
     { id: "needs", x: 11, y: -3, w: 99, h: 0 }, { id: "needs", x: 0, y: 0, w: 4, h: 4 },
     { id: "<script>", x: 0, y: 0, w: 4, h: 4 }, { id: "reviews", x: "3", y: "2", w: "5", h: "3", min: 1 },
   ]);
-  assert.deepEqual(l, [{ id: "needs", w: 12, x: 0, y: 0, h: 1 }, { id: "reviews", w: 5, x: 3, y: 2, h: 3, min: true }]);
+  assert.deepEqual(l, [{ id: "needs", w: 12, x: 0, y: 0, h: 1 }, { id: "reviews", w: 5, x: 3, y: 1, h: 3, min: true }]); // floats up under the folded needs box
   assert.deepEqual(sanitizeTab("home", "nope").map((p) => p.id), Object.keys(BOXES));
 });
 
@@ -65,4 +65,9 @@ test("nudge: ↑ and ↓ swap a box with its neighbour in reading order, nothing
   assert.ok(ids(down).indexOf("top3") > 0, "top3 is no longer first");
   assert.equal(nudge(d, "top3", -1), null, "first box can't go up");
   assert.equal(nudge(d, ids(d).at(-1), 1), null, "last box can't go down");
+});
+
+test("sanitizeTab: a box that no longer exists leaves no gap", () => {
+  const l = sanitizeTab("home", [{ id: "top3", x: 0, y: 0, w: 12, h: 6 }, { id: "gone-box", x: 0, y: 6, w: 12, h: 8 }, { id: "timeline", x: 0, y: 14, w: 12, h: 8 }]);
+  assert.deepEqual(l.map((p) => [p.id, p.y]), [["top3", 0], ["timeline", 6]]);
 });

@@ -55,7 +55,8 @@ export function sanitizeTab(tab: Tab, raw: unknown): Place[] {
     const w = int(r.w, 2, 12, BOXES[id].at[2]);
     out.push({ id, w, x: int(r.x, 0, 12 - w, 0), y: int(r.y, 0, 200, 0), h: int(r.h, 1, 40, BOXES[id].at[3]), ...(r.min ? { min: true } : {}) });
   }
-  return out;
+  // A box that no longer exists (e.g. one a release took out) leaves no hole: everything floats up into its space.
+  return settle(out, null);
 }
 export function sanitizeLayout(raw: unknown): Layout {
   const o = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
