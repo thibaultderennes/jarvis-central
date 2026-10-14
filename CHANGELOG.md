@@ -4,6 +4,12 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+## 0.7.4.8 — 2026-10-14
+- **Spacing scale tokens** (`--s-1` … `--s-10`, 4px base) on `:root`. Every padding, margin and gap in the app now
+  sits on the scale (385 odd values rounded, e.g. 6/10/14px → 8/8/16px; hairlines of 0–2px and three documented
+  layout offsets stay). `app/test/spacing.test.mjs` fails on new off-scale values. DESIGN.md names the tokens. Most
+  visible: the page gutter is 24px (was 28px) and panels pad 12px 16px.
+
 ## 0.7.4.7 — 2026-10-14
 - **The privacy guard no longer blocks re-pushing public commits.** Updating a branch with `main` pulled in GitHub's
   merge commit of a PR (authored with your GitHub name), and the pre-push check flagged it although it was already
