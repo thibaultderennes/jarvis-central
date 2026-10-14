@@ -21,7 +21,8 @@
 .tl-today { stroke: var(--signal); stroke-width: 2; }
 .tl-plan { fill: var(--pc, var(--other)); }
 .tl-tick { fill: var(--pc, var(--other)); }
-.tl-tick.crit { fill: var(--signal); }
+/* Critical is ink (strongest neutral), overdue is red: amber stays reserved for "now" (the today line). */
+.tl-tick.crit { fill: var(--ink); }
 .tl-tick.late { fill: var(--bad); }
 .tl-ms { fill: var(--pc, var(--ink-2)); stroke: var(--surface); stroke-width: 2; }
 .tl-ms.past { fill: var(--surface); stroke: var(--pc, var(--ink-3)); stroke-width: 1.5; }
@@ -52,9 +53,9 @@
 .tl-tip { max-width: 300px; white-space: normal; }
 .tl-tip.below { transform: translate(-50%, 22px); }
 .tl-t-bad { color: var(--bad-soft); font-weight: 600; }
-.tl-t-warn { color: var(--signal); }
+.tl-t-warn { color: var(--ink); font-weight: 600; }
 .tl-k { width: 10px; height: 10px; border-radius: 2px; background: var(--other); display: inline-block; }
-.tl-k.crit { background: var(--signal); } .tl-k.late { background: var(--bad); }
+.tl-k.crit { background: var(--ink); } .tl-k.late { background: var(--bad); }
 .tl-k.plan { height: 6px; width: 16px; background: var(--ink-3); }
 .tl-k.cal { border-radius: 50%; background: var(--ink-3); opacity: .55; }
 .tl-k.today { width: 2px; height: 12px; background: var(--signal); border-radius: 0; }
@@ -84,7 +85,7 @@
 .tl-sprint { fill: var(--pc, var(--doing)); fill-opacity: .07; stroke: var(--pc, var(--doing)); stroke-opacity: .35; stroke-dasharray: 4 3; }
 .tl-sprl { font-family: var(--mono); font-size: 9.5px; fill: var(--ink-3); pointer-events: none; }
 .tl-lead { fill: var(--pc, var(--ink-3)); opacity: .35; }
-.tl-lead.late { fill: var(--bad); } .tl-lead.crit { fill: var(--signal); }
+.tl-lead.late { fill: var(--bad); } .tl-lead.crit { fill: var(--ink); }
 .tl-drop { fill: var(--doing); opacity: .12; }
 .tl-k.sprint { border: 1px dashed var(--doing); background: transparent; }
 .tl-uns { padding: var(--s-2) var(--s-4) var(--s-1); }

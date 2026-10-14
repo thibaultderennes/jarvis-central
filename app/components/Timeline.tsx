@@ -26,7 +26,7 @@ const sign = (k: number) => `${k > 0 ? "+" : "−"}${Math.abs(k)} d`;
 
 /**
  * Multi-week timeline: one lane per project (or per section on a project page). Milestones are diamonds, open items
- * are due-date ticks clustered per day (taller = more; red = overdue, amber = critical), Sunday-plan blocks are bars
+ * are due-date ticks clustered per day (taller = more; red = overdue, ink = critical; amber is only the today line), Sunday-plan blocks are bars
  * along the top of the lane, the signal line is today. Lane labels stay put; the chart scrolls sideways on phones.
  * Pins move: drag one (or focus it and use ←/→, Shift = a week, then Enter) and confirm in the popover; nothing saves before.
  */

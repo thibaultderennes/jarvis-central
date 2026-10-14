@@ -3,6 +3,8 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
+  ticks, their legend swatch and tooltip lines now use ink; overdue stays red.
 
 ## 0.7.4.8 — 2026-10-14
 - **Spacing scale tokens** (`--s-1` … `--s-10`, 4px base) on `:root`. Every padding, margin and gap in the app now
