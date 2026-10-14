@@ -244,8 +244,10 @@ title contain every word (case- and accent-insensitive, archived projects left o
   remove, add back from the library, arrow keys to move and Shift + arrows to resize; boxes settle so they never overlap.
   The layout is saved per tab in kv `dashboard.layout` (`{overview|timeline|stats: [{id, x, y, w, h, min?}]}`, cleaned by
   `sanitizeLayout`). Overview boxes: Needs you (`app/lib/needs.ts` `needsYou()` → `{rows, count}`: open items in each
-  project's decide section owned by you, items with a PR waiting for Approve & merge, replies you haven't opened; oldest
-  first), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
+  project's decide section owned by you, items with a PR waiting for Approve & merge, replies you haven't opened, and
+  each project's newest advisor review from the last 14 days while it's unread (`latestProjectReviews`); oldest first.
+  A review row folds open in place: verdict, Top 3 with item codes (`docsHub.ts` `reviewDigest`), Add all to checklist,
+  Mark as read, the full text folded again; opening it logs activity `review_open`), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
   upcoming milestones, the next 7 days. Stats: every cross-project chart. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
   Inbox, the Timeline tab, the Stats tab and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · the Timeline tab (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,

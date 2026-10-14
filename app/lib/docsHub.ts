@@ -183,6 +183,16 @@ export function reviewProposals(r: HubReview, items: ItemRef[]): Proposal[] {
   return out;
 }
 
+/**
+ * The 5-line digest of an advisor review (Home, Needs you): its Top 3 (the summary's own list first, then the
+ * advisors'), each with the item codes it maps to, and how many of all its proposals can still be pushed.
+ */
+export function reviewDigest(r: HubReview, items: ItemRef[]): { top: Proposal[]; toPush: number } {
+  const all = reviewProposals(r, items);
+  const top = [...all.filter((p) => p.source === "Summary"), ...all.filter((p) => p.source !== "Summary")].slice(0, 3);
+  return { top, toPush: all.filter((p) => p.state === "pushable").length };
+}
+
 /** The section a pushed task goes to: the one it names (id or name), else the first section. */
 export function pickSection(sections: SectionRef[], hint?: string | null): SectionRef | null {
   const h = norm(hint || "");

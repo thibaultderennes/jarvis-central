@@ -84,6 +84,19 @@
 .need .nt { font-size: 13.5px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
 .need .nt:hover { text-decoration: underline; }
 .need .btn { text-decoration: none; text-align: center; min-width: 74px; }
+/* Monday digest: an unread advisor review opens in place (verdict, Top 3 with item codes, Push), full text folded. */
+.needlist:first-child > .need-rev:first-child summary.need { border-top: 0; }
+.need-rev summary { list-style: none; cursor: pointer; }
+.need-rev summary::-webkit-details-marker { display: none; }
+.need-rev > details[open] > summary.need { background: var(--surface-2); }
+.need-dig { display: grid; gap: var(--s-2); padding: var(--s-2) var(--s-4) var(--s-3); font-size: 13px; }
+.need-dig .dig-h { display: flex; align-items: center; gap: var(--s-2); color: var(--ink-2); min-width: 0; }
+.need-dig ol { margin: 0; padding-left: var(--s-5); display: grid; gap: var(--s-1); }
+.need-dig ol .pill { margin-left: var(--s-1); }
+.need-dig .dig-act { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2); }
+.need-dig .dig-full > summary { font-size: 12.5px; color: var(--ink-3); }
+.need-dig .dig-full > summary:hover { color: var(--ink); }
+.need-dig .dig-full[open] > summary { margin-bottom: var(--s-2); }
 .needmore > summary { padding: var(--s-2) var(--s-4); border-top: 1px solid var(--line-2); font-size: 12.5px; color: var(--ink-3); cursor: pointer; }
 .needmore > summary:hover { color: var(--ink); }
 @media (max-width: 700px) {
