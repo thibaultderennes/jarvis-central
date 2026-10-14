@@ -2,7 +2,7 @@ import { requireSession } from "@/lib/auth";
 import { boardData } from "@/lib/board";
 import { getPlan } from "@/lib/plan";
 import { getItems, isOpen, kvGet } from "@/lib/data";
-import { waitingFor, type RolloverDay } from "@/lib/rollover";
+import { carriedOn, waitingFor, type RolloverDay } from "@/lib/rollover";
 import { addDays, fmtDate, isDate, mondayOf, today } from "@/lib/time";
 import TodayView from "@/components/TodayView";
 import "./today.css";
@@ -11,7 +11,8 @@ export default async function TodayPage({ searchParams }: { searchParams: Promis
   await requireSession();
   const sp = await searchParams, t = today();
   const d = isDate(sp.d) ? sp.d : t;
-  const [data, plan, roll] = await Promise.all([boardData(d, d), getPlan(mondayOf(d)).catch(() => null), kvGet<RolloverDay>("rollover.today").catch(() => null)]);
+  const [roll, plan] = await Promise.all([kvGet<RolloverDay>("rollover.today").catch(() => null), getPlan(mondayOf(d)).catch(() => null)]);
+  const data = await boardData(d, d, { work: { day: d, carried: carriedOn(roll?.value, d) } });
   // What the week's plan couldn't fit, still open: offered under "Later" as suggestions.
   const open = plan?.unscheduled.length ? new Set((await getItems()).filter(isOpen).map((i) => `${i.project_id}/${i.id}`)) : new Set<string>();
   return (

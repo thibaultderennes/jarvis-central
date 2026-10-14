@@ -141,6 +141,8 @@ export async function newItem(project_id: string, section: string, title: string
   const t = title.trim().slice(0, 300);
   if (!t) return { error: "Type a title first." };
   const p = await D.getProject(project_id);
+  section ||= p?.sections[0]?.id || ""; // Today's quick add names no section: the first one (refining may move it)
+  if (!section) return { error: "That project has no checklist section yet." };
   const sec = p?.sections.find((s) => s.id === section);
   let id: string;
   try {
