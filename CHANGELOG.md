@@ -3,6 +3,13 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **One overdue queue across projects.** Every open item past its due date, from every project, in one list:
+  critical first, then the oldest. Re-date, Later (next Monday), Give to Claude (Claude becomes the owner) or Done on
+  one row, or tick several (or all) and do it once from the bar. It is a new Home box, **Overdue**, and a panel on
+  Today that replaces the Overdue group under Later. Date moves are logged like any other, so the Monday reviews still
+  see the slips. The Now rail's "N late" link opens the Today panel, and "Do next" falls back to the top of the queue.
+- **Upgrade notes:** if you saved a Home layout with Customize, the Overdue box isn't on it yet: Customize → Add box →
+  Overdue. A default layout gets it under Needs you.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
