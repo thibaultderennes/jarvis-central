@@ -3,6 +3,12 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Monday digest in Needs you.** Each project's newest advisor review, while unread, is a "Review" row in Needs you
+  on Home (and in its count). The row opens in place to a short digest: the verdict, the Top 3 with their item codes,
+  Add all to checklist, Mark as read and a link to the review, with the full text folded below. Opening it logs
+  `review_open` for the Jarvis review. Marking it read (here or on the project's Docs and reviews) clears the row; a
+  newer review replaces it, and reviews older than 14 days drop out. Reviews appear only here, never in the inbox's
+  replies, so there is one digest of them, not two.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
