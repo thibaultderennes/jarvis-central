@@ -279,6 +279,34 @@ export async function markTreated(id: string, treated = true) {
   await D.logActivity("message_treated", "/inbox", { treated });
   done();
 }
+/** "Got it" on several conversations at once (⇧E on a project bundle in an inbox lane). */
+export async function markTreatedMany(ids: string[]) {
+  await requireSession();
+  const list = ids.filter((x) => /^[0-9a-f-]{36}$/.test(x)).slice(0, 200);
+  if (!list.length) return;
+  await sql()`update messages set treated_at = now(), updated_at = now() where id = any(${list}::uuid[]) and treated_at is null and status not in ('new', 'seen', 'working')`;
+  await D.logActivity("message_treated", "/inbox", { treated: true, count: list.length });
+  done();
+}
+/** Back to unread: clears opened and treated, and any "later", so the conversation returns to its lane in bold. */
+export async function markUnread(id: string) {
+  await requireSession();
+  if (!/^[0-9a-f-]{36}$/.test(id)) return;
+  await sql()`update messages set opened_at = null, treated_at = null, archived = false, meta = meta - 'later_until', updated_at = now() where id = ${id}`;
+  await D.logActivity("message_unread", "/inbox", {});
+  done();
+}
+/** "Later": the conversation leaves its lane until `until` (at most 30 days ahead); null brings it back now. */
+export async function laterMessage(id: string, until: string | null): Promise<{ error?: string }> {
+  await requireSession();
+  if (!/^[0-9a-f-]{36}$/.test(id)) return { error: "Unknown message." };
+  const t = until ? +new Date(until) : 0;
+  if (until && (!t || t < Date.now() || t > Date.now() + 30 * 864e5)) return { error: "Pick a time in the next 30 days." };
+  await D.patchMessage(id, { meta: { later_until: until ? new Date(t).toISOString() : null } });
+  await D.logActivity("message_later", "/inbox", { later: !!until });
+  done();
+  return {};
+}
 
 /* ---------- docs and reviews (the project page's one place for every report) ---------- */
 /** Mark a report as read (it leaves the unread count) or as unread again. */
