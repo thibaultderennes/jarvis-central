@@ -124,6 +124,15 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     entries under a "Top 3" heading can be pushed; other Top 3 entries show as text. A push records the key in
     `pushed`, so the same proposal is never added twice.
   - `doc` = long-lived documents (strategy reviews). `meta.tabs` may hold `[{key, label, body_md}]`.
+- `advice(review_id uuid → reviews on delete cascade, key /* its proposal key */, project_id, week_start, rank 1–3, text, items jsonb /* codes it names */, status 'open'|'done'|'rejected', reason, decided_by 'founder'|'agent'|'auto' null, decided_at, created_at)`, pk `(review_id, key)`
+  - The **follow-through ledger** (`app/lib/ledger.ts`): every advisor review's summary Top 3 is recorded when the
+    review is posted (a review from before the ledger is recorded on first read). What happened to an entry is read
+    from the checklist, not stored: **done** (marked done, or an item it names or was pushed as is done), **started**
+    (such an item is in progress), **ignored** (nothing moved once its week is over), **rejected** (the owner's call,
+    with an optional reason). The next project review and the recap open with the previous Top 3 and these outcomes,
+    written by `agent/weekly.mjs`, not by the model; the advisors and the synthesis get every rejected entry and must
+    never propose it again, and a new Top 3 entry that matches one (same key, or ≥ 60% the same words) is recorded as
+    rejected at once. The owner decides on the review page (Follow-through: Done, Reject, Reopen) or with the CLI.
   - `security` = one audit report file, mirrored by `agent/audits.mjs`; `week_start` is null and
     `meta = {kind: 'security-audit', file /* path relative to the project folder */, date /* from the file name */, sha /* sha256 of the file */, counts: {critical, high, medium, low} | null}`.
     Unique `(type, coalesce(project_id,''), meta->>'file')` whenever `meta.file` is set → a re-sync updates the row.
@@ -184,6 +193,8 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/reviews` | `?type=&project=&limit=` newest first; `&unacked=1` only the unread ones | `[{review}]` (with `acked_at`, `pushed`) |
 | POST | `/api/agent/reviews` | `{type, project_id?, week_start?, title, verdict?, headline?, body_md, meta?}` upsert (key: `week_start` for weekly types, else `meta.file` when set, else `id`, else insert); an upsert that changes `body_md` makes it new again (`acked_at` cleared) | `{review}` |
 | PATCH | `/api/agent/reviews` | `{id, acked: true\|false}` mark a report as read, or as unread again | `{review}`; 404 when there's no such review |
+| GET | `/api/agent/advice` | `?project=ID&review=UUID&status=open\|done\|rejected&latest=1&before=YYYY-MM-DD&limit=N` (`latest=1`: each project's newest advisor review, older than `before`) | `[{review_id, key, project_id, week_start, rank, text, items, pushed_item, status, reason, decided_by, decided_at, review_title, outcome 'done'\|'started'\|'ignored'\|'rejected'\|'open'}]`; 503 before the migration |
+| PATCH | `/api/agent/advice` | `{review_id, key, status: 'done'\|'rejected'\|'open', reason?}` a decision on one Top 3 entry | `{advice}`; 404 when the review has no such entry |
 | GET | `/api/agent/proposals` | `?review=UUID` | `[{key, state 'pushable'\|'pushed'\|'on-checklist'\|'text', title?, text, detail?, section?, owner?, estimate_minutes?, source, items: [codes]}]` (`app/lib/docsHub.ts`) |
 | POST | `/api/agent/proposals` | `{review_id, all: true}` push every pushable proposal, each with its own defaults | `{items, already, failed}` 201 |
 | POST | `/api/agent/proposals` | `{review_id, key, section?, owner?, estimate_minutes?}` push one pushable proposal to the checklist (the proposal is re-read from the review; the key is claimed atomically) | `{item}` 201; 409 `{error, existing}` when it was already pushed or its title is already an item; 400 for a text-only proposal |

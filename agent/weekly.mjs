@@ -52,6 +52,11 @@ async function projectBundle(p, W, turnsAll, sessions, events) {
   const slips = ev.filter((e) => e.field === "due" && e.old && (!e.new || e.new > e.old));
   L.push(`# ${p.name} (${p.id}) — ${W.rolling ? `the ${W.days} days` : "week"} ${W.startDate} to ${W.lastDate}`, "");
   if (W.rolling) L.push(`This review covers the last ${W.days} days, not a calendar week: wherever your instructions say "week" or "this week", read it as this period.`, "");
+  // Follow-through ledger: what happened to the last review's Top 3, and the advice the owner rejected (never again).
+  const ledger = await get("/api/agent/advice" + qs({ project: p.id, latest: "1", before: W.startDate }), []);
+  const rejected = dedupeAdvice(await get("/api/agent/advice" + qs({ project: p.id, status: "rejected", limit: 200 }), []));
+  if (ledger.length) L.push(...followThrough(ledger, { heading: "## Last review's Top 3 and what happened" }), "");
+  if (rejected.length) L.push(`## Rejected advice (${rejected.length}): never propose any of it again, in any wording`, ...rejected.map(rejectedLine), "");
   L.push("## Project", "```json", JSON.stringify({ ...p, items: undefined }, null, 1), "```", "");
   if (items.length) {
     L.push(`## Checklist: ${items.length} items, ${items.filter((i) => i.status === "done").length} done, ${items.filter((i) => i.status === "doing").length} in progress${items.some((i) => i.status === "cancelled") ? `, ${items.filter((i) => i.status === "cancelled").length} cancelled` : ""}`, "");
@@ -108,7 +113,23 @@ async function projectBundle(p, W, turnsAll, sessions, events) {
   if (prev) L.push(`## Last review (${prev.week_start}, ${prev.verdict || "—"}): ${prev.headline || ""}`, prev.body_md, "");
   const prsMerged = prs.filter((r) => r.mergedAt && inWeek(r.mergedAt, W.start, W.end)).length;
   const activity = commits.length + prs.length + st.sessions + ev.length + doneWeek.length;
-  return { text: L.join("\n"), activity, meta: { metrics: weekly.at(-1)?.metrics || null, commits: commits.length, prs: prs.length, prs_merged: prsMerged, sessions: st.sessions, active_minutes: st.activeMinutes, done: doneWeek.length, slipped: slips.length, overdue: overdue.length } };
+  return { text: L.join("\n"), activity, ledger, rejected, meta: { metrics: weekly.at(-1)?.metrics || null, commits: commits.length, prs: prs.length, prs_merged: prsMerged, sessions: st.sessions, active_minutes: st.activeMinutes, done: doneWeek.length, slipped: slips.length, overdue: overdue.length } };
+}
+
+// ---------- follow-through ledger (app/lib/ledger.ts, GET /api/agent/advice) ----------
+const OUTCOME = { done: "Done", started: "Started", ignored: "Ignored", rejected: "Rejected", open: "Open" };
+const adviceLine = (a) => {
+  const codes = [...new Set([...(a.items || []), ...(a.pushed_item ? [a.pushed_item] : [])])];
+  return `${a.rank}. **${OUTCOME[a.outcome] || a.outcome}** · ${a.text}${codes.length && !codes.every((c) => a.text.includes(c)) ? ` (${codes.map((c) => `\`${c}\``).join(", ")})` : ""}${a.reason ? ` — ${a.reason}` : ""}`;
+};
+const rejectedLine = (a) => `- ${a.text}${a.reason ? ` — ${a.reason}` : ""} (rejected on the review of ${a.week_start || "an earlier week"})`;
+/** One line per rejected advice, the newest wording of each. */
+const dedupeAdvice = (list) => [...new Map((Array.isArray(list) ? list : []).map((a) => [a.key, a])).values()];
+/** The section a review (or one project in the recap) opens with: the previous Top 3 and what happened to each. */
+function followThrough(rows, { heading = "## Last week's Top 3", sub = false } = {}) {
+  const n = (o) => rows.filter((a) => a.outcome === o).length;
+  const counts = ["done", "started", "ignored", "rejected", "open"].filter((o) => n(o)).map((o) => `${n(o)} ${OUTCOME[o].toLowerCase()}`).join(", ");
+  return [heading, `_From the review of ${fmtDay(rows[0].week_start)}: ${counts}.${sub ? "" : " Mark an entry done or rejected on that review; rejected advice is never proposed again."}_`, ...rows.map(adviceLine)];
 }
 
 // ---------- prompts ----------
@@ -118,7 +139,7 @@ const JSON_RULES = (withVerdict) => `Output ONLY one JSON object, no prose befor
 Rules: no invented numbers or facts; every claim must come from the bundle or from files you read. Use checklist item codes in backticks (e.g. \`b-x\`). Plain, direct sentences.`;
 
 const recapPrompt = (W, file) => `You write ${OWNER}'s weekly recap across all projects for ${W.startDate}..${W.lastDate}. ${SCEPTIC}
-Read the bundle at ${file}: every project review of the week, their daily todo stats (planned vs done, work vs life), where Claude Code session time went per project, calendar load per day, and the deadlines.
+Read the bundle at ${file}: every project review of the week, their daily todo stats (planned vs done, work vs life), where Claude Code session time went per project, calendar load per day, and the deadlines. When it opens with "Last week's Top 3", the recap is posted with that section on top: don't repeat it, but say in your sections what was followed through and what was ignored.
 body_md sections ("## " headings): ## What worked ## What went well ## What didn't ## Where the time went (time and output per project vs where the nearest deadlines are; call out a mismatch plainly) ## Life and work (planned vs done, overload days) ## One change for next week (one, concrete).
 ${JSON_RULES(false)}`;
 
@@ -200,8 +221,11 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
   fs.writeFileSync(file, b.text);
   const title = W.rolling ? `${p.name} · ${fmtDay(W.startDate)} to ${fmtDay(W.lastDate)}` : `${p.name} · week of ${fmtDay(W.startDate)}`;
   if (W.rolling) b.meta = { ...b.meta, period_days: W.days };
+  // Every review opens with the previous Top 3 and what happened to each, written from the ledger, not by the model.
+  const opener = b.ledger.length ? followThrough(b.ledger, { heading: W.rolling ? "## Last review's Top 3" : "## Last week's Top 3" }).join("\n") + "\n\n" : "";
+  if (b.ledger.length) b.meta = { ...b.meta, follow_through: Object.fromEntries(Object.keys(OUTCOME).map((o) => [o, b.ledger.filter((a) => a.outcome === o).length]).filter(([, v]) => v)) };
   if (!b.activity) {
-    const body = `## Verdict\nNo commits, pull requests, Claude Code sessions or checklist changes for ${p.name} between ${fmtDay(W.startDate)} and ${fmtDay(W.lastDate)}.${(p.deadlines || []).length ? `\n\nNext deadline: ${(p.deadlines || []).filter((d) => d.date >= W.endDate).map((d) => `${d.label} (${d.date})`)[0] || "none upcoming"}.` : ""}`;
+    const body = opener + `## Verdict\nNo commits, pull requests, Claude Code sessions or checklist changes for ${p.name} between ${fmtDay(W.startDate)} and ${fmtDay(W.lastDate)}.${(p.deadlines || []).length ? `\n\nNext deadline: ${(p.deadlines || []).filter((d) => d.date >= W.endDate).map((d) => `${d.label} (${d.date})`)[0] || "none upcoming"}.` : ""}`;
     const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: "idle", headline: "No activity this week", body_md: body, meta: b.meta };
     if (!DRY) await api("POST", "/api/agent/reviews", post);
     log("idle", p.id);
@@ -221,7 +245,7 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
   }
   const ok = reports.filter((r) => !r.error);
   if (!ok.length) throw new Error(`every advisor failed: ${reports.map((r) => r.error).join(" | ")}`);
-  const sp = synthesisPrompt({ p, W, reports, meta: b.meta });
+  const sp = synthesisPrompt({ p, W, reports, meta: b.meta, ledger: b.ledger.map(adviceLine), rejected: b.rejected.map(rejectedLine) });
   let syn;
   if (DRY) { log(`[dry-run] ${p.id}:synthesis prompt ${sp.length} chars`); syn = { verdict: "on-track", headline: "(dry run)", body_md: "(dry run)", cost_usd: 0 }; }
   else {
@@ -232,6 +256,7 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
       syn = { verdict: lead.verdict, headline: lead.headline, body_md: `_The synthesis step failed (${e.message.split("\n")[0]}); showing the ${lead.label} report._\n\n${lead.body_md}`, cost_usd: 0 };
     }
   }
+  syn.body_md = opener + syn.body_md;
   const cost = reports.reduce((s, r) => s + (r.cost_usd || 0), 0) + (syn.cost_usd || 0);
   const tabs = reports.map((r) => ({ key: r.key, label: r.label, body_md: r.error ? `_This advisor's run failed: ${r.error}_` : r.body_md, verdict: r.verdict || null, headline: r.headline || null }));
   const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: { ...b.meta, cost_usd: Math.round(cost * 100) / 100, tabs, ...(Array.isArray(syn.proposals) && syn.proposals.length ? { proposals: syn.proposals.slice(0, 5) } : {}) } };
@@ -294,8 +319,15 @@ async function main() {
   // ---------- recap ----------
   let recap = null, coaching = null;
   const todos = await get("/api/agent/todos" + qs({ from: W.startDate, to: W.lastDate }), []);
+  // The recap opens with each project's previous Top 3 and what happened to it (the ledger, written here, not by the model).
+  const ledgerAll = await get("/api/agent/advice" + qs({ latest: "1", before: W.startDate, limit: 300 }), []);
+  const byProject = new Map();
+  for (const a of ledgerAll) if (projects.some((p) => p.id === a.project_id)) byProject.set(a.project_id, [...(byProject.get(a.project_id) || []), a]);
+  const recapOpener = byProject.size ? ["## Last week's Top 3", "_What happened to each project's Top 3 from its previous review. Mark an entry done or rejected on that review; rejected advice is never proposed again._", "",
+    ...[...byProject].flatMap(([id, rows]) => [...followThrough(rows, { heading: `### ${projects.find((p) => p.id === id)?.name || id}`, sub: true }), ""])].join("\n") + "\n" : "";
   try {
     const L = [`# Weekly recap bundle — ${W.startDate}..${W.lastDate}`, ""];
+    if (recapOpener) L.push("(The recap is posted with this section on top already: don't repeat it, but use it in your sections — what got followed through, what keeps being ignored.)", recapOpener);
     for (const r of results) {
       L.push(`## ${r.p.name} (${r.p.id}) — ${r.error ? `REVIEW FAILED: ${r.error}` : `[${r.verdict || "—"}] ${r.headline || ""}`}`);
       if (r.meta) L.push(`numbers: ${JSON.stringify(r.meta)}`);
@@ -323,7 +355,7 @@ async function main() {
     }
     const file = path.join(dir, "_recap.md"); fs.writeFileSync(file, L.join("\n"));
     recap = await report({ kind: "recap", prompt: recapPrompt(W, file), cwd: JARVIS_ROOT, dir, file,
-      post: (j) => ({ type: "recap", project_id: null, week_start: W.startDate, title: `Recap · week of ${fmtDay(W.startDate)}`, headline: j.headline, body_md: j.body_md + (results.some((r) => r.error) ? `\n\n## Reviews that failed\n${results.filter((r) => r && r.error).map((r) => `- ${r.p.name}: ${r.error}`).join("\n")}` : ""), meta: { cost_usd: j.cost_usd, failed: results.filter((r) => r && r.error).map((r) => r.p.id) } }) });
+      post: (j) => ({ type: "recap", project_id: null, week_start: W.startDate, title: `Recap · week of ${fmtDay(W.startDate)}`, headline: j.headline, body_md: recapOpener + j.body_md + (results.some((r) => r.error) ? `\n\n## Reviews that failed\n${results.filter((r) => r && r.error).map((r) => `- ${r.p.name}: ${r.error}`).join("\n")}` : ""), meta: { cost_usd: j.cost_usd, failed: results.filter((r) => r && r.error).map((r) => r.p.id) } }) });
   } catch (e) { log("recap failed", e.message); }
 
   // ---------- coaching ----------

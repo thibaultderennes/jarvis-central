@@ -3,6 +3,17 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Follow-through ledger in every review.** Advice used to repeat week after week with no record of what happened
+  to it. Now every advisor review's Top 3 is recorded in the database (new `advice` table), and the next project
+  review and the Monday recap open with **Last week's Top 3**: each entry marked done, started, ignored or rejected,
+  read from the checklist (an item it names or was pushed as) and written by the agent, not the model. On a review,
+  **Follow-through** lets you mark an entry done, reject it (with an optional reason) or reopen it. Rejected advice
+  is never proposed again: the advisors and the synthesis get the list, and an entry that repeats one in other words
+  is recorded as rejected at once. CLI: `advice <project> [--review ID] [--rejected]`, `advice <review-id> <key>
+  done|rejected|open [--reason T]`. API: `GET|PATCH /api/agent/advice`. Adapted from the decision-logger skill in
+  alirezarezvani/claude-skills (MIT), with the database as the log.
+  Upgrade notes: deploy the site together with the agent update (the table is created on deploy). Older reviews are
+  recorded the first time they're read, so the first Monday after the upgrade already opens with the previous Top 3.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
