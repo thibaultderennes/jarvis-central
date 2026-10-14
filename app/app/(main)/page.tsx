@@ -13,8 +13,8 @@ import "./home.css";
 
 /**
  * Home: one page. The Now rail (the next thing to do in one sentence, today as a line, one summary line), then every
- * box on one grid you arrange with Customize: your top 3 first, then the overview, the timeline and the stats
- * (layout in kv `dashboard.layout`). The jump links under the title scroll to each section; old `?tab=` links land on
+ * box on one grid you arrange with Customize: Needs you, the overdue queue, the review digest and your top 3 first, then
+ * the rest of the overview, the timeline and the stats, folded (layout in kv `dashboard.layout`). The jump links under the title scroll to each section; old `?tab=` links land on
  * theirs.
  */
 export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string; w?: string; bucket?: string; proj?: string }> }) {
@@ -22,7 +22,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   const sp = await searchParams;
   if (sp.tab) {
     const q = new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "tab" && typeof v === "string") as [string, string][]).toString();
-    redirect(`/${q ? `?${q}` : ""}#${OLD_TAB_ANCHOR[sp.tab] || "box-top3"}`);
+    redirect(`/${q ? `?${q}` : ""}#${OLD_TAB_ANCHOR[sp.tab] || "box-needs"}`);
   }
   const c = makeCtx(sp);
   const [b, saved] = await Promise.all([c.base(), D.kvGet("dashboard.layout")]);
