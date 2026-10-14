@@ -3,6 +3,10 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **A report is cleared once, not twice.** Marking a report read also marks the inbox message that delivered it as
+  treated, and "Mark treated" on that message marks the report read (unread / back to pending work the same way).
+  Review runs now write `meta.review_id` on their reply, like plans, screenings and setup; older messages are matched
+  on `meta.review`.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
