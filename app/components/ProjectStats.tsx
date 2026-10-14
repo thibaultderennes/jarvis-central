@@ -110,7 +110,7 @@ function LineChart({ title, hint, lines }: { title: string; hint: string; lines:
       </div>
       {ls.length > 1 && <div className="legend">{ls.map((l) => <span key={l.key}><i className="dot" style={{ background: l.color }} />{l.label} <b className="ps-lv">{num(l.pts.at(-1)!.v)}</b></span>)}</div>}
       <details className="tabletoggle">
-        <summary>Show as a table</summary>
+        <summary data-track="Metrics as a table">Show as a table</summary>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead><tr><th></th>{ls.map((l) => <th key={l.key}>{l.label}</th>)}</tr></thead>
@@ -164,7 +164,7 @@ function WeekColumns({ weeks }: { weeks: Week[] }) {
         <span><i className="dot" />Finished ({tot.done})</span>
       </div>
       <details className="tabletoggle">
-        <summary>Show as a table</summary>
+        <summary data-track="Items added and finished as a table">Show as a table</summary>
         <table><thead><tr><th>Week of</th><th>Added</th><th>Finished</th><th>Late</th></tr></thead>
           <tbody>{[...weeks].reverse().map((w) => <tr key={w.date}><td>{fd(w.date)}</td><td>{w.added}</td><td>{w.done}</td><td>{w.done_late}</td></tr>)}</tbody></table>
       </details>

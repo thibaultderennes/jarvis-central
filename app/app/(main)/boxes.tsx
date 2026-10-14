@@ -58,7 +58,7 @@ async function needs(c: Ctx) {
   return (
     <div className="needs">
       <ul className="needlist">{needs.rows.slice(0, SHOWN).map(row)}</ul>
-      {needs.count > SHOWN && <details className="needmore"><summary>Show {needs.count - SHOWN} more</summary><ul className="needlist">{needs.rows.slice(SHOWN).map(row)}</ul></details>}
+      {needs.count > SHOWN && <details className="needmore"><summary data-track="Show more needs-you">Show {needs.count - SHOWN} more</summary><ul className="needlist">{needs.rows.slice(SHOWN).map(row)}</ul></details>}
     </div>
   );
 }
