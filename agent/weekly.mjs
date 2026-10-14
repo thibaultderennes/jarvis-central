@@ -18,6 +18,7 @@ import { runClaude } from "./claude.mjs";
 import { reviewEvery, reviewWindow } from "./projectsettings.mjs";
 import { metricsGaps, gapLine, gapOptions, sourceList } from "./metrics.mjs";
 import { ROLES, ADVISOR_TOOLS, STANCE, personaFor, oneLiner, memoryDirs, advisorPrompt, synthesisPrompt } from "./advisors.mjs";
+import { HEADLESS, REVIEW_SOURCES, prepareReviewSkills, reviewSet, reviewSkillsBrief, skillUse, missingReviewSkillsPrompt, wordCount } from "./skillpacks.mjs";
 
 const log = makeLog("weekly");
 const argv = process.argv.slice(2);
@@ -30,6 +31,8 @@ const READ_ONLY = ["Read", "Grep", "Glob"];
 // The Jarvis review's repo scout (reviews.repo_scout) may also search the web and GitHub, read-only.
 const SCOUT_TOOLS = [...READ_ONLY, "WebSearch", "WebFetch", "Bash(gh search repos:*)", "Bash(gh repo view:*)"];
 const SCOUT = CONFIG.reviews?.repo_scout !== false;
+// The reviews skill pack (agent/skillpacks.mjs), fetched once per run in main(); null = reports run without skills.
+let PACK = null;
 
 const sh = (cmd, args, cwd, timeout = 60_000) => {
   try { return execFileSync(cmd, args, { cwd, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout, maxBuffer: 20 * 1024 * 1024 }).trim(); }
@@ -112,7 +115,7 @@ async function projectBundle(p, W, turnsAll, sessions, events) {
 }
 
 // ---------- prompts ----------
-const SCEPTIC = `Stance set by ${OWNER}: ${STANCE} Stay fair and specific.`;
+const SCEPTIC = `Stance set by ${OWNER}: ${STANCE} Stay fair and specific.\n${HEADLESS}`;
 const JSON_RULES = (withVerdict) => `Output ONLY one JSON object, no prose before or after, no code fences:
 {${withVerdict ? `"verdict": "on-track" | "at-risk" | "off-track", ` : ""}"headline": "<one sentence, max 120 chars>", "body_md": "<markdown>"}
 Rules: no invented numbers or facts; every claim must come from the bundle or from files you read. Use checklist item codes in backticks (e.g. \`b-x\`). Plain, direct sentences.`;
@@ -174,24 +177,47 @@ function usageLines(u) {
 
 // ---------- run one report ----------
 async function report({ kind, prompt, cwd, dir, post, file, allowedTools = READ_ONLY, maxTurns = 40 }) {
+  const brief = reviewSkillsBrief(kind, PACK);
+  if (brief) prompt = `${prompt}\n\n${brief}`;
   if (DRY) { log(`[dry-run] ${kind}: bundle ${file} (${fs.statSync(file).size} bytes), prompt ${prompt.length} chars`); console.log(`\n=== ${kind} prompt ===\n${prompt}`); return { ok: true }; }
-  const t0 = Date.now();
-  const res = await runClaude({ prompt, cwd, allowedTools, addDirs: [dir], maxTurns, timeoutMs: 20 * 60_000, log });
-  const j = parseModelJSON(res.result);
-  if (!j.body_md) throw new Error(`${kind}: model JSON has no body_md`);
-  log(`${kind} done`, { cost_usd: res.cost_usd, s: Math.round((Date.now() - t0) / 1000) });
-  await api("POST", "/api/agent/reviews", post({ ...j, cost_usd: res.cost_usd }));
-  return { ok: true, headline: j.headline, verdict: j.verdict, body_md: j.body_md, cost: res.cost_usd };
+  const j = await claudeJSON(kind, { prompt, cwd, allowedTools, addDirs: [dir], maxTurns, skills: reviewSet(kind, PACK) });
+  const p = post(j);
+  await api("POST", "/api/agent/reviews", { ...p, meta: { ...(p.meta || {}), words: j.words, ...(j.skills ? { skills: j.skills } : {}) } });
+  return { ok: true, headline: j.headline, verdict: j.verdict, body_md: j.body_md, cost: j.cost_usd };
 }
 
 // ---------- one project: bundle → idle shortcut, or CEO + CMO + PO + synthesis ----------
-async function claudeJSON(kind, opts) {
+/**
+ * One review run that returns JSON with body_md. `skills`: names from the reviews pack this report must open; they
+ * are loaded as a plugin, checked in the transcript (skillUse), and a run that skipped one gets one follow-up turn.
+ * Adds `words` {before: the draft before the stop-slop pass (the model's count), after: body_md} and `skills` {used, missing}.
+ */
+async function claudeJSON(kind, { skills = [], ...opts }) {
   const t0 = Date.now();
-  const res = await runClaude({ maxTurns: 40, timeoutMs: 20 * 60_000, log, ...opts });
-  const j = parseModelJSON(res.result);
+  const pack = skills.length ? PACK : null;
+  const run = { maxTurns: 40, timeoutMs: 20 * 60_000, log, ...opts };
+  if (pack) Object.assign(run, { pluginDirs: [pack.pluginDir], addDirs: [...(run.addDirs || []), pack.pluginDir], allowedTools: [...(run.allowedTools || []), "Read", "Skill"] });
+  const res = await runClaude(run);
+  let j = parseModelJSON(res.result);
   if (!j.body_md) throw new Error(`${kind}: model JSON has no body_md`);
-  log(`${kind} done`, { cost_usd: res.cost_usd, s: Math.round((Date.now() - t0) / 1000) });
-  return { ...j, cost_usd: res.cost_usd || 0 };
+  let cost = res.cost_usd || 0, use = null;
+  if (pack) {
+    use = skillUse(res.session_id, pack, skills);
+    if (use.found && use.missing.length && !res.is_error) {
+      log(`${kind} skills skipped, follow-up turn`, use.missing);
+      try {
+        const more = await runClaude({ ...run, resume: res.session_id, maxTurns: 15, prompt: missingReviewSkillsPrompt(pack, use.missing) });
+        cost += more.cost_usd || 0;
+        const again = (() => { try { return parseModelJSON(more.result); } catch { return null; } })();
+        if (again?.body_md) j = again;
+        use = skillUse(more.session_id || res.session_id, pack, skills);
+      } catch (e) { log(`${kind} skills follow-up failed`, e.message); }
+    }
+  }
+  const words = { before: Number(j.draft_words) || null, after: wordCount(j.body_md) };
+  const skillsUsed = use?.found ? { used: use.used, missing: use.missing } : null;
+  log(`${kind} done`, { cost_usd: cost, s: Math.round((Date.now() - t0) / 1000), words, ...(skillsUsed ? { skills: skillsUsed } : {}) });
+  return { ...j, cost_usd: cost, words, skills: skillsUsed };
 }
 
 async function reviewProject(p, W, dir, turns, sessions, events) {
@@ -214,18 +240,21 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
   const reports = [];
   for (const role of ROLES) {
     const persona = personaFor(p, role.key);
-    const prompt = advisorPrompt({ p, role: role.key, W, file, persona, line, prevHeadline: prev?.headline });
-    if (DRY) { log(`[dry-run] ${p.id}:${role.key} persona ${persona.source.replace(HOME, "~")} (${persona.native ? "native" : "adapted"}), prompt ${prompt.length} chars`); reports.push({ ...role, verdict: "on-track", headline: "(dry run)", body_md: "(dry run)" }); continue; }
-    try { reports.push({ ...role, ...(await claudeJSON(`${p.id}:${role.key}`, { prompt, cwd, allowedTools: ADVISOR_TOOLS, addDirs })) }); }
+    const prompt = advisorPrompt({ p, role: role.key, W, file, persona, line, prevHeadline: prev?.headline, skills: reviewSkillsBrief(role.key, PACK) });
+    if (DRY) { log(`[dry-run] ${p.id}:${role.key} persona ${persona.source.replace(HOME, "~")} (${persona.native ? "native" : "adapted"}), skills ${reviewSet(role.key, PACK).join(", ") || "none"}, prompt ${prompt.length} chars`); reports.push({ ...role, verdict: "on-track", headline: "(dry run)", body_md: "(dry run)" }); continue; }
+    try { reports.push({ ...role, ...(await claudeJSON(`${p.id}:${role.key}`, { prompt, cwd, allowedTools: ADVISOR_TOOLS, addDirs, skills: reviewSet(role.key, PACK) })) }); }
     catch (e) { log(`${p.id}:${role.key} failed`, e.message); reports.push({ ...role, error: e.message }); }
   }
   const ok = reports.filter((r) => !r.error);
   if (!ok.length) throw new Error(`every advisor failed: ${reports.map((r) => r.error).join(" | ")}`);
-  const sp = synthesisPrompt({ p, W, reports, meta: b.meta });
+  const synSkills = reviewSet("synthesis", PACK);
+  const sp = synthesisPrompt({ p, W, reports, meta: b.meta, skills: reviewSkillsBrief("synthesis", PACK) });
   let syn;
-  if (DRY) { log(`[dry-run] ${p.id}:synthesis prompt ${sp.length} chars`); syn = { verdict: "on-track", headline: "(dry run)", body_md: "(dry run)", cost_usd: 0 }; }
+  if (DRY) { log(`[dry-run] ${p.id}:synthesis skills ${synSkills.join(", ") || "none"}, prompt ${sp.length} chars`); syn = { verdict: "on-track", headline: "(dry run)", body_md: "(dry run)", cost_usd: 0 }; }
   else {
-    try { syn = await claudeJSON(`${p.id}:synthesis`, { prompt: sp, cwd: JARVIS_ROOT, tools: "", maxTurns: 3, timeoutMs: 10 * 60_000 }); }
+    // No tools but the skills: the synthesis only reads its SKILL.md files.
+    const synRun = synSkills.length ? { tools: "Read,Skill", maxTurns: 10, timeoutMs: 15 * 60_000, skills: synSkills } : { tools: "", maxTurns: 3, timeoutMs: 10 * 60_000 };
+    try { syn = await claudeJSON(`${p.id}:synthesis`, { prompt: sp, cwd: JARVIS_ROOT, ...synRun }); }
     catch (e) {
       log(`${p.id}:synthesis failed, using the CEO report`, e.message);
       const lead = ok[0];
@@ -234,9 +263,12 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
   }
   const cost = reports.reduce((s, r) => s + (r.cost_usd || 0), 0) + (syn.cost_usd || 0);
   const tabs = reports.map((r) => ({ key: r.key, label: r.label, body_md: r.error ? `_This advisor's run failed: ${r.error}_` : r.body_md, verdict: r.verdict || null, headline: r.headline || null }));
-  const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: { ...b.meta, cost_usd: Math.round(cost * 100) / 100, tabs, ...(Array.isArray(syn.proposals) && syn.proposals.length ? { proposals: syn.proposals.slice(0, 5) } : {}) } };
+  // Word counts per report: before = the model's count of its draft before the stop-slop pass, after = what was posted.
+  const words = Object.fromEntries([...reports.filter((r) => r.words).map((r) => [r.key, r.words]), ...(syn.words ? [["synthesis", syn.words]] : [])]);
+  const skills = Object.fromEntries([...reports.filter((r) => r.skills).map((r) => [r.key, r.skills]), ...(syn.skills ? [["synthesis", syn.skills]] : [])]);
+  const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: { ...b.meta, cost_usd: Math.round(cost * 100) / 100, tabs, words, ...(Object.keys(skills).length ? { skills } : {}), ...(Array.isArray(syn.proposals) && syn.proposals.length ? { proposals: syn.proposals.slice(0, 5) } : {}) } };
   if (!DRY) await api("POST", "/api/agent/reviews", post);
-  log(`${p.id} review ${DRY ? "built (dry run, not posted)" : "posted"}`, { verdict: syn.verdict, cost_usd: post.meta.cost_usd, failed: reports.filter((r) => r.error).map((r) => r.key) });
+  log(`${p.id} review ${DRY ? "built (dry run, not posted)" : "posted"}`, { verdict: syn.verdict, cost_usd: post.meta.cost_usd, words, failed: reports.filter((r) => r.error).map((r) => r.key) });
   return { p, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: b.meta };
 }
 
@@ -260,6 +292,8 @@ async function main() {
   log("weekly start", W.startDate, { dry: DRY, only: ONLY });
   // Only the full run reports a heartbeat: a one-project review must not read as the Monday run on the Admin page.
   if (!DRY && !ONLY) await api("POST", "/api/agent/heartbeat", { worker: "weekly", info: { week: startDate, phase: "start" } }).catch((e) => log("heartbeat failed", e.message));
+
+  if (!OFFLINE) try { PACK = prepareReviewSkills(); log("reviews skills", Object.keys(PACK.skills).join(", ")); } catch (e) { log("reviews skills failed, reports run without them", e.message); }
 
   let projects = await get("/api/agent/projects", OFFLINE ? offlineProjects() : []);
   projects = projects.filter((p) => !p.archived);
@@ -382,7 +416,7 @@ async function main() {
     if (SCOUT) {
       const skillDirs = [path.join(HOME, ".claude", "skills"), path.join(JARVIS_ROOT, "skills"), ...projects.filter((p) => p.dir).map((p) => path.join(p.dir, ".claude", "skills"))];
       const inUse = new Set(skillDirs.flatMap((d) => { try { return fs.readdirSync(d, { withFileTypes: true }).filter((e) => !e.name.startsWith(".")).map((e) => e.name); } catch { return []; } }));
-      L.push("## Skills and repos already in use (skip these)", `installed skills: ${[...inUse].sort().join(", ") || "none found"}`, `also skip: ${(CONFIG.reviews?.repo_scout_skip || []).join(", ") || "—"}`, "");
+      L.push("## Skills and repos already in use (skip these)", `installed skills: ${[...inUse].sort().join(", ") || "none found"}`, `pinned for the reviews: ${REVIEW_SOURCES.map((s) => s.repo).join(", ")}`, `also skip: ${(CONFIG.reviews?.repo_scout_skip || []).join(", ") || "—"}`, "");
     }
     if (prev) L.push(`## Last week's Jarvis review (${prev.week_start})`, prev.body_md);
     const file = path.join(dir, "_jarvis.md"); fs.writeFileSync(file, L.join("\n"));
