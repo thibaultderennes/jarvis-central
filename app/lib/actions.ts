@@ -10,6 +10,7 @@ import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
 import { normSiteUrl, websiteKind } from "./website";
 import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSettings";
 import { validateProjectName } from "./newProject";
+import { laterDate, parseKeys, TRIAGE, type Triage } from "./overdue";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -115,6 +116,32 @@ export async function moveItemsDue(project_id: string, ids: string[], due: strin
   await D.logActivity("item_due", `/timeline`, { ids: list, due, via: "timeline" });
   done();
   return {};
+}
+/**
+ * The overdue queue (Home and Today): one action on one item or a selection, across projects. Re-date and Later go
+ * through the same logged path as setDue, Done as setItemStatus (linked todos follow), Give to Claude sets the owner.
+ */
+export async function triageOverdue(keys: string[], act: Triage, due: string | null = null, page = "/"): Promise<{ error?: string; n?: number }> {
+  await requireSession();
+  if (!TRIAGE.includes(act)) return { error: "Unknown action." };
+  const list = parseKeys(keys);
+  if (!list.length) return { error: "Select an item first." };
+  const t = today(), to = act === "later" ? laterDate(t) : due;
+  if ((act === "due" || act === "later") && (!to || !isDate(to) || to < t)) return { error: "Pick today or a later day." };
+  const patch: Partial<D.Item> = act === "done" ? { status: "done" } : act === "claude" ? { owner: "claude" } : { due: to };
+  let n = 0;
+  for (const k of list) {
+    if (!(await D.updateItem(k.project_id, k.id, patch))) continue;
+    if (act === "done") await sql()`update todos set done = true, done_at = ${new Date().toISOString()} where project_id = ${k.project_id} and item_id = ${k.id}`;
+    n++;
+  }
+  if (!n) return { error: "Those items are gone. Reload the page." };
+  const ids = list.map((k) => `${k.project_id}/${k.id}`), via = "overdue", from = page === "/today" ? "/today" : "/";
+  if (act === "done") await D.logActivity("item_status", from, { ids, status: "done", via });
+  else if (act === "claude") await D.logActivity("item_owner", from, { ids, owner: "claude", via });
+  else await D.logActivity("item_due", from, { ids, due: to, via, later: act === "later" });
+  done();
+  return { n };
 }
 /**
  * Timeline drag on a milestone: the project's deadline moves now; `prd` keeps the date PRD.md still has, and the Mac

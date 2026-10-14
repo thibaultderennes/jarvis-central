@@ -12,6 +12,8 @@ import { EditTitle, type BItem } from "./Board";
 import { Ack, imeGuard, useSubmit } from "./Submit";
 import { Glyph, HeaderVec } from "@/components/brand";
 import { Icon } from "./icons";
+import OverdueQueue from "./OverdueQueue";
+import { overdueQueue } from "@/lib/overdue";
 
 type P = { id: string; name: string; color: string };
 type Block = { project_id: string; item_id: string; title: string; start: string; end: string };
@@ -52,7 +54,8 @@ export default function TodayView(props: Props) {
   const dueHere = props.due.filter((i) => i.due === day && !onList.has(key(i)) && !handled.has(key(i)));
   const dueOpen = dueHere.filter((i) => i.status !== "done").sort((a, b) => Number(b.critical) - Number(a.critical));
   const backlog = props.backlog.filter((i) => !handled.has(key(i)) && !onList.has(key(i)) && i.due !== day);
-  const overdue = backlog.filter((i) => i.due && i.due < today).sort((a, b) => Number(b.critical) - Number(a.critical) || a.due!.localeCompare(b.due!));
+  // Every overdue open item, on the list or not: its own panel on today, critical first (lib/overdue.ts).
+  const overdue = useMemo(() => overdueQueue(props.backlog, today).map((i) => ({ ...i, due: i.due! })), [props.backlog, today]);
   const coming = backlog.filter((i) => !(i.due && i.due < today));
   const suggest = props.unplanned.filter((u) => !onList.has(`${u.project_id}/${u.item_id}`) && !handled.has(`${u.project_id}/${u.item_id}`));
   const lateTodo = (t: Todo) => { const k = tkey(t); const i = k ? props.backlog.find((x) => key(x) === k) : null; return !!i?.due && i.due < today; };
@@ -140,18 +143,24 @@ export default function TodayView(props: Props) {
 
         <Agenda events={evs} todos={list} blocks={props.blocks} on={props.calendarOn} error={props.calendarError} nowM={nowM} pmap={pmap} nextEv={nextEv} />
 
+        {overdue.length > 0 && (
+          <section id="td-overdue" className="panel td-overdue" aria-labelledby="h-overdue">
+            <div className="td-oqh"><h2 className="ph-t" id="h-overdue">Overdue</h2><span className="hint">every project, critical first</span></div>
+            <OverdueQueue items={overdue} projects={pmap} today={today} page="/today" limit={10} />
+          </section>
+        )}
+
         <details className="panel td-later">
           <summary>
             <span className="ph-t">Later</span>
             <span className="td-counts">
-              {overdue.length > 0 && <span className="late">{overdue.length} overdue</span>}
               <span>{coming.length} coming up</span>
               <span>{someday.length} someday</span>
               {suggest.length > 0 && <span>{suggest.length} from the plan</span>}
             </span>
           </summary>
-          <Later overdue={overdue} coming={coming} someday={someday} suggest={suggest} pmap={pmap} projects={projects} today={today} isToday={isToday}
-            onPull={pull} onDone={finish} onShift={shift} onTodo={(t) => move(t, day)} onDelete={del} />
+          <Later coming={coming} someday={someday} suggest={suggest} pmap={pmap} projects={projects} today={today} isToday={isToday}
+            onPull={pull} onTodo={(t) => move(t, day)} onDelete={del} />
         </details>
       </div>
     </div>
@@ -283,9 +292,9 @@ function Agenda({ events, todos, blocks, on, error, nowM, pmap, nextEv }: { even
   );
 }
 
-function Later({ overdue, coming, someday, suggest, pmap, projects, today, isToday, onPull, onDone, onShift, onTodo, onDelete }: {
-  overdue: BItem[]; coming: BItem[]; someday: Todo[]; suggest: Props["unplanned"]; pmap: Record<string, P>; projects: P[]; today: string; isToday: boolean;
-  onPull: (it: { project_id: string; id: string; title: string }) => void; onDone: (it: BItem) => void; onShift: (it: BItem, d: string) => void; onTodo: (t: Todo) => void; onDelete: (t: Todo) => void;
+function Later({ coming, someday, suggest, pmap, projects, today, isToday, onPull, onTodo, onDelete }: {
+  coming: BItem[]; someday: Todo[]; suggest: Props["unplanned"]; pmap: Record<string, P>; projects: P[]; today: string; isToday: boolean;
+  onPull: (it: { project_id: string; id: string; title: string }) => void; onTodo: (t: Todo) => void; onDelete: (t: Todo) => void;
 }) {
   const [filter, setFilter] = useState("all"), [all, setAll] = useState(false);
   const add = isToday ? "+ Today" : "+ Day";
@@ -300,16 +309,6 @@ function Later({ overdue, coming, someday, suggest, pmap, projects, today, isTod
   );
   return (
     <div className="td-laterbody">
-      {overdue.length > 0 && (
-        <div className="td-grp">
-          <div className="bgroup"><span className="lbl">Overdue</span><span className="ct">{overdue.length}</span><span className="hint">finish, take on, or give a new day</span></div>
-          {overdue.map((i) => line(i, <>
-            <button className="btn ghost sm" onClick={() => onDone(i)}>✓ Done</button>
-            <button className="btn ghost sm" onClick={() => onPull(i)}>{add}</button>
-            <button className="btn ghost sm" onClick={() => onShift(i, addDays(today, 1))}>→ Tomorrow</button>
-          </>))}
-        </div>
-      )}
       {suggest.length > 0 && (
         <div className="td-grp">
           <div className="bgroup"><span className="lbl">The plan couldn&apos;t fit</span><span className="ct">{suggest.length}</span></div>
