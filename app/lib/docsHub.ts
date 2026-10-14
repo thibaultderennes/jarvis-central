@@ -44,6 +44,15 @@ export const hubDate = (r: Pick<HubReview, "created_at" | "meta">) =>
 
 export const isAcked = (r: Pick<HubReview, "acked_at">) => !!r.acked_at;
 
+/**
+ * The report an inbox message delivered: meta.review_id, or meta.review (what older review runs wrote). Marking the
+ * report read treats that message, and treating the message marks the report read, so a report is cleared once.
+ */
+export function messageReviewId(meta: Record<string, unknown> | null | undefined): string | null {
+  for (const v of [meta?.review_id, meta?.review]) if (typeof v === "string" && /^[0-9a-f-]{36}$/.test(v)) return v;
+  return null;
+}
+
 /** Newest first (by hubDate, then created_at), only the kinds this page shows. */
 export function hubList<T extends HubReview>(list: T[]): T[] {
   return list.filter((r) => hubKind(r) !== null)
