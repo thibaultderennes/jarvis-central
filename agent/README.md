@@ -76,7 +76,7 @@ or `<project>/.claude/skills/*-<role>/SKILL.md` → `~/.claude/commands/<project
 node worker.mjs                        # one pass       · --dry-run prints a sample prompt and the tool lists
 node plan.mjs --dry-run                # plan next week without posting · --week YYYY-MM-DD · --force
 node rollover.mjs --dry-run            # what today's roll-forward would carry · --date YYYY-MM-DD · --fixture FILE
-node weekly.mjs                        # review last week · --week YYYY-MM-DD · --only <id> · --dry-run [--offline]
+node weekly.mjs                        # review last week · --week YYYY-MM-DD · --only <id> · --report jarvis|recap|coaching · --dry-run [--offline]
 node transcripts.mjs --days 7          # session counts per folder (no message text)
 node economics.mjs sync --dry-run      # evaluate unit-economics models without uploading · --project <id>
 node metrics.mjs sync --dry-run        # fetch product metrics without posting · --project <id>

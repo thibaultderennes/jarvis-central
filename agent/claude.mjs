@@ -21,10 +21,13 @@ export function runClaude({ prompt, cwd, allowedTools = [], disallowedTools = []
   return new Promise((resolve, reject) => {
     // detached → own process group, so a timeout kills claude and every tool it spawned
     const child = spawn(CLAUDE_BIN, args, { cwd, detached: true, stdio: ["ignore", "pipe", "pipe"], env: { ...process.env, JARVIS_HEADLESS: "1" } });
-    let out = "", err = "";
+    let out = "", err = "", timedOut = false;
     child.stdout.on("data", (b) => (out += b));
     child.stderr.on("data", (b) => (err += b));
+    // A killed claude may exit by signal or with code 143 (it handles SIGTERM itself): either way the error carries .timeout.
+    const fail = (msg) => Object.assign(new Error(msg), { timeout: timedOut });
     const timer = setTimeout(() => {
+      timedOut = true;
       log("claude timeout, killing process group", child.pid);
       try { process.kill(-child.pid, "SIGTERM"); } catch {}
       setTimeout(() => { try { process.kill(-child.pid, "SIGKILL"); } catch {} }, 10_000);
@@ -33,10 +36,11 @@ export function runClaude({ prompt, cwd, allowedTools = [], disallowedTools = []
     child.on("close", (code, signal) => {
       clearTimeout(timer);
       const duration_s = Math.round((Date.now() - started) / 1000);
-      if (signal) return reject(new Error(`claude was stopped (${signal}) after ${duration_s} s${signal === "SIGTERM" ? " — hit the time limit" : ""}`));
+      if (timedOut) return reject(fail(`claude hit the time limit (${Math.round(timeoutMs / 60_000)} min) and was stopped after ${duration_s} s`));
+      if (signal) return reject(fail(`claude was stopped (${signal}) after ${duration_s} s`));
       let j;
       try { j = JSON.parse(out); } catch {
-        return reject(new Error(`claude exited ${code} without JSON output: ${(err || out).slice(-600)}`));
+        return reject(fail(`claude exited ${code} without JSON output: ${(err || out).slice(-600)}`));
       }
       resolve({ result: j.result ?? "", session_id: j.session_id ?? null, cost_usd: j.total_cost_usd ?? null, duration_s, is_error: !!j.is_error || j.subtype !== "success", subtype: j.subtype, raw: j });
     });

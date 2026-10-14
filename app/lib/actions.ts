@@ -386,6 +386,23 @@ export async function requestReview(project_id: string): Promise<{ error?: strin
   return {};
 }
 
+/** Run again on a 'failed' weekly report: the Mac worker re-runs that week's report (agent/reviewrun.mjs, meta.kind 'rerun'). */
+const RERUN_TYPES: Record<string, string> = { project: "", jarvis: "Jarvis review", recap: "week recap", coaching: "working-with-AI report" };
+export async function rerunReview(id: string): Promise<{ error?: string }> {
+  await requireSession();
+  const r = await D.getReview(id);
+  if (!r || r.verdict !== "failed" || !r.week_start || !(r.type in RERUN_TYPES)) return { error: "Only a failed weekly report can run again." };
+  if (r.type === "project" && !r.project_id) return { error: "This report has no project." };
+  if (await D.rerunQueued(r.id)) return {};
+  const p = r.project_id ? await D.getProject(r.project_id) : null;
+  const what = r.type === "project" ? `${p?.name || r.project_id}'s review` : `the ${RERUN_TYPES[r.type]}`;
+  await D.insertMessage({ text: `Run ${what} again (week of ${r.week_start}): the last run didn't finish.`, project_id: r.type === "project" ? r.project_id : null, status: "new", mode: "review",
+    meta: { kind: "rerun", week: r.week_start, review: r.id, ...(r.type === "project" ? {} : { report: r.type }) } });
+  await D.logActivity("review_rerun", r.project_id ? `/p/${r.project_id}` : "/reviews", { id: r.id, type: r.type });
+  done();
+  return {};
+}
+
 /** "Plan this project": the Mac worker reviews the folder, writes a situation report and adds the missing checklist items. */
 export async function requestPlanning(project_id: string) {
   await requireSession();
