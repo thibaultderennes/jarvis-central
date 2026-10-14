@@ -238,10 +238,12 @@ export async function addTodo(t: { date: string | null; title: string; kind?: st
     values (${t.date}, ${t.title}, ${kind}, ${t.project_id || null}, ${t.item_id || null}, ${t.time || null}, ${m.s}, ${t.source || null}, ${t.rolled_from || null}, ${t.rolled_at || null}) returning *`;
   return normTodo(rows[0]);
 }
-/** Agent edit of a todo (the daily roll-forward): only the fields given change. Returns null when there's no such todo. */
-export async function patchTodo(id: string, p: { date?: string | null; sort?: number; time?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null }): Promise<Todo | null> {
+/** Agent edit of a todo (the daily roll-forward, a tick from the MCP server): only the fields given change. Returns null when there's no such todo. */
+export async function patchTodo(id: string, p: { date?: string | null; sort?: number; time?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null; done?: boolean }): Promise<Todo | null> {
   const has = (k: keyof typeof p) => p[k] !== undefined;
   const rows = await sql()`update todos set
+      done_at = case when ${has("done")} then (case when ${p.done ?? false}::boolean then coalesce(done_at, now()) else null end) else done_at end,
+      done = case when ${has("done")} then ${p.done ?? false}::boolean else done end,
       date = case when ${has("date")} then ${p.date ?? null}::date else date end,
       sort = case when ${has("sort")} then ${p.sort ?? null}::real else sort end,
       time = case when ${has("time")} then ${p.time ?? null}::text else time end,
@@ -250,6 +252,11 @@ export async function patchTodo(id: string, p: { date?: string | null; sort?: nu
       rolled_at = case when ${has("rolled_at")} then ${p.rolled_at ?? null}::date else rolled_at end
     where id = ${id} returning *`;
   return rows[0] ? normTodo(rows[0]) : null;
+}
+/** Todos linked to an item follow its status, as on the site: ticked when it's done or cancelled, unticked when it reopens. */
+export async function syncLinkedTodos(project_id: string, item_id: string, done: boolean) {
+  await sql()`update todos set done = ${done}, done_at = ${done ? new Date().toISOString() : null}
+    where project_id = ${project_id} and item_id = ${item_id} and done = ${!done}`;
 }
 
 /* ---------- messages ---------- */
