@@ -16,6 +16,13 @@
      `app/test/rollover.test.mjs`; `node agent/rollover.mjs --dry-run [--date D] [--fixture F]`. Rule: `docs/config.md`.
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
      (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
+     Every report loads the **reviews skill pack** (pinned in `agent/skillpacks.mjs` `REVIEW_SOURCES`, one set per
+     report in `REVIEW_SETS`, all MIT): stop-slop on every report as the last pass; CEO + gstack openclaw ceo-review
+     (one scope mode, one thing to stop); PO + north-star-metric; synthesis + strategy-red-team ("Fails if", kill
+     criterion, cheapest test; aim ≤ 500 words). `skillUse()` checks the transcript; a report that skipped one gets one
+     follow-up turn. The review's `meta.words` has `{before, after}` per report (before = the draft before stop-slop,
+     as the model counted it) and `meta.skills` the skills used; `node agent/reviewrun.mjs words [N]` lists them.
+     `node agent/skillpacks.mjs reviews` fetches the pack.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md` (offline; the full setup is `setup.mjs`), registers projects, drafts checklists.
    - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
      to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
