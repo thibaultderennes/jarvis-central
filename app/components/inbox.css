@@ -1,0 +1,48 @@
+/* inbox lanes (Inbox.tsx): five lanes, project bundles, one line per conversation */
+.ib-lanes { display: flex; gap: var(--s-2) var(--s-4); flex-wrap: wrap; align-items: center; padding: var(--s-2) var(--s-4); border-bottom: 1px solid var(--line-2); }
+.ib-views { display: flex; gap: var(--s-3); margin-left: auto; }
+.ib-keys { margin: 0; padding: var(--s-1) var(--s-4); font-size: 11.5px; color: var(--ink-3); border-bottom: 1px solid var(--line-2); }
+.ib-keys kbd { font-family: var(--mono); font-size: 10.5px; border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 var(--s-1); line-height: 16px; color: var(--ink-3); background: var(--surface-2); }
+.ib-keys kbd + kbd { margin-left: 2px; }
+
+.ib-bundle { border-top: 1px solid var(--line-2); }
+.ib-bundle:first-child { border-top: 0; }
+.ib-bh { display: flex; gap: var(--s-2); align-items: center; padding: var(--s-2) var(--s-4) var(--s-1); font-size: 12px; font-weight: 600; color: var(--ink-2); }
+.ib-bh .ib-n { font-family: var(--mono); font-size: 11px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; }
+.ib-bh .sp { flex: 1; }
+.ib-bh .x { border: 0; background: none; color: var(--ink-3); font-size: 12px; font-weight: 400; cursor: pointer; text-decoration: underline; }
+.ib-list { list-style: none; margin: 0; padding: 0; }
+
+.ib-row { border-left: 2px solid transparent; }
+.ib-row[data-focus] { border-left-color: var(--ink); background: var(--surface-2); }
+.ib-row[data-focus] .ib-line { background: var(--surface-2); }
+.ib-track { position: relative; overflow: hidden; }
+.ib-line { display: flex; gap: var(--s-2); align-items: center; padding: var(--s-1) var(--s-4) var(--s-1) calc(var(--s-4) - 2px); background: var(--surface); touch-action: pan-y; position: relative; }
+.ib-line:not([data-drag]) { transition: transform .15s; }
+.ib-open { flex: 1; min-width: 0; display: flex; gap: var(--s-2); align-items: center; border: 0; background: none; padding: var(--s-1) 0; text-align: left; cursor: pointer; color: var(--ink-2); font: inherit; font-size: 13.5px; }
+.ib-open .pill { flex: 0 0 auto; }
+.ib-sum { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ib-open[data-unread] .ib-sum { font-weight: 600; color: var(--ink); }
+.ib-open[data-unread]::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); flex: 0 0 auto; }
+.ib-open:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; border-radius: 4px; }
+.ib-new { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+.ib-row[data-open] .ib-sum { white-space: normal; }
+.ib-st { font-family: var(--mono); font-size: 11px; white-space: nowrap; }
+.ib-when { font-family: var(--mono); font-size: 11px; color: var(--ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.ib-acts { display: flex; gap: var(--s-2); }
+.ib-acts .x { border: 0; background: none; color: var(--ink-3); font-size: 12px; cursor: pointer; text-decoration: underline; padding: 0; white-space: nowrap; }
+.ib-swipe { position: absolute; inset: 0; display: flex; align-items: center; padding: 0 var(--s-4); font-size: 12px; font-weight: 600; }
+.ib-swipe[data-dir="r"] { justify-content: flex-start; background: var(--done-soft); color: var(--done); }
+.ib-swipe[data-dir="l"] { justify-content: flex-end; background: var(--surface-2); color: var(--ink-2); }
+.ib-body { padding: var(--s-2) var(--s-4) var(--s-3) calc(var(--s-4) - 2px); display: flex; flex-direction: column; gap: var(--s-2); }
+
+/* phone: the line keeps the summary; the buttons give way to the swipe (still in the opened view and on the keys) */
+@media (max-width: 600px) {
+  .ib-keys { display: none; }
+  .ib-views { margin-left: 0; }
+  .ib-acts { display: none; }
+  .ib-row[data-open] .ib-acts { display: flex; }
+  .ib-line { flex-wrap: wrap; }
+}
+@media (hover: none) { .ib-keys { display: none; } }
+@media (prefers-reduced-motion: reduce) { .ib-line:not([data-drag]) { transition: none; } }

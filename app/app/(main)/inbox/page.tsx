@@ -12,7 +12,7 @@ export default async function InboxPage({ searchParams }: { searchParams: Promis
       <div className="hello">
         <div>
           <h1 className="page"><Glyph n="inbox" />Talk to Claude</h1>
-          <p className="sub">Leave a message about any project. The worker on your Mac picks it up within a minute, works in that project, and replies here. Ask / discuss answers, researches, plans your days and edits checklists. Build it works on a new branch in that project and opens a pull request; it never merges or deploys. Replies you open move to Pending until you mark them treated.</p>
+          <p className="sub">Leave a message about any project. The worker on your Mac picks it up within a minute, works in that project, and replies here. Ask / discuss answers, researches, plans your days and edits checklists. Build it works on a new branch in that project and opens a pull request; it never merges or deploys. Replies sort into lanes, one line each: open one to read it, then mark it got it or put it off until tomorrow.</p>
         </div>
         <HeaderVec n="inbox" />
       </div>

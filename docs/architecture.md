@@ -110,10 +110,14 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at, source null 'plan'|'rollover', rollovers int /* times the daily roll-forward carried it */, rolled_from date null /* the day it was first meant for */, rolled_at date null /* the day it last rolled in */)`
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool, opened_at, treated_at, item_id null)`
   - status flow: `new` → `seen` (worker picked it) → `working` → `answered` | `done` | `needs_you` | `error`
-  - inbox groups on the site: **New** (a reply not yet opened, or work still with Claude) → **Pending** (`opened_at` set
-    once the reply was on screen) → **Treated** (`treated_at`, "Mark treated"; hidden = `archived`). `item_id` = the
-    build run of a checklist item.
-  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh'}`
+  - inbox lanes on the site (`app/lib/inboxLanes.ts`, from the latest turn and the first message): **Needs you**
+    (`needs_you`/`error`, or a reply opening with "NEEDS YOU:") · **Shipped** (`meta.pr_url`, or `meta.kind: 'merged'`)
+    · **Reports** (mode `review`/`screen`/`plan`/`setup`) · **FYI** (every other answer) · **With Claude**
+    (`new`/`seen`/`working`). Bundled by project, one line each (the reply's first bold sentence; the "due →" line for
+    new-item notes). Opening a line sets `opened_at`; "Got it" sets `treated_at`; "Later" sets `meta.later_until`
+    (tomorrow 8:00) and hides it until then; "Unread" clears all three; hidden = `archived`. `item_id` = the build run
+    of a checklist item.
+  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh', later_until?}`
 - `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at, acked_at timestamptz null /* null = new on Docs and reviews */, pushed jsonb /* {proposal key: item code} */)`
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - **Docs and reviews** (the project page's `?v=docs`) lists a project's reports newest first (advisor reviews, strategy

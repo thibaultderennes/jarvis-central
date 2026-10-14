@@ -285,8 +285,6 @@ export async function insertMessage(m: { text: string; project_id?: string | nul
     values (${m.text.slice(0, 4000)}, ${m.project_id || null}, ${status}, ${(m.reply || "").slice(0, 8000)}, ${JSON.stringify(m.meta || {})}, ${mode}, ${m.item_id || null}, ${m.thread_id || null}, ${status === "new" ? null : new Date().toISOString()}) returning id`;
   return { id: row.id as string };
 }
-/** Inbox groups for the owner: new (a reply they haven't opened, or work still with Claude), pending (opened, not treated), treated. */
-export const inboxGroup = (m: Message): "new" | "pending" | "treated" => (m.treated_at || m.archived ? "treated" : m.opened_at && !["new", "seen", "working"].includes(m.status) ? "pending" : "new");
 
 /* ---------- reviews ---------- */
 /**
