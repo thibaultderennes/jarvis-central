@@ -57,6 +57,10 @@
     "model": null
   },
 
+  "inbox": {
+    "auto_treat_fyi_days": 3
+  },
+
   "audits": {
     "dir": "docs/audits",
     "sync_minutes": 60
