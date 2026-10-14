@@ -3,6 +3,15 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Jarvis as an MCP server for Claude Code** (`agent/mcp.mjs`, no dependencies). Triage in the terminal where the
+  work is: `jarvis_overdue` (open items due today or earlier, unticked todos of the last 14 days), `jarvis_tick_item`,
+  `jarvis_tick_todo`, `jarvis_digest` (the latest weekly recap and that week's reports, or one project's latest
+  review), `jarvis_proposals` and `jarvis_push_proposal`. It uses the same agent token as the CLI.
+- **Agent API ticks like the site.** `PATCH /api/agent/todos` takes `done` (a linked item follows), and an item set
+  to done, cancelled or todo through `PATCH /api/agent/items` ticks or unticks its linked todos, as the checklist
+  and Today page already did. The CLI's `set <project> <id> status=done` now ticks the item's todos too.
+- **Upgrade notes:** to use the MCP tools, register the server once:
+  `claude mcp add --scope user jarvis -- node /path/to/jarvis/agent/mcp.mjs` (then `/mcp` in Claude Code lists it).
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
