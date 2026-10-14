@@ -18,6 +18,11 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   paths, a negative array index counts from the end (`weeks.-1.signups`).
 - Upgrade notes: nothing required. New optional keys `metrics.stale_days`, `metrics.remind`, `metrics.expect`,
   `metrics.skip` (defaults in `agent/lib.mjs`); re-run `node agent/doctor.mjs` to see which projects have no numbers.
+- **Public site for sentientdash.com** (`site/`): a static one-page site, separate from the app (plain HTML and CSS,
+  no JavaScript, no build step), with the app's tokens, fonts and mark in light and dark. It covers what Sentient Dash
+  does, who it's for, how it runs on your own Mac, Vercel and Neon, a 3-step install and an FAQ; the one call to action
+  is "Install from GitHub". Clean URLs, a `www` redirect and a strict CSP in `site/vercel.json`; robots, sitemap, Open
+  Graph card and a 404 page. `site/README.md` lists the steps to deploy it as its own Vercel project and attach the domain.
 
 ## 0.7.4.8 — 2026-10-14
 - **Spacing scale tokens** (`--s-1` … `--s-10`, 4px base) on `:root`. Every padding, margin and gap in the app now
