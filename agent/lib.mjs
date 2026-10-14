@@ -90,12 +90,14 @@ export async function api(method, pathAndQuery, body) {
   const cfg = loadConfig();
   if (!cfg.JARVIS_URL || !cfg.JARVIS_AGENT_TOKEN)
     throw new ApiError(`Missing JARVIS_URL or JARVIS_AGENT_TOKEN in ${ENV_FILE}`, 0);
+  // "proxy-injected": a cloud session (a Claude Code routine) whose network proxy adds the token itself (a network secret).
+  const auth = cfg.JARVIS_AGENT_TOKEN === "proxy-injected" ? {} : { Authorization: `Bearer ${cfg.JARVIS_AGENT_TOKEN}` };
   const url = cfg.JARVIS_URL + pathAndQuery;
   let res;
   try {
     res = await fetch(url, {
       method,
-      headers: { Authorization: `Bearer ${cfg.JARVIS_AGENT_TOKEN}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...auth, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(30_000),
     });

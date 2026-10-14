@@ -12,6 +12,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { api, qs, makeLog, acquireLock, todayTZ, addDays, mondayOf, tzDayStart, parseModelJSON, cacheDir, HOME, JARVIS_ROOT, TZ, CONFIG, OWNER } from "./lib.mjs";
 import { scan, statsForDir, statsByCwd } from "./transcripts.mjs";
 import { runClaude } from "./claude.mjs";
@@ -42,7 +43,7 @@ const inWeek = (iso, start, end) => !!iso && iso >= start.toISOString() && iso <
 const get = async (p, fallback) => { if (OFFLINE) return fallback; try { return await api("GET", p); } catch (e) { log("GET failed", p, e.message); return fallback; } };
 
 // ---------- per-project bundle ----------
-async function projectBundle(p, W, turnsAll, sessions, events) {
+export async function projectBundle(p, W, turnsAll, sessions, events) {
   const L = [];
   const items = await get("/api/agent/items" + qs({ project: p.id }), []);
   const ev = events.filter((e) => e.project_id === p.id);
@@ -194,15 +195,32 @@ async function claudeJSON(kind, opts) {
   return { ...j, cost_usd: res.cost_usd || 0 };
 }
 
+/** The period a review covers: the last `days` days ending today, else the calendar week of `week` (default last week). */
+export function reviewPeriod({ days, week } = {}) {
+  const win = days ? reviewWindow(todayTZ(), days) : null;
+  const startDate = win ? win.startDate : week ? mondayOf(week) : addDays(mondayOf(todayTZ()), -7);
+  const lastDate = win ? win.lastDate : addDays(startDate, 6);
+  return { startDate, lastDate, endDate: addDays(lastDate, 1), start: tzDayStart(startDate), end: tzDayStart(addDays(lastDate, 1)), days: days || 7, rolling: !!days };
+}
+
+export const reviewTitle = (p, W) => W.rolling ? `${p.name} · ${fmtDay(W.startDate)} to ${fmtDay(W.lastDate)}` : `${p.name} · week of ${fmtDay(W.startDate)}`;
+/** The review posted when a project had no activity in the period (no advisors run). */
+export function idlePost(p, W, meta) {
+  const body = `## Verdict\nNo commits, pull requests, Claude Code sessions or checklist changes for ${p.name} between ${fmtDay(W.startDate)} and ${fmtDay(W.lastDate)}.${(p.deadlines || []).length ? `\n\nNext deadline: ${(p.deadlines || []).filter((d) => d.date >= W.endDate).map((d) => `${d.label} (${d.date})`)[0] || "none upcoming"}.` : ""}`;
+  return { type: "project", project_id: p.id, week_start: W.startDate, title: reviewTitle(p, W), verdict: "idle", headline: "No activity this week", body_md: body, meta };
+}
+
 async function reviewProject(p, W, dir, turns, sessions, events) {
+  const t0 = Date.now();
   const b = await projectBundle(p, W, turns, sessions, events);
   const file = path.join(dir, `${p.id}.md`);
   fs.writeFileSync(file, b.text);
-  const title = W.rolling ? `${p.name} · ${fmtDay(W.startDate)} to ${fmtDay(W.lastDate)}` : `${p.name} · week of ${fmtDay(W.startDate)}`;
-  if (W.rolling) b.meta = { ...b.meta, period_days: W.days };
+  const title = reviewTitle(p, W);
+  // runner + duration: compare this machine's runs with a cloud routine's (agent/routine.mjs compare)
+  b.meta = { ...b.meta, runner: "local", ...(W.rolling ? { period_days: W.days } : {}) };
   if (!b.activity) {
-    const body = `## Verdict\nNo commits, pull requests, Claude Code sessions or checklist changes for ${p.name} between ${fmtDay(W.startDate)} and ${fmtDay(W.lastDate)}.${(p.deadlines || []).length ? `\n\nNext deadline: ${(p.deadlines || []).filter((d) => d.date >= W.endDate).map((d) => `${d.label} (${d.date})`)[0] || "none upcoming"}.` : ""}`;
-    const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: "idle", headline: "No activity this week", body_md: body, meta: b.meta };
+    const post = idlePost(p, W, b.meta);
+    const body = post.body_md;
     if (!DRY) await api("POST", "/api/agent/reviews", post);
     log("idle", p.id);
     return { p, verdict: "idle", headline: post.headline, body_md: body, meta: b.meta };
@@ -234,7 +252,7 @@ async function reviewProject(p, W, dir, turns, sessions, events) {
   }
   const cost = reports.reduce((s, r) => s + (r.cost_usd || 0), 0) + (syn.cost_usd || 0);
   const tabs = reports.map((r) => ({ key: r.key, label: r.label, body_md: r.error ? `_This advisor's run failed: ${r.error}_` : r.body_md, verdict: r.verdict || null, headline: r.headline || null }));
-  const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: { ...b.meta, cost_usd: Math.round(cost * 100) / 100, tabs, ...(Array.isArray(syn.proposals) && syn.proposals.length ? { proposals: syn.proposals.slice(0, 5) } : {}) } };
+  const post = { type: "project", project_id: p.id, week_start: W.startDate, title, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: { ...b.meta, cost_usd: Math.round(cost * 100) / 100, duration_s: Math.round((Date.now() - t0) / 1000), tabs, ...(Array.isArray(syn.proposals) && syn.proposals.length ? { proposals: syn.proposals.slice(0, 5) } : {}) } };
   if (!DRY) await api("POST", "/api/agent/reviews", post);
   log(`${p.id} review ${DRY ? "built (dry run, not posted)" : "posted"}`, { verdict: syn.verdict, cost_usd: post.meta.cost_usd, failed: reports.filter((r) => r.error).map((r) => r.key) });
   return { p, verdict: syn.verdict, headline: syn.headline, body_md: syn.body_md, meta: b.meta };
@@ -252,10 +270,8 @@ async function main() {
   // A one-project run (Run now, a project's own schedule) has its own lock, so it doesn't wait on the Monday run.
   const release = DRY ? () => {} : acquireLock(ONLY ? `weekly-${ONLY}` : "weekly", 3 * 60 * 60_000);
   if (!release) return log("another weekly run is in progress", ONLY || "");
-  const win = DAYS ? reviewWindow(todayTZ(), DAYS) : null;
-  const startDate = win ? win.startDate : opt("week") ? mondayOf(opt("week")) : addDays(mondayOf(todayTZ()), -7);
-  const lastDate = win ? win.lastDate : addDays(startDate, 6);
-  const W = { startDate, lastDate, endDate: addDays(lastDate, 1), start: tzDayStart(startDate), end: tzDayStart(addDays(lastDate, 1)), days: DAYS || 7, rolling: !!DAYS };
+  const W = reviewPeriod({ days: DAYS, week: opt("week") });
+  const { startDate } = W;
   const dir = cacheDir("weekly", startDate);
   log("weekly start", W.startDate, { dry: DRY, only: ONLY });
   // Only the full run reports a heartbeat: a one-project review must not read as the Monday run on the Admin page.
@@ -401,4 +417,6 @@ async function main() {
   release();
 }
 
-main().catch((e) => { log("weekly crashed", e.stack || e.message); process.exitCode = 1; });
+// routine.mjs imports projectBundle and fmtDay: run only when started directly.
+const isMain = (() => { try { return fs.realpathSync(fileURLToPath(import.meta.url)) === fs.realpathSync(process.argv[1]); } catch { return false; } })();
+if (isMain) main().catch((e) => { log("weekly crashed", e.stack || e.message); process.exitCode = 1; });
