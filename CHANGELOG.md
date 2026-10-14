@@ -3,6 +3,19 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **A live project with no product numbers is no longer silent.** Until now a project with no metrics source and
+  nothing typed by hand just showed an empty panel, and the Monday reviews said "none recorded" week after week.
+  Now `node agent/metrics.mjs status` lists every live project (a website that answers, or a state that says live)
+  with no snapshot in `metrics.stale_days` and why (no source, a source that never posted, one that stopped);
+  `doctor` names them; each project review is told whether a source exists, and the recap and Jarvis review bundles
+  get a "Live projects with no product numbers" section the Jarvis review must turn into a setting to fix. Once a
+  week the worker adds one todo, "Record this week's product numbers: …", for the projects with no source
+  (`metrics.remind: false` turns it off). `metrics.expect` / `metrics.skip` adjust which projects count as live.
+- **Several metrics sources per project.** `metrics.sources.<id>` may be a list (e.g. a funnel endpoint and a billing
+  endpoint): the numbers are merged into one snapshot, and one failing source no longer stops the others. In `map`
+  paths, a negative array index counts from the end (`weeks.-1.signups`).
+- Upgrade notes: nothing required. New optional keys `metrics.stale_days`, `metrics.remind`, `metrics.expect`,
+  `metrics.skip` (defaults in `agent/lib.mjs`); re-run `node agent/doctor.mjs` to see which projects have no numbers.
 
 ## 0.7.4.8 — 2026-10-14
 - **Spacing scale tokens** (`--s-1` … `--s-10`, 4px base) on `:root`. Every padding, margin and gap in the app now
