@@ -5,6 +5,9 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 ## Unreleased
 
 ## 0.7.4.7 — 2026-10-14
+- **The privacy guard no longer blocks re-pushing public commits.** Updating a branch with `main` pulled in GitHub's
+  merge commit of a PR (authored with your GitHub name), and the pre-push check flagged it although it was already
+  public. The push check now looks only at commits no remote has yet; everything new is checked as before.
 - **A PRD in `docs/` counts, and a PRD without dates is flagged.** Projects that keep `docs/PRD.md` instead of a
   root `PRD.md` now get their milestones read (sync, plan, Timeline moves, first checklist). `sync` and `doctor` list
   every PRD with no dated milestones table, whose Timeline deadlines were silently kept as they were.
