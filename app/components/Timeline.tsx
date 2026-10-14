@@ -357,7 +357,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
             </svg>
             {tip && (
               <div className={`tip tl-tip${tip.y < 110 ? " below" : ""}`} style={{ left: tip.x, top: tip.y }}>
-                <div style={{ marginBottom: 3, fontWeight: 600 }}>{tip.title}</div>
+                <div style={{ marginBottom: "var(--s-1)", fontWeight: 600 }}>{tip.title}</div>
                 {tip.rows.map((r, i) => <div key={i} className={r.tone ? `tl-t-${r.tone}` : undefined}>{r.text}</div>)}
               </div>
             )}
@@ -391,7 +391,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
           </div>
         );
       })()}
-      <div className="legend" style={{ paddingTop: 10 }}>
+      <div className="legend" style={{ paddingTop: "var(--s-2)" }}>
         <span><svg width="12" height="12" aria-hidden="true"><path className="tl-ms" d="M6,0 L12,6 L6,12 L0,6 Z" /></svg>Milestone</span>
         <span><i className="tl-k" />Items due (taller = more)</span>
         <span><i className="tl-k crit" />Critical</span>

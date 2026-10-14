@@ -178,7 +178,7 @@ function ProfitLines({ d, series }: { d: EconomicsData; series: { label: string;
       </svg>
       {hover !== null && (
         <div className="tip" style={{ left: `${tipLeft}%`, top: 10 }}>
-          <div style={{ marginBottom: 3, opacity: .8 }}>{xs[hover]} users</div>
+          <div style={{ marginBottom: "var(--s-1)", opacity: .8 }}>{xs[hover]} users</div>
           {series.map((s) => <div className="row" key={s.label}><i className="dot" data-c={s.color} />{s.label} <b>{fmtNum(s.v[hover], d.currency)}</b></div>)}
         </div>
       )}
@@ -225,7 +225,7 @@ function CostLines({ d, row, users }: { d: EconomicsData; row: number[] | undefi
                     </div>
                   ))}
                 </div>
-              ) : <div className="empty" style={{ padding: "6px 0" }}>None at this point.</div>}
+              ) : <div className="empty" style={{ padding: "var(--s-2) 0" }}>None at this point.</div>}
             </div>
           );
         })}

@@ -47,8 +47,8 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
               <HBars rows={perProject.sort((a, b) => b[1] - a[1]).map(([id, v]) => ({ key: id, label: pname[id]?.name || id, color: pname[id]?.color || "other", v }))} format="minutes" />
               {plan.unscheduled.length > 0 && (
                 <div className="pb" style={{ paddingTop: 0 }}>
-                  <div className="lbl" style={{ marginBottom: 6 }}>Didn&apos;t fit this week ({plan.unscheduled.length})</div>
-                  {plan.unscheduled.map((u) => <div key={u.project_id + u.item_id} style={{ fontSize: 13, padding: "3px 0" }} data-c={pname[u.project_id]?.color}><i className="dot" /> {u.title} <span className="due">· {u.reason}</span></div>)}
+                  <div className="lbl" style={{ marginBottom: "var(--s-2)" }}>Didn&apos;t fit this week ({plan.unscheduled.length})</div>
+                  {plan.unscheduled.map((u) => <div key={u.project_id + u.item_id} style={{ fontSize: 13, padding: "var(--s-1) 0" }} data-c={pname[u.project_id]?.color}><i className="dot" /> {u.title} <span className="due">· {u.reason}</span></div>)}
                 </div>
               )}
             </div>

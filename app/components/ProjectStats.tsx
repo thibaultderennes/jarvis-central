@@ -159,7 +159,7 @@ function WeekColumns({ weeks }: { weeks: Week[] }) {
           <div className="row"><i className="dot" />Finished <b>{weeks[tip.i].done}</b>{weeks[tip.i].done_late ? ` (${weeks[tip.i].done_late} late)` : ""}</div>
         </div>
       )}
-      <div className="legend" style={{ paddingTop: 6 }}>
+      <div className="legend" style={{ paddingTop: "var(--s-2)" }}>
         <span><i className="dot" style={{ background: "var(--ink-3)" }} />Added ({tot.added})</span>
         <span><i className="dot" />Finished ({tot.done})</span>
       </div>
@@ -276,7 +276,7 @@ export default function ProjectStats({ project, product, delivery, today }: { pr
           </div>
           <section className="panel ps-wk">
             <div className="ph"><h3 className="ps-h">Added vs finished per week</h3><span className="sp" /><Link className="hint" href={`/?proj=${encodeURIComponent(project.id)}#box-daily`}>Day by day →</Link></div>
-            <div className="pb" style={{ paddingTop: 6 }}><WeekColumns weeks={delivery.weeks} /></div>
+            <div className="pb" style={{ paddingTop: "var(--s-2)" }}><WeekColumns weeks={delivery.weeks} /></div>
           </section>
         </div>
       </section>

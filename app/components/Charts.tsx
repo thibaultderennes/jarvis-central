@@ -62,7 +62,7 @@ export function StackedColumns({ xs, xLabels, series, values, marker, markerLabe
       </svg>
       {tip && (
         <div className="tip" style={{ left: tip.x, top: tip.y }}>
-          <div style={{ marginBottom: 3, opacity: .8 }}>{tip.title}</div>
+          <div style={{ marginBottom: "var(--s-1)", opacity: .8 }}>{tip.title}</div>
           {tip.rows.length ? tip.rows.map((r) => (
             <div className="row" key={r.label}>{r.color ? <i className="dot" data-c={r.color} /> : <i className="dot" style={{ background: "transparent", border: "1.5px solid currentColor" }} />}{r.label} <b>{r.v}</b></div>
           )) : <div>Nothing</div>}

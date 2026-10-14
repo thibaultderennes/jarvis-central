@@ -76,7 +76,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
           <button className="btn" disabled={pending || !text.trim()}>{pending ? "Sending…" : "Ask / discuss"}</button>
         </div>
       </form>
-      <div className="chips" role="tablist" aria-label="Inbox groups" style={{ padding: "10px 14px", borderBottom: "1px solid var(--line-2)" }}>
+      <div className="chips" role="tablist" aria-label="Inbox groups" style={{ padding: "var(--s-2) var(--s-4)", borderBottom: "1px solid var(--line-2)" }}>
         {GROUPS.map(([g, label, hint]) => <button key={g} role="tab" className="chip" aria-pressed={tab === g} aria-selected={tab === g} title={hint} onClick={() => setTab(g)}>{label} ({counts[g]})</button>)}
       </div>
       <div>
@@ -87,7 +87,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
           return (
             <article className="msg" key={root.id} data-c={p?.color || "other"}>
               <div className="mh">
-                {p && <span style={{ display: "flex", gap: 6, alignItems: "center" }}><i className="dot" />{p.name}</span>}
+                {p && <span style={{ display: "flex", gap: "var(--s-2)", alignItems: "center" }}><i className="dot" />{p.name}</span>}
                 <span>{root.mode === "build" ? "build" : root.mode === "plan" ? "project plan" : root.mode === "review" ? "advisor review" : root.mode === "setup" ? "project setup" : (root.meta as { kind?: string }).kind === "refine" ? "new item" : (root.meta as { kind?: string }).kind === "comment" ? "your comment" : "discuss"}{root.review_id ? " · on a review" : ""}{root.item_id ? ` · item ${root.item_id}` : ""}</span>
                 <span>{mounted ? ago(last.created_at) : ""}</span>
                 {turns.length > 1 && <span>{turns.length} messages</span>}
@@ -110,7 +110,7 @@ function Turn({ m, mounted }: { m: Message; mounted: boolean }) {
   const [label, cls] = ST[m.status] || [m.status, ""];
   const meta = m.meta as { pr_url?: string; duration_s?: number };
   return (
-    <div className="turn" style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+    <div className="turn" style={{ display: "flex", flexDirection: "column", gap: "var(--s-2)" }}>
       <div className="q">{m.thread_id && <span className="pill" style={{ marginRight: 8 }}>{m.mode === "build" ? "build" : "you"}</span>}{m.text}</div>
       {m.reply ? <div className="a" style={{ whiteSpace: "pre-wrap" }}>{m.reply}</div>
         : <div className={`mst ${cls}`} style={{ fontFamily: "var(--mono)", fontSize: 11 }}>{label}{mounted && meta.duration_s ? ` · ${Math.round(meta.duration_s / 60) || "<1"} min` : ""}</div>}

@@ -44,7 +44,7 @@ export default async function AdminPage() {
             <tbody>
               {listed.map((p) => (
                 <tr key={p.id} className={p.archived ? "archived" : undefined} data-c={p.color}>
-                  <td><Link href={`/p/${p.id}`}><i className="dot" />{p.name}</Link>{p.archived && <span className="pill" style={{ marginLeft: 6 }}>archived</span>}</td>
+                  <td><Link href={`/p/${p.id}`}><i className="dot" />{p.name}</Link>{p.archived && <span className="pill" style={{ marginLeft: "var(--s-2)" }}>archived</span>}</td>
                   <td>{p.kind}</td>
                   <td className="dir">{p.dir || "—"}</td>
                   <td>{rank[p.id] ? `slot ${rank[p.id]}` : ""}</td>

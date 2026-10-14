@@ -102,7 +102,7 @@ export default function Costs({ costs, projects, project, currency, today }: Pro
             <div className="pb" role="list">
               {breakdown.map((b) => (
                 <div className="hbar" key={b.key} role="listitem" data-c={b.color}>
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", gap: 7, alignItems: "center" }}><i className="dot" />{b.label}</span>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", display: "flex", gap: "var(--s-2)", alignItems: "center" }}><i className="dot" />{b.label}</span>
                   <span className="track"><span className="fill" style={{ width: `${(b.v / bmax) * 100}%` }} /></span>
                   <span className="v" title={b.others.length ? b.others.map(([cur, v]) => money(v, cur)).join(" + ") : undefined}>{b.v ? money(b.v, b.main) : b.others.map(([cur, v]) => money(v, cur)).join(" + ")}</span>
                 </div>

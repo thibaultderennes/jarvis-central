@@ -25,10 +25,10 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
 
   const thread = sel ? await D.getMessages({ review: sel.id, limit: 100 }) : [];
   if (sel) return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-4)" }}>
       <div className="daynav" style={{ marginTop: 16 }}><Link href="/reviews">‹ All reviews</Link>{sel.project_id && <Link href={`/p/${sel.project_id}?v=docs&r=${sel.id}`} title="Acknowledge it and push its proposed tasks there">Open in {byId[sel.project_id]?.name}</Link>}</div>
       <article className="panel" style={{ padding: "20px 24px" }} data-c={color(sel)}>
-        <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap" }}>
+        <div style={{ display: "flex", gap: "var(--s-2)", alignItems: "center", flexWrap: "wrap" }}>
           <i className="dot" /><span className="lbl">{TYPE[sel.type]}{sel.week_start ? ` · week of ${fmtDate(sel.week_start, { month: "long", day: "numeric" })}` : ""}</span>
           {sel.verdict && <span className={`verdict v-${sel.verdict}`}>{sel.verdict.replace("-", " ")}</span>}
         </div>
@@ -36,7 +36,7 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
         {sel.headline && <p style={{ fontSize: 17, fontWeight: 600, maxWidth: "70ch" }}>{sel.headline}</p>}
         <Markdown>{sel.body_md}</Markdown>
         {(sel.meta?.tabs as { key: string; label: string; body_md: string }[] | undefined)?.map((t) => (
-          <details key={t.key} style={{ borderTop: "1px solid var(--line-2)", padding: "10px 0" }}>
+          <details key={t.key} style={{ borderTop: "1px solid var(--line-2)", padding: "var(--s-2) 0" }}>
             <summary style={{ cursor: "pointer", fontWeight: 600 }}>{t.label}</summary>
             <Markdown>{t.body_md}</Markdown>
           </details>

@@ -35,7 +35,7 @@ export default function Thread({ reviewId, projectId, tab, messages, canBuild }:
           </div>
         );
       })}
-      <form className="composer" style={{ padding: 0, border: 0, marginTop: 10 }} onSubmit={(e) => { e.preventDefault(); send("discuss"); }}>
+      <form className="composer" style={{ padding: 0, border: 0, marginTop: "var(--s-2)" }} onSubmit={(e) => { e.preventDefault(); send("discuss"); }}>
         <textarea id={`thread-${reviewId}`} className="textarea" rows={3} value={text} onChange={(e) => setText(e.target.value)}
           placeholder="Push back, propose an idea, ask why… Claude reads this review and the discussion so far."
           onKeyDown={enterSends} title="Enter sends · Shift+Enter for a new line" />

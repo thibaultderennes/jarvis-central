@@ -257,7 +257,7 @@ export default function Board(props: Props) {
                 );
               })}
             </div>
-            <div className="legend" style={{ paddingTop: 10, borderTop: "1px solid var(--line-2)" }}>
+            <div className="legend" style={{ paddingTop: "var(--s-2)", borderTop: "1px solid var(--line-2)" }}>
               <span><i className="dot" style={{ background: "var(--doing-soft)", border: "1px solid var(--doing)" }} />Calendar event</span>
               {projects.map((p) => <span key={p.id}><i className="dot" data-c={p.color} />{p.name} due</span>)}
               <span><i className="dot" data-c="life" />Personal todo</span>

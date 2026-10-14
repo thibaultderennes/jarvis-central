@@ -50,7 +50,7 @@ export default function ProjectsBoard({ featured, others, today }: { featured: C
       </div>
       {rest.length > 0 && (
         <>
-          <div className="lbl" style={{ marginTop: 6 }}>Other projects · drag one onto a card above to swap it into your top 3</div>
+          <div className="lbl" style={{ marginTop: "var(--s-2)" }}>Other projects · drag one onto a card above to swap it into your top 3</div>
           <div className="minis">
             {rest.map((c) => <Mini key={c.id} c={c} />)}
           </div>

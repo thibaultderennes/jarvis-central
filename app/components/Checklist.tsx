@@ -116,7 +116,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   const chip = (label: string, on: boolean, click: () => void, title?: string) => <button key={label} className="chip" aria-pressed={on} onClick={click} title={title}>{label}</button>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-4)" }}>
       <div className="summary" role="group" aria-label="Filter by section">
         {sections.map((s) => {
           const its = list.filter((i) => i.section === s.id && i.status !== "cancelled"), d = its.filter((i) => i.status === "done").length, g = its.filter((i) => i.status === "doing").length, n = its.length || 1;
@@ -178,7 +178,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
                 </div>
               )}
               {its.map((i) => <Row key={i.id} i={i} s={s} byId={byId} sprint={i.sprint_id ? sprintById.get(i.sprint_id) : undefined} selecting={selecting} selected={sel.includes(i.id)} onSelect={() => toggleSel(i.id)} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
-              {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "8px 14px" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
+              {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "var(--s-2) var(--s-4)" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
               <AddRow projectId={projectId} section={s} today={today} onAdded={setFresh} />
             </div>
           </section>
@@ -440,7 +440,7 @@ function Note({ i, projectId }: { i: Item; projectId: string }) {
     <form className="note" onSubmit={(e) => { e.preventDefault(); if (!dirty || !note.trim() || s.pending) return; s.submit(() => sendNote(projectId, i.id, note), { ok: "Sent", onOk: () => { try { localStorage.removeItem(draftKey); } catch { /* ignore */ } } }); }}>
       <label className="lbl" htmlFor={`note-${i.id}`}>Your answer (Claude reads it when you send it)</label>
       <textarea id={`note-${i.id}`} className="textarea" rows={2} value={note} placeholder="Your call, or a question back · Enter sends, Shift+Enter for a new line" onChange={(e) => change(e.target.value)} onKeyDown={enterSends} />
-      <div className="crow" style={{ gap: 10 }}>
+      <div className="crow" style={{ gap: "var(--s-2)" }}>
         <button className="btn sm" disabled={!dirty || !note.trim() || s.pending}>{s.pending ? "Sending…" : "Send to Claude"}</button>
         {s.err || s.pending || s.ok ? <Ack s={s} busy="Sending…" /> : (
           <span className="due">
