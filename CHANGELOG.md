@@ -3,6 +3,9 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **A PRD in `docs/` counts, and a PRD without dates is flagged.** Projects that keep `docs/PRD.md` instead of a
+  root `PRD.md` now get their milestones read (sync, plan, Timeline moves, first checklist). `sync` and `doctor` list
+  every PRD with no dated milestones table, whose Timeline deadlines were silently kept as they were.
 
 ## 0.7.4.7 — 2026-10-07
 - **Screenshot pass** (Login, Home, Today, a project, Docs and reviews, Finance; desktop and phone; light and dark;

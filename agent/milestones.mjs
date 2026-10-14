@@ -6,7 +6,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { api, makeLog } from "./lib.mjs";
-import { moveMilestoneRows, parseMilestones } from "./structure.mjs";
+import { findPrd, moveMilestoneRows, parseMilestones } from "./structure.mjs";
 
 export const pendingMoves = (p) => (p?.deadlines || []).some((d) => d?.prd);
 
@@ -18,7 +18,7 @@ export async function applyMilestoneMoves(projects, log = makeLog("milestones"))
     if (!p.dir || !fs.existsSync(p.dir)) continue; // folder not on this Mac: stays pending
     let deadlines = p.deadlines.map(({ prd, ...d }) => d);
     try {
-      const file = path.join(p.dir, "PRD.md");
+      const file = findPrd(p.dir) || path.join(p.dir, "PRD.md"); // none: the read below throws ENOENT, as before
       const r = moveMilestoneRows(fs.readFileSync(file, "utf8"), p.deadlines);
       if (r.moved) fs.writeFileSync(file, r.text);
       // The file stays the source of truth: a row edited by hand since the move wins (and is logged).
