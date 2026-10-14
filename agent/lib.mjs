@@ -63,6 +63,8 @@ export const CONFIG_ERROR = _settings.configError;
 export const TZ = process.env.JARVIS_TZ || CONFIG.timezone || "UTC";
 export const PROJECTS_ROOT = CONFIG.projects_root;
 export const OWNER = CONFIG.owner_name || "the owner";
+/** Activity kinds written by machines (calendar feed polls and syncs), never by the owner: kept out of usage counts. */
+export const MACHINE_KINDS = new Set(["calendar_feed", "calendar_sync"]);
 export const ENV_FILE = path.join(HOME, ".config", "jarvis", "env");
 export const LOG_DIR = process.platform === "darwin" ? path.join(HOME, "Library", "Logs", "jarvis") : path.join(HOME, ".local", "state", "jarvis", "logs");
 const CACHE_DIR = path.join(HOME, ".cache", "jarvis");

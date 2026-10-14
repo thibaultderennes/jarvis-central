@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { requireSession } from "./auth";
+import { isAutomatedUA } from "./automation";
 import { sql } from "./db";
 import * as D from "./data";
 import { isDate, today } from "./time";
@@ -324,9 +326,16 @@ export async function pushAllReviewTasks(review_id: string): Promise<{ error?: s
 }
 
 /* ---------- telemetry (feeds the weekly Jarvis review) ---------- */
+// Opens that no other action records (components/LogOpen.tsx). Anything else is logged by the action that does it.
+const OPEN_KINDS = new Set(["review_open", "calendar_view"]);
 export async function track(kind: string, page: string, detail: Record<string, unknown> = {}) {
   await requireSession();
-  await D.logActivity(kind.slice(0, 40), page.slice(0, 120), detail);
+  if (!OPEN_KINDS.has(kind) || typeof page !== "string" || !page.startsWith("/")) return;
+  if (isAutomatedUA((await headers()).get("user-agent"))) return;
+  // Codes only (ids, types, a via): short strings, numbers and booleans.
+  const d = Object.fromEntries(Object.entries(detail || {}).slice(0, 6)
+    .filter(([, v]) => typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 60)));
+  await D.logActivity(kind, page.slice(0, 120), d);
 }
 
 /* ---------- projects: top 3 and per-project settings ---------- */
