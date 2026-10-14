@@ -19,6 +19,7 @@ API contract: `../docs/architecture.md`.
 | `rollover.mjs` | Daily roll-forward: unfinished todos and overdue items back to the top of today by priority, within the day's caps; the worker runs it once a day (rule in `docs/config.md`) |
 | `weekly.mjs` | Weekly reviews: CEO / CMO / PO advisors per project + synthesis, recap, "working with AI" coaching, Jarvis usage |
 | `advisors.mjs` | Persona lookup and advisor prompts |
+| `routine.mjs` | Trial: one project's advisor review run by a Claude Code routine in the cloud (`prompt`, `start`, `next`, `compare`; see `../docs/routines.md`) |
 | `transcripts.mjs` | Reads `~/.claude/projects/*/*.jsonl`: your typed messages + session stats (stays on your machine) |
 | `schedule.mjs` | Renders the three scheduled jobs from your config (launchd on macOS, cron lines on Linux) |
 | `install.sh` / `uninstall.sh` | Load / remove the launchd jobs (macOS) |
