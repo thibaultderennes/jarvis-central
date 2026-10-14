@@ -2,7 +2,8 @@ import { q, sql } from "./db";
 import { addDays, mondayOf, today, TZ } from "./time";
 import { itemUpdate, projectUpsert } from "./sqlbuild";
 import type { BuildMode } from "./projectSettings";
-import { pushPlan, reviewProposals } from "./docsHub";
+import { parseEntry, pushPlan, reviewProposals, topEntries } from "./docsHub";
+import { matchRejected, outcome, topThree, type Advice, type AdviceStatus, type Outcome } from "./ledger";
 
 export type Section = { id: string; name: string; note?: string; notes?: boolean; owner_default?: string };
 export type Project = {
@@ -319,7 +320,10 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
         body_md = excluded.body_md, meta = excluded.meta, created_at = now(),
         acked_at = case when reviews.body_md is distinct from excluded.body_md then null else reviews.acked_at end
       returning *`;
-    return normReview(rows[0]);
+    const rev = normReview(rows[0]);
+    // The follow-through ledger records its Top 3; a ledger failure never loses the review itself.
+    if (rev.type === "project") await syncAdvice(rev).catch((e) => console.error("advice sync failed", rev.id, e));
+    return rev;
   }
   const file = typeof r.meta?.file === "string" && r.meta.file ? r.meta.file : null;
   if (file && !r.week_start) {
@@ -399,6 +403,92 @@ export async function pushAllProposals(review_id: string, actor = "founder"): Pr
   return { added, already, failed };
 }
 export class PushError extends Error { constructor(msg: string, public status = 400) { super(msg); } }
+
+/* ---------- follow-through ledger (lib/ledger.ts) ---------- */
+export type AdviceRow = Advice & { outcome: Outcome; review_title: string };
+const UUID = /^[0-9a-f-]{36}$/;
+const normAdvice = (r: Record<string, unknown>) => ({
+  review_id: String(r.review_id), key: String(r.key), project_id: (r.project_id as string) ?? null, week_start: d10(r.week_start),
+  rank: Number(r.rank) || 0, text: String(r.text || ""), items: Array.isArray(r.items) ? (r.items as string[]) : [],
+  status: r.status as AdviceStatus, reason: String(r.reason || ""), decided_by: (r.decided_by as string) ?? null, decided_at: ts(r.decided_at),
+  pushed_item: typeof r.pushed_item === "string" && !r.pushed_item.startsWith("pending:") ? r.pushed_item : null,
+  review_title: String(r.review_title || ""),
+});
+
+/**
+ * Record a project review's Top 3 in the ledger. Runs on every post; a re-run of the same week keeps the owner's
+ * decisions and drops the open entries it no longer lists. An entry that repeats rejected advice is rejected at once.
+ */
+export async function syncAdvice(r: Review): Promise<void> {
+  if (r.type !== "project" || !r.project_id) return;
+  const ids = new Set((await getItems({ project: r.project_id })).map((i) => i.id));
+  const entries = topThree(topEntries(r.body_md).map((e) => parseEntry(e, "Summary", ids)));
+  const rejected = (await sql()`select key, text, week_start, reason from advice where project_id = ${r.project_id} and status = 'rejected' and review_id <> ${r.id}`)
+    .map((x) => ({ key: String(x.key), text: String(x.text), week_start: d10(x.week_start), reason: String(x.reason || "") }));
+  await sql()`delete from advice where review_id = ${r.id} and status = 'open' and not (key = any(${entries.map((e) => e.key)}))`;
+  for (const e of entries) {
+    const hit = matchRejected(e, rejected);
+    const reason = hit ? `Repeats advice rejected on the review of ${hit.week_start || "an earlier week"}${hit.reason ? `: ${hit.reason}` : ""}` : "";
+    await sql()`insert into advice (review_id, key, project_id, week_start, rank, text, items, status, reason, decided_by, decided_at)
+      values (${r.id}, ${e.key}, ${r.project_id}, ${r.week_start}, ${e.rank}, ${e.text}, ${JSON.stringify(e.items)}, ${hit ? "rejected" : "open"}, ${reason}, ${hit ? "auto" : null}, ${hit ? new Date().toISOString() : null})
+      on conflict (review_id, key) do update set rank = excluded.rank, text = excluded.text, items = excluded.items, project_id = excluded.project_id, week_start = excluded.week_start`;
+  }
+}
+
+/**
+ * Ledger entries with what happened to each (lib/ledger.ts `outcome`, against the live checklist).
+ * `latest` = the Top 3 of each project's newest advisor review (before `before`, when given): what the next review
+ * and the recap open with. A review from before the ledger existed is recorded on first read.
+ */
+export async function getAdvice(opts: { project?: string; review?: string; status?: AdviceStatus; before?: string; latest?: boolean; limit?: number } = {}): Promise<AdviceRow[]> {
+  const where: string[] = [], params: unknown[] = [];
+  let past = false;
+  if (opts.latest) {
+    const w = ["type = 'project'", "project_id is not null", "week_start is not null"], p: unknown[] = [];
+    if (opts.project) { p.push(opts.project); w.push(`project_id = $${p.length}`); }
+    if (opts.before) { p.push(opts.before); w.push(`week_start < $${p.length}`); }
+    const revs = await q(`select distinct on (project_id) * from reviews where ${w.join(" and ")} order by project_id, week_start desc, created_at desc`, p);
+    if (!revs.length) return [];
+    for (const r of revs) {
+      const [has] = await sql()`select 1 from advice where review_id = ${r.id as string} limit 1`;
+      if (!has) await syncAdvice(normReview(r));
+    }
+    params.push(revs.map((r) => r.id)); where.push(`a.review_id = any($${params.length})`);
+    past = true; // the next review is running, or has: the week each Top 3 was for is over
+  }
+  if (opts.review) { if (!UUID.test(opts.review)) return []; params.push(opts.review); where.push(`a.review_id = $${params.length}`); }
+  if (opts.project) { params.push(opts.project); where.push(`a.project_id = $${params.length}`); }
+  if (opts.status) { params.push(opts.status); where.push(`a.status = $${params.length}`); }
+  params.push(Math.min(opts.limit || 100, 1000));
+  const rows = await q(`select a.*, r.pushed->>a.key as pushed_item, r.title as review_title, r.created_at as review_created from advice a join reviews r on r.id = a.review_id
+    ${where.length ? "where " + where.join(" and ") : ""} order by a.week_start desc nulls last, a.project_id, a.rank limit $${params.length}`, params);
+  if (!rows.length) return [];
+  const projects = [...new Set(rows.map((r) => r.project_id as string).filter(Boolean))];
+  const st = new Map<string, string>();
+  for (const i of await sql()`select project_id, id, status from items where project_id = any(${projects})`) st.set(`${i.project_id}\u0000${i.id}`, String(i.status));
+  const weekAgo = Date.now() - 7 * 864e5;
+  return rows.map((r) => {
+    const a = normAdvice(r);
+    const mine = new Map([...a.items, ...(a.pushed_item ? [a.pushed_item] : [])].map((id) => [id, st.get(`${a.project_id}\u0000${id}`) || ""]));
+    return { ...a, outcome: outcome(a, mine, past || Date.parse(ts(r.review_created) || "") < weekAgo) };
+  });
+}
+
+/** The owner's (or an agent's) decision on one entry: done, rejected (never proposed again), or open again. */
+export async function decideAdvice(review_id: string, key: string, status: AdviceStatus, reason = "", by = "founder"): Promise<AdviceRow | null> {
+  if (!UUID.test(review_id)) return null;
+  const set = async () => (await sql()`update advice set status = ${status}, reason = ${status === "open" ? "" : reason.slice(0, 500)},
+    decided_by = ${status === "open" ? null : by}, decided_at = ${status === "open" ? null : new Date().toISOString()}
+    where review_id = ${review_id} and key = ${key} returning key`).length > 0;
+  if (!(await set())) {
+    // A review posted before the ledger existed: record its Top 3, then try again.
+    const r = await getReview(review_id);
+    if (!r || r.type !== "project") return null;
+    await syncAdvice(r);
+    if (!(await set())) return null;
+  }
+  return (await getAdvice({ review: review_id })).find((a) => a.key === key) || null;
+}
 
 /* ---------- kv / activity ---------- */
 export async function kvGet<T = unknown>(key: string): Promise<{ value: T; updated_at: string } | null> {

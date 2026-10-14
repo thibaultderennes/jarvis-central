@@ -23,6 +23,8 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   proposals <review-id>                           the tasks a review proposes: already on the checklist, pushed, or to push (with a key)
   push <review-id> <key> [--section S] [--owner founder|claude|both] [--estimate MIN]   push one proposal to the checklist (never twice)
   push <review-id> --all                          push every proposal not on the checklist yet, each with its own defaults
+  advice <project> [--review ID] [--rejected]     follow-through ledger: the last review's Top 3 and what happened (done/started/ignored/rejected)
+  advice <review-id> <key> done|rejected|open [--reason T]   decide one entry; rejected advice is never proposed again
   audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
   stats [--bucket day|week|month] [--n N] [--project P] [--items]   added / finished / cancelled per bucket (14 days, 12 weeks, 12 months)
   metrics <project> [--days N]                    product numbers per snapshot (users, active_users, visits, revenue…)
@@ -46,7 +48,7 @@ function parse(argv) {
     if (a.startsWith("--")) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel", "items", "unacked"].includes(k)) { flags[k] = next; i++; }
+      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel", "items", "unacked", "rejected"].includes(k)) { flags[k] = next; i++; }
       else flags[k] = true;
     } else pos.push(a);
   }
@@ -254,6 +256,20 @@ async function main() {
         const { item } = await api("POST", "/api/agent/proposals", { review_id: id, key, section: flags.section, owner: flags.owner, estimate_minutes: flags.estimate });
         return out(json ? JSON.stringify(item, null, 2) : `Added to ${item.project_id}/${item.section}: [${item.id}] ${item.title}`);
       } catch (e) { out(`Not pushed: ${e.message}`); process.exit(1); }
+    }
+    case "advice": {
+      const target = need(rest[0], "<project> or <review-id>");
+      if (rest[1]) {
+        const status = need(rest[2], "done|rejected|open");
+        const { advice: a } = await api("PATCH", "/api/agent/advice", { review_id: target, key: rest[1], status, reason: typeof flags.reason === "string" ? flags.reason : "" });
+        return out(json ? JSON.stringify(a, null, 2) : `${a.outcome}: ${a.text}`);
+      }
+      const rs = await api("GET", "/api/agent/advice" + qs(flags.rejected ? { project: target, status: "rejected", limit: 200 } : flags.review ? { review: flags.review } : { project: target, latest: "1" }));
+      if (json) return out(JSON.stringify(rs, null, 2));
+      if (!rs.length) return out(flags.rejected ? "No rejected advice." : "No Top 3 recorded yet.");
+      if (!flags.rejected) out(`${rs[0].review_title} (review ${rs[0].review_id})`);
+      for (const a of rs) out(`${pad(a.outcome, 8)} ${pad(a.key, 9)} ${flags.rejected ? `${a.week_start || ""} ` : ""}${a.text}${a.reason ? `\n         ${a.reason}` : ""}`);
+      return;
     }
     case "audits": {
       const project = need(rest[0], "<project>");
