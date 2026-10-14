@@ -10,6 +10,7 @@ import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
 import { normSiteUrl, websiteKind } from "./website";
 import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSettings";
 import { validateProjectName } from "./newProject";
+import { cleanIds } from "./inbox";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -273,11 +274,14 @@ export async function markOpened(ids: string[]) {
   if (!list.length) return;
   await sql()`update messages set opened_at = now() where id = any(${list}::uuid[]) and opened_at is null and status not in ('new', 'seen', 'working')`;
 }
-export async function markTreated(id: string, treated = true) {
+/** Treat one message or many in a single update (row checkboxes, "Got it" on a project, "Treat all FYI", Undo). */
+export async function markTreated(ids: string | string[], treated = true): Promise<{ ids: string[] }> {
   await requireSession();
-  await D.patchMessage(id, { treated });
-  await D.logActivity("message_treated", "/inbox", { treated });
+  const list = cleanIds(Array.isArray(ids) ? ids : [ids]);
+  const changed = await D.setTreated(list, treated);
+  await D.logActivity("message_treated", "/inbox", { treated, n: changed.length });
   done();
+  return { ids: changed };
 }
 
 /* ---------- docs and reviews (the project page's one place for every report) ---------- */
