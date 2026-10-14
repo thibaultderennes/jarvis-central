@@ -5,6 +5,7 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { scanProjects } from "./projects.mjs";
+import { parseMilestones } from "./structure.mjs";
 import { CONFIG, CONFIG_EXISTS, CONFIG_ERROR, CONFIG_FILE, PROJECTS_ROOT, ENV_FILE, JARVIS_ROOT, TZ, loadConfig, api } from "./lib.mjs";
 
 let fails = 0, warns = 0;
@@ -54,6 +55,8 @@ if (fs.existsSync(PROJECTS_ROOT)) {
   const ps = scanProjects(), missing = ps.filter((p) => !p.hasClaude || !p.hasPrd);
   ok(`projects_root ${PROJECTS_ROOT} (${ps.length} projects)`);
   if (missing.length) warn(`${missing.length} project(s) without CLAUDE.md or PRD.md: ${missing.map((p) => p.id).join(", ")}`, "`node agent/setup.mjs queue <id>` (or `node agent/projects.mjs scaffold`, offline)");
+  const noTable = ps.filter((p) => p.prdFile && !parseMilestones(fs.readFileSync(p.prdFile, "utf8")).length);
+  if (noTable.length) warn(`${noTable.length} PRD(s) without a dated milestones table: ${noTable.map((p) => p.id).join(", ")}; their Timeline deadlines don't follow the file`, "add rows like `| YYYY-MM-DD | milestone |` to the PRD, then `node agent/projects.mjs sync`");
 } else bad(`projects_root ${PROJECTS_ROOT} doesn't exist`, "set projects_root in jarvis.config.json to the folder that holds one folder per project");
 
 // secrets + API
