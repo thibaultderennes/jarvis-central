@@ -4,7 +4,8 @@
 //   planner.adapt            "suggest" (default): notes only · "apply": also caps idle projects · "off"
 //   planner.adapt_min_todos  3: the most an idle project (nothing done in 2 weeks) gets under "apply"
 //
-// Evidence, all read-only: the planner's own todos (source 'plan') and checklist items finished per project
+// Evidence, all read-only: the items the last two week plans gave blocks to (GET /api/agent/plan; the planner's own
+// todos, source 'plan', only when there are no plans) and checklist items finished per project
 // (GET /api/agent/stats items=1) over the 14 days before the planned week; the owner's actions on the site
 // (GET /api/agent/activity) and typed Claude Code messages (agent/transcripts.mjs) for the hours check, with their
 // active Claude minutes per project folder.
@@ -22,17 +23,28 @@ const hourOf = (iso) => Number(new Intl.DateTimeFormat("en-GB", { timeZone: TZ, 
 
 /**
  * Per-project history over the window: {project_id: {planned, todosDone, itemsDone, activeMinutes}}.
- * todos: [{project_id, done, source}] · itemsDone: [{project_id}] · minutes: {project_id: n}
+ * planned: [{project_id, item_id}] one per item per week plan, done when the item was closed in the window ·
+ * todos: [{project_id, done, source}], used only when `planned` is empty (installs from before plans replaced todos) ·
+ * itemsDone: [{project_id, id}] · minutes: {project_id: n}
  */
-export function projectHistory({ todos = [], itemsDone = [], minutes = {} }) {
+export function projectHistory({ planned = [], todos = [], itemsDone = [], minutes = {} }) {
   const h = {};
   const row = (p) => (h[p] ||= { planned: 0, todosDone: 0, itemsDone: 0, activeMinutes: 0 });
-  // Count the planner's own todos; a site from before the `source` column has none marked, so then every project todo counts.
-  const marked = todos.some((t) => t.source === "plan");
-  for (const t of todos) {
-    if (!t.project_id || (marked && t.source !== "plan")) continue;
-    row(t.project_id).planned++;
-    if (t.done) row(t.project_id).todosDone++;
+  if (planned.length) {
+    const closed = new Set(itemsDone.map((i) => `${i.project_id}/${i.id}`));
+    for (const b of planned) {
+      if (!b.project_id) continue;
+      row(b.project_id).planned++;
+      if (closed.has(`${b.project_id}/${b.item_id}`)) row(b.project_id).todosDone++;
+    }
+  } else {
+    // Count the planner's own todos; a site from before the `source` column has none marked, so then every project todo counts.
+    const marked = todos.some((t) => t.source === "plan");
+    for (const t of todos) {
+      if (!t.project_id || (marked && t.source !== "plan")) continue;
+      row(t.project_id).planned++;
+      if (t.done) row(t.project_id).todosDone++;
+    }
   }
   for (const i of itemsDone) if (i.project_id) row(i.project_id).itemsDone++;
   for (const [p, m] of Object.entries(minutes)) if (m > 0) row(p).activeMinutes = m;
@@ -107,8 +119,10 @@ export function hoursCheck({ hours, hoursOfDay, minEvents = 20 }) {
 export async function loadHistory({ weekStart, projects, log = () => {} }) {
   const from = addDays(weekStart, -HISTORY_DAYS), to = addDays(weekStart, -1);
   const since = new Date(from + "T00:00:00Z").toISOString(), until = new Date(weekStart + "T00:00:00Z");
-  const [todos, stats, activity, sessions] = await Promise.all([
+  const plan = (week) => api("GET", "/api/agent/plan" + qs({ week })).catch((e) => { if (e.status !== 404) log("adapt: plan unavailable", week, e.message); return null; });
+  const [todos, plans, stats, activity, sessions] = await Promise.all([
     api("GET", "/api/agent/todos" + qs({ from, to })).catch((e) => { log("adapt: todos unavailable", e.message); return []; }),
+    Promise.all([plan(from), plan(addDays(weekStart, -7))]),
     api("GET", "/api/agent/stats" + qs({ bucket: "day", n: HISTORY_DAYS + 7, items: 1 })).catch((e) => { log("adapt: stats unavailable", e.message); return null; }),
     api("GET", "/api/agent/activity" + qs({ since })).catch((e) => { log("adapt: activity unavailable", e.message); return []; }),
     scan({ since, until }).then((r) => r).catch((e) => { log("adapt: transcripts unavailable", e.message); return null; }),
@@ -120,5 +134,7 @@ export async function loadHistory({ weekStart, projects, log = () => {} }) {
     ...(activity || []).filter((a) => !MACHINE.has(a.kind) && a.at && a.at < until.toISOString()).map((a) => a.at),
     ...(sessions?.turns || []).map((t) => t.timestamp),
   ];
-  return { todos, itemsDone, minutes, hoursOfDay: actions.map(hourOf) };
+  // One entry per item per week plan (an item split into several blocks counts once that week).
+  const planned = plans.filter(Boolean).flatMap((p) => [...new Map((p.blocks || []).map((b) => [`${b.project_id}/${b.item_id}`, { project_id: b.project_id, item_id: b.item_id }])).values()]);
+  return { planned, todos, itemsDone, minutes, hoursOfDay: actions.map(hourOf) };
 }

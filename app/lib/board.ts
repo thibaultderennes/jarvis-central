@@ -1,13 +1,17 @@
 import * as D from "./data";
 import { getEvents, calendarConfigured } from "./calendar";
-import { addDays, timeInTZ, today } from "./time";
+import { addDays, isoInTZ, timeInTZ, today } from "./time";
+import { todayWork, type TodayRow } from "./today";
 import type { BItem } from "@/components/Board";
+
+/** One of Today's checklist rows, as the page gets it. */
+export type WorkRow = TodayRow<BItem>;
 
 /** Focus capacity per day, in minutes (the planner's `max_focus_minutes_per_day`, set as JARVIS_FOCUS_MINUTES on the site). */
 export const CAP_MINUTES = Math.max(60, Number(process.env.JARVIS_FOCUS_MINUTES) || 360);
 
-/** Everything the Today/Week board needs for a date range. */
-export async function boardData(from: string, to: string) {
+/** Everything the Today/Week board needs for a date range. `work` (Today): the day's checklist items, see lib/today.ts. */
+export async function boardData(from: string, to: string, opts: { work?: { day: string; carried: string[] } } = {}) {
   const t = today();
   const [projects, items, todos, cal] = await Promise.all([
     D.getProjects(), D.getItems(), D.getTodos(from, to, true), getEvents(from, to),
@@ -22,8 +26,14 @@ export async function boardData(from: string, to: string) {
     .sort((a, b) => (a.due || "9").localeCompare(b.due || "9") || Number(b.critical) - Number(a.critical)).map(toB);
   // Due in the range: done ones stay (struck through), cancelled ones disappear.
   const due = items.filter((i) => i.status !== "cancelled" && i.due && i.due >= from && i.due <= to).map(toB);
+  let work: { open: WorkRow[]; done: WorkRow[] } = { open: [], done: [] };
+  if (opts.work) {
+    const w = todayWork({ ...opts.work, today: t, items, todos, doneOn: (i) => (i.done_at ? isoInTZ(new Date(i.done_at)) : null) });
+    const row = (r: TodayRow<D.Item>): WorkRow => ({ ...r, item: toB(r.item) });
+    work = { open: w.open.map(row), done: w.done.map(row) };
+  }
   return {
-    today: t, nowTime: timeInTZ(new Date()), todos, backlog, due, capMinutes: CAP_MINUTES,
+    today: t, nowTime: timeInTZ(new Date()), todos, backlog, due, work, capMinutes: CAP_MINUTES,
     events: cal.events, calendarOn: calendarConfigured(), calendarError: cal.error,
     projects: projects.map((p) => ({ id: p.id, name: p.name, color: D.displayColor(p, topIds) })),
   };
