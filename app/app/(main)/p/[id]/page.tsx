@@ -22,7 +22,7 @@ import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
 import { effectiveBuildMode, isBuildMode, nextReview, reviewEvery } from "@/lib/projectSettings";
 import { filterHub, HUB_KINDS, hubDate, hubKind, hubList, isHubKind, reviewProposals, type HubKind } from "@/lib/docsHub";
-import { AckButton, AddAllButton, Proposals } from "@/components/ReviewActions";
+import { AckButton, AddAllButton, Proposals, RerunButton } from "@/components/ReviewActions";
 import "./project.css";
 import "../../finance/finance.css";
 
@@ -335,6 +335,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
         <span className="sp" />
         {/* Stays at the top of the report while you scroll it: read state, and the proposed tasks in one click. */}
         <span className="hub-doc-act">
+          {r.verdict === "failed" && r.week_start && <RerunButton id={r.id} queued={await D.rerunQueued(r.id)} />}
           {toPush > 0 && <a className="btn sm ghost" href={`#props-${r.id}`}>{proposals.length} proposed task{proposals.length === 1 ? "" : "s"} ↓</a>}
           <AddAllButton reviewId={r.id} count={toPush} />
           <AckButton id={r.id} ackedOn={r.acked_at ? fmtDate(r.acked_at.slice(0, 10)) : null} />

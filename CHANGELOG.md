@@ -3,6 +3,14 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **The Monday run survives sleep and timeouts.** On a Mac, `weekly.mjs` now holds `caffeinate -is` until it exits
+  (one-project runs from the worker too), so the machine no longer sleeps mid-run and times out every step after it.
+  An advisor or report whose `claude` hits its time limit (including the exit-143 kill) is retried once on a shorter
+  copy of its bundle. The Jarvis project's review runs first among the projects, and the Jarvis review first among the
+  cross-project reports (before the recap and coaching, so it no longer quotes them in the Monday run). A step that
+  still dies is posted as a red **failed** report in its place, with **Run again**: the worker re-runs that week's
+  project review, or that one report from the project reviews already posted (`weekly.mjs --report jarvis|recap|coaching
+  --week YYYY-MM-DD`). A failed report never replaces one that finished.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

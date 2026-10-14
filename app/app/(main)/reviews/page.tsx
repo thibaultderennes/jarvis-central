@@ -6,6 +6,7 @@ import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
 import { cap, REVIEW_WHEN } from "@/lib/instance";
 import { Glyph, HeaderVec } from "@/components/brand";
+import { RerunButton } from "@/components/ReviewActions";
 
 const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document", security: "Security audit", screening: "Screening" };
 const ORDER = ["recap", "coaching", "jarvis", "project"];
@@ -24,6 +25,7 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
   const color = (r: D.Review) => byId[r.project_id || ""]?.color || (r.type === "coaching" ? "life" : "other");
 
   const thread = sel ? await D.getMessages({ review: sel.id, limit: 100 }) : [];
+  const failed = sel?.verdict === "failed" && !!sel.week_start;
   if (sel) return (
     <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-4)" }}>
       <div className="daynav" style={{ marginTop: 16 }}><Link href="/reviews">‹ All reviews</Link>{sel.project_id && <Link href={`/p/${sel.project_id}?v=docs&r=${sel.id}`} title="Acknowledge it and push its proposed tasks there">Open in {byId[sel.project_id]?.name}</Link>}</div>
@@ -31,6 +33,7 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
         <div style={{ display: "flex", gap: "var(--s-2)", alignItems: "center", flexWrap: "wrap" }}>
           <i className="dot" /><span className="lbl">{TYPE[sel.type]}{sel.week_start ? ` · week of ${fmtDate(sel.week_start, { month: "long", day: "numeric" })}` : ""}</span>
           {sel.verdict && <span className={`verdict v-${sel.verdict}`}>{sel.verdict.replace("-", " ")}</span>}
+          {failed && <><span className="sp" /><RerunButton id={sel.id} queued={await D.rerunQueued(sel.id)} /></>}
         </div>
         <h1 className="page" style={{ marginTop: 8 }}>{sel.title}</h1>
         {sel.headline && <p style={{ fontSize: 17, fontWeight: 600, maxWidth: "70ch" }}>{sel.headline}</p>}
