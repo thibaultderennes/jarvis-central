@@ -17,6 +17,7 @@ import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
 import { syncMetricsDue, remindMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
+import { applyQueuedSettings } from "./settingsapply.mjs";
 import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
 import { prepareWebsiteSkills, websiteBrief, playwrightCommand, githubWebUrl } from "./website.mjs";
@@ -429,6 +430,8 @@ async function pass() {
     await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
+    // "Apply" pressed on a Jarvis review's settings suggestion: write those keys into jarvis.config.json.
+    await applyQueuedSettings(log).catch((e) => logChanged("settings-apply", e.message, "settings apply failed", e.message));
     // A project loaded for the first time, or updated with a foundation gap: queue its setup session (setup.mjs).
     await queueSetupDue(projects, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
