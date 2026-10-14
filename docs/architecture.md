@@ -245,8 +245,9 @@ title contain every word (case- and accent-insensitive, archived projects left o
   The layout is saved per tab in kv `dashboard.layout` (`{overview|timeline|stats: [{id, x, y, w, h, min?}]}`, cleaned by
   `sanitizeLayout`). Overview boxes: Needs you (`app/lib/needs.ts` `needsYou()` → `{rows, count}`: open items in each
   project's decide section owned by you, items with a PR waiting for Approve & merge, replies you haven't opened; oldest
-  first), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
-  upcoming milestones, the next 7 days. Stats: every cross-project chart. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
+  first), Overdue (open items past their due date, oldest first), this week's reviews, the top-3 project cards with
+  pace, sprints this week, inbox; the default layout puts Needs you, Overdue, the reviews and the top 3 first. Timeline:
+  the timeline, upcoming milestones, the next 7 days. Stats: every cross-project chart, folded to their titles by default. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
   Inbox, the Timeline tab, the Stats tab and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · the Timeline tab (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,
   open items' due dates per day, the Sunday-plan blocks of every planned week in range, calendar events; built in `app/lib/timeline.ts`

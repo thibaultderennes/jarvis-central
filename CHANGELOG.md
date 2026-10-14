@@ -3,6 +3,11 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **A lighter default Home.** It now opens on what asks for action: Needs you, a new **Overdue** box (open items past
+  their due date across projects, oldest first, critical first on the same day), this week's reviews, then your top 3.
+  The eight stats boxes start folded to their titles under the Stats section; unfold the ones you use.
+- **Upgrade notes:** a Home layout you already saved stays as it is. To get the new default, open Customize and press
+  **Reset layout**; or add the Overdue box from the library.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

@@ -63,6 +63,29 @@ async function needs(c: Ctx) {
   );
 }
 
+/** The overdue queue: open items past their due date across projects, oldest first, critical first on the same day. */
+async function overdue(c: Ctx) {
+  const { live, byId, topIds } = await c.base();
+  const list = live.filter((i) => D.isOpen(i) && i.due && i.due < c.t).sort((x, y) => x.due!.localeCompare(y.due!) || Number(y.critical) - Number(x.critical));
+  if (!list.length) return <div className="empty"><EmptyArt kind="clear" /><b>Nothing is overdue.</b> Open checklist items past their due date land here, oldest first.</div>;
+  const row = (i: D.Item) => {
+    const p = byId[i.project_id], late = daysBetween(i.due!, c.t);
+    return (
+      <li key={i.project_id + i.id} data-c={D.displayColor(p, topIds)}>
+        <i className="dot" /><Link href={`/p/${p.id}#item-${i.id}`} className="t" title={`${p.name} · ${i.title}`}>{i.title}</Link>
+        {i.critical && <span className="pill crit">critical</span>}
+        <span className="due late">{late === 1 ? "1 d late" : `${late} d late`}</span>
+      </li>
+    );
+  };
+  return (
+    <>
+      <ul className="drows">{list.slice(0, SHOWN).map(row)}</ul>
+      {list.length > SHOWN && <details className="needmore"><summary>Show {list.length - SHOWN} more</summary><ul className="drows">{list.slice(SHOWN).map(row)}</ul></details>}
+    </>
+  );
+}
+
 async function top3(c: Ctx) {
   const { featured, others, topIds, live, reviews } = await c.base();
   const recentFrom = addDays(c.t, -28);
@@ -209,12 +232,13 @@ async function time(c: Ctx) {
   return rows.length ? <HBars rows={rows} format="minutes" /> : <div className="empty">This fills in after the first Monday review reads your Claude sessions for the week.</div>;
 }
 
-export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { needs, top3, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
+export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { needs, overdue, top3, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
 
 /** One-line hints shown in a box's title bar. */
 export async function hintsFor(c: Ctx, ids: string[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (ids.includes("needs")) { const { needs } = await c.base(); if (needs.count) out.needs = `${needs.count} · oldest first`; }
+  if (ids.includes("overdue")) { const { live } = await c.base(); const n = live.filter((i) => D.isOpen(i) && i.due && i.due < c.t).length; if (n) out.overdue = `${n} · oldest first`; }
   if (ids.includes("timeline")) { const d = await c.timeline(); out.timeline = `${fmtDate(d.from)} – ${fmtDate(d.to)}`; }
   if (ids.includes("time")) { const { reviews } = await c.base(); const w = reviews.find((r) => r.type === "project")?.week_start; if (w) out.time = `week of ${fmtDate(w)}`; }
   if (ids.includes("calendar")) out.calendar = `next 7 days · ${TZ.split("/").pop()?.replace("_", " ")}`;
