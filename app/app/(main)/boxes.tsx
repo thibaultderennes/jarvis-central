@@ -36,7 +36,7 @@ export function makeCtx(q: { w?: string; bucket?: string; proj?: string }) {
   };
 }
 
-const KIND: Record<Need["kind"], [string, string]> = { decide: ["Decide", "you"], merge: ["PR ready", "go"], reply: ["Reply", ""] };
+const KIND: Record<Need["kind"], [string, string]> = { decide: ["Decide", "you"], merge: ["PR ready", "go"], reply: ["Claude asks", ""] };
 const SHOWN = 10;
 
 async function needs(c: Ctx) {
@@ -54,7 +54,7 @@ async function needs(c: Ctx) {
       </li>
     );
   };
-  if (!needs.count) return <div className="empty"><EmptyArt kind="clear" /><b>Nothing needs you right now.</b> Decisions only you can make, pull requests waiting for Approve &amp; merge and new replies from Claude land here.</div>;
+  if (!needs.count) return <div className="empty"><EmptyArt kind="clear" /><b>Nothing needs you right now.</b> Decisions only you can make, pull requests waiting for Approve &amp; merge and questions Claude stopped on land here. Everything else Claude did is in From Claude.</div>;
   return (
     <div className="needs">
       <ul className="needlist">{needs.rows.slice(0, SHOWN).map(row)}</ul>
