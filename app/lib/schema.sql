@@ -259,3 +259,6 @@ alter table reviews add column if not exists acked_at timestamptz;
 alter table reviews add column if not exists pushed jsonb not null default '{}';
 update reviews set acked_at = created_at where acked_at is null and created_at < now() - interval '7 days' and not exists (select 1 from kv where key = 'migrate.reviews_ack_backfill');
 insert into kv (key, value) values ('migrate.reviews_ack_backfill', to_jsonb(now())) on conflict (key) do nothing;
+-- 0.7.5. The Jarvis review's "Your settings" suggestions: `decisions` = {suggestion key: {state, at, changes?, error?}}
+-- (Apply queues the config keys for the Mac, Done / Dismiss record the owner's call; next week's review reads it).
+alter table reviews add column if not exists decisions jsonb not null default '{}';
