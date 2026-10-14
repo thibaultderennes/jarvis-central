@@ -82,11 +82,41 @@ day (`metrics.sync_minutes`, default 1440) and posts the result as today's snaps
 - **`command`**: run with the shell in the project folder (time limit `metrics.timeout_seconds`); it must print a
   JSON object. It gets your environment and `~/.config/jarvis/env`, minus the Jarvis agent token.
 - **`map`** (optional): metric key → dotted path into the JSON (`"results.visitors.value"`, `"items.0.count"`).
+  In an array a negative index counts from the end (`"weeks.-1.signups"` is the last week, `-2` the one before).
   Without it every top-level number is taken (or every number under `metrics` when the object has one); a
   `{"value": n}` object counts as `n`.
+- **Several sources for one project**: give a list instead of one object, e.g. a funnel endpoint and a billing
+  endpoint. Their numbers are merged into one snapshot (a later source wins on the same key); when one fails, the
+  others still post and the failure is logged.
+
+```json
+"my-app": [
+  { "url": "https://my-app.example/metrics/funnel?weeks=2", "token_env": "MY_APP_METRICS_TOKEN",
+    "map": { "signups": "weeks.-2.signups", "activated": "weeks.-2.activated" } },
+  { "url": "https://my-app.example/metrics/billing", "token_env": "MY_APP_METRICS_TOKEN", "map": { "paying_users": "paying" } }
+]
+```
 
 The easiest source is an endpoint in your own app that returns the standard keys directly, e.g.
 `{"users": 312, "active_users": 95, "signups": 31, "paying_users": 17, "mrr": 323}`. Keep it behind a secret token.
+
+## When a live project has no numbers
+
+A product that is live but records nothing leaves the Monday reviews with nothing to cite, so Jarvis says so out
+loud instead of staying quiet. A project counts as **live** when its website answers (or you set its address in
+Settings) or its state contains "live". Add ids to `metrics.expect` for a live product without a site (a channel, an
+app), and to `metrics.skip` for a site that isn't a product (an internal tool).
+
+A live project has a **gap** when its newest snapshot is `metrics.stale_days` (default 7) old or more, or it has none.
+
+- `node agent/metrics.mjs status` lists the gaps and why: no source connected, a source that never posted, or one
+  that stopped (the worker log's `metrics source failed` lines say why).
+- `node agent/doctor.mjs` names them as a note.
+- The Monday reviews: each project review is told whether a source exists, and the recap and the Jarvis review get a
+  "Live projects with no product numbers" section, so they flag it as a setting to fix.
+- Once a week (the worker's first pass from Monday), one todo on today: "Record this week's product numbers: …" for
+  the projects with no source. A broken source doesn't get a todo; fix it from the log. `metrics.remind: false`
+  turns the todo off.
 
 ## Delivery
 

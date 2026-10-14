@@ -72,9 +72,17 @@
   "metrics": {
     "sync_minutes": 1440,
     "timeout_seconds": 30,
+    "stale_days": 7,
+    "remind": true,
+    "expect": ["example-channel"],
+    "skip": ["example-internal-tool"],
     "sources": {
       "example-project": { "url": "https://example.com/api/metrics", "token_env": "EXAMPLE_METRICS_TOKEN" },
-      "other-project": { "command": "node scripts/metrics.mjs", "map": { "visits": "traffic.visitors", "users": "accounts.total" } }
+      "other-project": { "command": "node scripts/metrics.mjs", "map": { "visits": "traffic.visitors", "users": "accounts.total" } },
+      "example-channel": [
+        { "url": "https://example.com/api/funnel?weeks=2", "token_env": "EXAMPLE_METRICS_TOKEN", "map": { "signups": "weeks.-2.signups" } },
+        { "command": "node scripts/channel-stats.mjs" }
+      ]
     }
   },
 

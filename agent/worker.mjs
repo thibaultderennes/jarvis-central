@@ -15,7 +15,7 @@ import { planProject } from "./planproject.mjs";
 import { screenProject } from "./screen.mjs";
 import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
-import { syncMetricsDue } from "./metrics.mjs";
+import { syncMetricsDue, remindMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
 import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
@@ -423,6 +423,8 @@ async function pass() {
     await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
     // Product metrics (users, visits, revenue…) from each project's source in the config → the project's Stats view; daily.
     await syncMetricsDue(projects, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
+    // Once a week: one todo naming the live projects with no source and no numbers typed lately (metrics.remind).
+    await remindMetricsDue(projects, log).catch((e) => logChanged("metrics-reminder", e.message, "metrics reminder failed", e.message));
     // Milestones moved on the Timeline: write the new dates into each PRD.md so the next sync keeps them.
     await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.

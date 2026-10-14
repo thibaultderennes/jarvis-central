@@ -6,6 +6,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { scanProjects } from "./projects.mjs";
 import { parseMilestones } from "./structure.mjs";
+import { currentGaps, gapLine, gapOptions } from "./metrics.mjs";
 import { CONFIG, CONFIG_EXISTS, CONFIG_ERROR, CONFIG_FILE, PROJECTS_ROOT, ENV_FILE, JARVIS_ROOT, TZ, loadConfig, api } from "./lib.mjs";
 
 let fails = 0, warns = 0;
@@ -67,7 +68,13 @@ else {
   const env = loadConfig();
   if (!env.JARVIS_URL || !env.JARVIS_AGENT_TOKEN) bad("JARVIS_URL or JARVIS_AGENT_TOKEN missing in the env file", "`node app/scripts/setup.mjs secrets`");
   else {
-    try { const ps = await api("GET", "/api/agent/projects"); ok(`API reachable at ${env.JARVIS_URL} (${ps.length} projects registered)`); if (!ps.length) warn("no projects registered yet", "`node agent/projects.mjs sync`"); }
+    try {
+      const ps = await api("GET", "/api/agent/projects"); ok(`API reachable at ${env.JARVIS_URL} (${ps.length} projects registered)`); if (!ps.length) warn("no projects registered yet", "`node agent/projects.mjs sync`");
+      // Live projects with no product numbers: the Monday reviews can't cite one (docs/metrics.md).
+      const gaps = await currentGaps(ps).catch((e) => (warn(`product numbers not checked: ${e.message}`), null));
+      if (gaps?.length) warn(`${gaps.length} live project(s) with no product numbers in the last ${gapOptions().staleDays} days, so the reviews can't cite one:\n    - ${gaps.map(gapLine).join("\n    - ")}`, "connect a source (metrics.sources.<id> in jarvis.config.json) or type them: `node agent/jarvis.mjs metrics <id> --set users=… --set visits=…`; not a product? add the id to metrics.skip");
+      else if (gaps) ok("every live project has product numbers from the last week");
+    }
     catch (e) { bad(`API not reachable: ${e.message}`, e.status === 401 ? "the token doesn't match the website's JARVIS_AGENT_TOKEN: re-run `node app/scripts/setup.mjs secrets` then redeploy" : "deploy the website (SETUP.md) and check JARVIS_URL"); }
   }
 }
