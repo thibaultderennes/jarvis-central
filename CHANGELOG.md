@@ -20,6 +20,12 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   and Today page already did. The CLI's `set <project> <id> status=done` now ticks the item's todos too.
 - **Upgrade notes:** to use the MCP tools, register the server once:
   `claude mcp add --scope user jarvis -- node /path/to/jarvis/agent/mcp.mjs` (then `/mcp` in Claude Code lists it).
+- **Trial: a project's advisor review as a Claude Code routine** (a cloud session, no awake computer). New
+  `agent/routine.mjs`: `prompt` prints the routine's instructions, `start` / `next` let the routine's own session answer
+  each advisor and the synthesis and post the review, `compare` lists routine runs next to this computer's (time,
+  cost, failed advisors, runs that never posted). Trial runs post a separate "Routine trial · …" report so they never
+  replace that week's review. Project reviews now record `meta.runner` and `meta.duration_s`; `JARVIS_AGENT_TOKEN=proxy-injected`
+  lets the CLI run behind a cloud environment's network secret. Setup and the trial plan: `docs/routines.md`.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
