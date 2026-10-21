@@ -418,7 +418,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
         </section>
       )}
       <details className="tabletoggle">
-        <summary>Show as a list</summary>
+        <summary data-track="Timeline as a list">Show as a list</summary>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead><tr><th>Date</th><th>Lane</th><th>What</th></tr></thead>

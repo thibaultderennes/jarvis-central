@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -10,6 +10,7 @@ import type { CalEvent } from "@/lib/calendar";
 import { lateLabel, type Waiting } from "@/lib/rollover";
 import { EditTitle, type BItem } from "./Board";
 import { Ack, imeGuard, useSubmit } from "./Submit";
+import { logOpen } from "./LogOpen";
 import { Glyph, HeaderVec } from "@/components/brand";
 import { Icon } from "./icons";
 import OverdueQueue from "./OverdueQueue";
@@ -135,7 +136,7 @@ export default function TodayView(props: Props) {
           )}
           {done.length > 0 && (
             <details className="td-done">
-              <summary>Done <span className="ct">{done.length}</span></summary>
+              <summary data-track="Done today">Done <span className="ct">{done.length}</span></summary>
               <ol className="td-list">{done.map((t) => <Row key={t.id} t={t} p={t.project_id ? pmap[t.project_id] : undefined} next={false} late={false} onToggle={() => toggle(t)} onDelete={() => del(t)} />)}</ol>
             </details>
           )}
@@ -151,7 +152,7 @@ export default function TodayView(props: Props) {
         )}
 
         <details className="panel td-later">
-          <summary>
+          <summary data-track="Later">
             <span className="ph-t">Later</span>
             <span className="td-counts">
               <span>{coming.length} coming up</span>
@@ -248,6 +249,10 @@ function QuickAdd({ day, projects }: { day: string; projects: P[] }) {
 const PX = 38; // pixels per hour on the agenda
 function Agenda({ events, todos, blocks, on, error, nowM, pmap, nextEv }: { events: CalEvent[]; todos: Todo[]; blocks: Block[]; on: boolean; error?: string; nowM: number; pmap: Record<string, P>; nextEv?: CalEvent }) {
   const [open, setOpen] = useState(false);
+  // calendar_view: the agenda is on screen beside the day (wide screens), or opened from its header (narrow ones).
+  const body = useRef<HTMLDivElement>(null);
+  const shown = () => !!body.current && getComputedStyle(body.current).display !== "none";
+  useEffect(() => { if (on && shown()) logOpen("calendar_view", "/today", { via: "agenda" }); }, [on]);
   const allDay = events.filter((e) => e.allDay);
   const used = new Set<Block>();
   const entries = [
@@ -266,9 +271,9 @@ function Agenda({ events, todos, blocks, on, error, nowM, pmap, nextEv }: { even
   return (
     <section className={`panel td-rail${open ? " open" : ""}`} aria-labelledby="h-agenda">
       <h2 className="td-railh" id="h-agenda">
-        <button className="td-railhead" aria-expanded={open} onClick={() => setOpen(!open)}><span className="ph-t">Agenda</span><span className="hint">{summary}</span><span className="chev" aria-hidden="true">▾</span></button>
+        <button className="td-railhead" aria-expanded={open} data-track={open ? "Close the agenda" : "Open the agenda"} onClick={() => { if (on && !shown()) logOpen("calendar_view", "/today", { via: "agenda" }); setOpen(!open); }}><span className="ph-t">Agenda</span><span className="hint">{summary}</span><span className="chev" aria-hidden="true">▾</span></button>
       </h2>
-      <div className="td-railbody">
+      <div className="td-railbody" ref={body}>
         {!on && <div className="empty">Google Calendar isn&apos;t connected yet. Add your calendar&apos;s secret iCal address in the site settings and appointments show here.</div>}
         {on && error && <div className="empty">Couldn&apos;t read your calendar just now ({error}). It retries every 5 minutes.</div>}
         {allDay.length > 0 && <div className="td-allday">{allDay.map((e) => <span key={e.id}>{e.title}</span>)}</div>}
@@ -352,7 +357,7 @@ function WaitingLine({ w, pmap }: { w: Waiting; pmap: Record<string, P> }) {
   const crit = w.tasks.filter((t) => t.critical).length;
   return (
     <details className="td-waiting" data-track-section="Waiting">
-      <summary>
+      <summary data-track="Late tasks waiting">
         <b>{w.count} late {w.count === 1 ? "task is" : "tasks are"} waiting</b>
         {crit > 0 && <> · {crit} critical</>}
         {" · "}{w.full && w.load ? `this morning today was already at ${w.load.before} of ${w.load.cap} focus min` : "this morning's carry-over cap was reached"}

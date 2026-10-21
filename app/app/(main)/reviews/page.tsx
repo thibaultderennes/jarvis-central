@@ -4,6 +4,7 @@ import * as D from "@/lib/data";
 import { fmtDate } from "@/lib/time";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
+import LogOpen from "@/components/LogOpen";
 import { cap, REVIEW_WHEN } from "@/lib/instance";
 import { Glyph, HeaderVec } from "@/components/brand";
 import { RerunButton } from "@/components/ReviewActions";
@@ -40,12 +41,14 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
         <Markdown>{sel.body_md}</Markdown>
         {(sel.meta?.tabs as { key: string; label: string; body_md: string }[] | undefined)?.map((t) => (
           <details key={t.key} style={{ borderTop: "1px solid var(--line-2)", padding: "var(--s-2) 0" }}>
-            <summary style={{ cursor: "pointer", fontWeight: 600 }}>{t.label}</summary>
+            <summary style={{ cursor: "pointer", fontWeight: 600 }} data-track={`Review tab: ${t.key}`}>{t.label}</summary>
             <Markdown>{t.body_md}</Markdown>
           </details>
         ))}
         <Thread reviewId={sel.id} projectId={sel.project_id} messages={thread} canBuild />
       </article>
+      <LogOpen kind="review_open" page="/reviews" id={sel.id} detail={{ id: sel.id, type: sel.type, via: "reviews" }} />
+
     </div>
   );
 

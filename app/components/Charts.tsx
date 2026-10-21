@@ -73,7 +73,7 @@ export function StackedColumns({ xs, xLabels, series, values, marker, markerLabe
         {marker && <span><i className="ring" />{markerLabel || "Planned"}</span>}
       </div>
       <details className="tabletoggle">
-        <summary>Show as a table</summary>
+        <summary data-track="Chart as a table">Show as a table</summary>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead><tr><th></th>{series.map((s) => <th key={s.key}>{s.label}</th>)}{marker && <th>{markerLabel || "Planned"}</th>}</tr></thead>

@@ -10,6 +10,7 @@ import WebsiteCard, { type WebsiteRun } from "@/components/WebsiteCard";
 import { siteSummary, websiteKind } from "@/lib/website";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
+import LogOpen from "@/components/LogOpen";
 import ProjectSettings from "@/components/ProjectSettings";
 import PlanButton from "@/components/PlanButton";
 import Costs from "@/components/Costs";
@@ -328,6 +329,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
   const toPush = proposals.filter((x) => x.state === "pushable").length;
   return (
     <article className="panel pb hub-doc">
+      <LogOpen kind="review_open" page={`/p/${p.id}`} id={r.id} detail={{ id: r.id, type: r.type, via: "project" }} />
       <div className="hub-doc-h">
         {r.verdict && <span className={`verdict v-${r.verdict}`}>{r.verdict.replace("-", " ")}</span>}
         <span className="lbl">{r.title}</span>

@@ -157,8 +157,15 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   sendBeacon, at most every 15 s or 25 events, and when the tab is hidden). Labels come from `data-track`, else
   aria-label/title/short button text with the row's own text (item and todo titles) replaced by `…` and numbers by `#`;
   content links are stored by path only; inputs are never read. `data-track-section="…"` names a region, `data-track-off`
-  excludes one. Off when `JARVIS_TRACK_CLICKS=off` (`usage.track_clicks: false`); rows older than
-  `usage.retention_days` (90) are deleted by the Monday run. `activity` keeps the server-side action log.
+  excludes one; every `<summary>` carries a `data-track` name (an unnamed disclosure falls back to its first words, then
+  "Disclosure in <section>"). Automated browsers record nothing: `navigator.webdriver`, a HeadlessChrome/Playwright/
+  Puppeteer user agent (`lib/automation.ts`, checked in the browser and again by `/api/usage`), or a browser that opened
+  a page with `?notrack` (kept in localStorage; `?notrack=0` undoes it). Off when `JARVIS_TRACK_CLICKS=off`
+  (`usage.track_clicks: false`); rows older than `usage.retention_days` (90) are deleted by the Monday run.
+  `activity` keeps the server-side action log, plus two opens logged from the browser by `components/LogOpen.tsx`
+  (server action `track`, only these kinds): `review_open` (`/reviews?id=` or a report in a project's Docs view) and
+  `calendar_view` (`/week`, and the Today agenda when it's on screen). `calendar_feed` / `calendar_sync` rows are
+  machines; the Jarvis review shows them as one line, outside the owner's counts.
 
 ## Agent API
 All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JSON in, JSON out. Errors: `{error}` + 4xx/5xx.

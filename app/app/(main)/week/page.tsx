@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { boardData } from "@/lib/board";
 import { addDays, fmtDate, isDate, mondayOf, today, weekday } from "@/lib/time";
 import Board from "@/components/Board";
+import LogOpen from "@/components/LogOpen";
 import Markdown from "@/components/Markdown";
 import { HBars } from "@/components/Charts";
 import { getPlan } from "@/lib/plan";
@@ -57,6 +58,7 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
         ) : <div className="empty">No plan for this week yet. {cap(PLAN_WHEN)} your Mac looks at what&apos;s due, estimates each item, and fits it around your calendar. The blocks land here as todos and in a &ldquo;Jarvis · work plan&rdquo; Google Calendar.</div>}
       </section>
       <Board mode="week" days={days} {...data} />
+      <LogOpen kind="calendar_view" page="/week" id={w} detail={{ via: "week", week: w }} />
     </>
   );
 }

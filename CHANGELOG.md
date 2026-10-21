@@ -73,6 +73,12 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   `review_open` for the Jarvis review. Marking it read (here or on the project's Docs and reviews) clears the row; a
   newer review replaces it, and reviews older than 14 days drop out. Reviews appear only here, never in the inbox's
   replies, so there is one digest of them, not two.
+- **Cleaner usage data for the Jarvis review.** Automated browsers (Playwright, headless Chrome, anything with
+  `navigator.webdriver`) no longer record page views or clicks, so a screenshot pass can't make pages look like dead
+  ends; open any page with `?notrack` to stop a browser recording (`?notrack=0` turns it back on). Calendar feed polls
+  and syncs are one "machine" line in the review's bundle instead of most of its events. `review_open` and
+  `calendar_view` are now logged (they were listed as "never used" because nothing wrote them). Every disclosure has a
+  name: no more "(disclosure)", and button labels keep spaces between their parts.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

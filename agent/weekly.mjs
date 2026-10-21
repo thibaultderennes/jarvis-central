@@ -19,7 +19,7 @@ import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { api, qs, makeLog, acquireLock, todayTZ, addDays, mondayOf, tzDayStart, parseModelJSON, cacheDir, HOME, JARVIS_ROOT, TZ, CONFIG, OWNER } from "./lib.mjs";
+import { api, qs, makeLog, acquireLock, todayTZ, addDays, mondayOf, tzDayStart, parseModelJSON, cacheDir, HOME, JARVIS_ROOT, TZ, CONFIG, OWNER, MACHINE_KINDS as MACHINE } from "./lib.mjs";
 import { scan, statsForDir, statsByCwd } from "./transcripts.mjs";
 import { runClaude } from "./claude.mjs";
 import { reviewEvery, reviewWindow } from "./projectsettings.mjs";
@@ -442,8 +442,10 @@ async function main() {
   // ---------- Jarvis usage ----------
   // Written first of the three (before the recap and coaching exist), so a long or broken run doesn't lose it.
   const runJarvis = async () => { try {
-    const act = (await get("/api/agent/activity" + qs({ since: W.start.toISOString() }), [])).filter((a) => a.at < W.end.toISOString());
-    const count = (f) => act.reduce((m, a) => { const k = f(a); m[k] = (m[k] || 0) + 1; return m; }, {});
+    const all = (await get("/api/agent/activity" + qs({ since: W.start.toISOString() }), [])).filter((a) => a.at < W.end.toISOString());
+    // Calendar feed polls and syncs are machines, not the owner (472 of 505 events one week): one line, out of every count.
+    const act = all.filter((a) => !MACHINE.has(a.kind)), machine = all.filter((a) => MACHINE.has(a.kind));
+    const count = (f, rows = act) => rows.reduce((m, a) => { const k = f(a); m[k] = (m[k] || 0) + 1; return m; }, {});
     const hour = (a) => Number(new Date(a.at).toLocaleString("en-US", { timeZone: TZ, hour: "2-digit", hour12: false })) % 24;
     const msgs = (await get("/api/agent/messages" + qs({ since: W.start.toISOString() }), [])).filter((m) => m.created_at < W.end.toISOString());
     const turn = msgs.filter((m) => m.replied_at).map((m) => (Date.parse(m.replied_at) - Date.parse(m.created_at)) / 60_000).sort((a, b) => a - b);
@@ -454,7 +456,8 @@ async function main() {
     const tracking = CONFIG.usage?.track_clicks !== false;
     const clicks = tracking ? await get("/api/agent/usage" + qs({ since: W.start.toISOString(), until: W.end.toISOString() }), null) : null;
     const L = [`# Jarvis usage — ${W.startDate}..${W.lastDate}`, "",
-      `## Events: ${act.length}`, `by kind: ${JSON.stringify(byKind)}`, `by page: ${JSON.stringify(count((a) => a.page || "—"))}`,
+      `## Events by the owner: ${act.length}`, `machine (not the owner, left out of every count here): ${machine.length ? Object.entries(count((a) => a.kind, machine)).map(([k, n]) => `${k} ×${n}`).join(", ") : "none"}`,
+      `by kind: ${JSON.stringify(byKind)}`, `by page: ${JSON.stringify(count((a) => a.page || "—"))}`,
       `by day: ${JSON.stringify(count((a) => a.at && new Date(a.at).toLocaleDateString("en-CA", { timeZone: TZ })))}`,
       `by hour (local): ${JSON.stringify(count(hour))}`, `tracked kinds never used: ${known.filter((k) => !byKind[k]).join(", ") || "none"}`, "",
       `## Todos: ${todos.length} planned this week, ${todos.filter((t) => t.done).length} done, ${todos.filter((t) => t.kind === "life").length} life / ${todos.filter((t) => t.kind !== "life").length} work, ${todos.filter((t) => t.item_id).length} linked to checklist items`, "",

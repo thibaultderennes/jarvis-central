@@ -187,7 +187,7 @@ function ProfitLines({ d, series }: { d: EconomicsData; series: { label: string;
         {d.thresholds.length > 0 && <span><i className="ue-dash" />Decision threshold</span>}
       </div>
       <details className="tabletoggle">
-        <summary>Show as a table</summary>
+        <summary data-track="Unit economics as a table">Show as a table</summary>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead><tr><th>Users</th>{series.map((s) => <th key={s.label}>{s.label}</th>)}</tr></thead>
