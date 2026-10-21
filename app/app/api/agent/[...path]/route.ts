@@ -8,7 +8,7 @@ import { VERSION } from "@/lib/instance";
 import { pruneClickEvents, usageSummary } from "@/lib/usage";
 import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
 import { today } from "@/lib/time";
-import { reviewProposals } from "@/lib/docsHub";
+import { reviewProposals, settingSuggestions } from "@/lib/docsHub";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -196,6 +196,26 @@ async function handle(req: NextRequest, ctx: Ctx) {
         if (e instanceof D.PushError) return bad(e.message, e.status);
         throw e;
       }
+    }
+    case "GET settings": {
+      // The Jarvis review's "Your settings" suggestions: ?review=UUID → that review's, with what was decided;
+      // ?queued=1 → every one the owner pressed Apply on that the Mac hasn't written yet (agent/settingsapply.mjs).
+      if (sp.get("queued") === "1") return J(await D.queuedSettings());
+      const r = await D.getReview(sp.get("review") || "");
+      if (!r || r.type !== "jarvis") return bad("review (the id of a Jarvis review) required", 404);
+      return J(settingSuggestions(r));
+    }
+    case "PATCH settings": {
+      // The Mac's answer to a queued Apply: {review_id, key, state: 'applied'|'failed', error?, note?}.
+      if (!b.review_id || typeof b.key !== "string" || !["applied", "failed"].includes(b.state)) return bad("review_id, key and state (applied or failed) are required");
+      const ok = await D.settleSetting(String(b.review_id), b.key, { state: b.state, error: typeof b.error === "string" ? b.error : undefined, note: typeof b.note === "string" ? b.note : undefined });
+      return ok ? J({ ok: true }) : bad("No queued suggestion with that key", 404);
+    }
+    case "POST settings": {
+      // The CLI: {review_id, key, action: 'apply'|'done'|'dismiss'|'undo'}, the same as the buttons on the review.
+      if (!b.review_id || typeof b.key !== "string" || !["apply", "done", "dismiss", "undo"].includes(b.action)) return bad("review_id, key and action (apply, done, dismiss or undo) are required");
+      try { return J({ suggestion: await D.decideSetting(String(b.review_id), b.key, b.action) }); }
+      catch (e) { if (e instanceof D.PushError) return bad(e.message, e.status); throw e; }
     }
     case "POST reviews": {
       if (!b.type || !b.title || typeof b.body_md !== "string") return bad("type, title and body_md are required");

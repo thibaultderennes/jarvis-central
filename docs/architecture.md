@@ -26,6 +26,11 @@
    - `metrics.mjs`: for each project with a source in `metrics.sources.<id>` (a URL fetched with a token from an env
      var, or a command run in the project folder, giving JSON numbers), posts the day's product-metrics snapshot for
      the project's **Stats** view and the Monday review; daily (`metrics.sync_minutes`). Keys: [`metrics.md`](metrics.md).
+   - `settingsapply.mjs`: writes the config keys of a Jarvis review's "Your settings" suggestion into
+     `jarvis.config.json` when the owner pressed Apply on it (`reviews.decisions`, state `queued`), then reports
+     `applied` or `failed` with the reason. Only keys under its `ALLOWED` list (planner, reviews, worker, project_setup,
+     usage, calendars, a few metrics and audits timings) are written, with the same type as the value they replace;
+     anything that points at a file, folder or command stays a hand edit. The worker checks every pass.
    - `rescan.mjs`: runs a project-folder scan when "Refresh project folders" was pressed on the Admin page (kv
      `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand. It updates
      registered projects but never registers a new folder: new folders come back as `proposed` payloads that the owner
@@ -114,7 +119,12 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     once the reply was on screen) → **Treated** (`treated_at`, "Mark treated"; hidden = `archived`). `item_id` = the
     build run of a checklist item.
   - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh'}`
-- `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at, acked_at timestamptz null /* null = new on Docs and reviews */, pushed jsonb /* {proposal key: item code} */)`
+- `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at, acked_at timestamptz null /* null = new on Docs and reviews */, pushed jsonb /* {proposal key: item code} */, decisions jsonb /* Jarvis review: {suggestion key: {state 'queued'|'applied'|'failed'|'done'|'dismissed', at, changes?, error?, note?}} */)`
+  - **Your settings** (the Jarvis review on `/reviews?id=`): each entry under "## Your settings" is a card
+    (`app/lib/docsHub.ts` `settingSuggestions`). `meta.settings` `[{text, changes: [{key, value}]}]` (the review returns
+    them) wins over the free text; a free-text entry that names "`a.b` → value" can be applied. Apply queues the
+    changes (re-read from the review) for `agent/settingsapply.mjs`; Done and Dismiss record the owner's call; next
+    week's Jarvis review bundle lists what was decided.
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - **Docs and reviews** (the project page's `?v=docs`) lists a project's reports newest first (advisor reviews, strategy
     docs, plans and refreshes, project setup, screenings, security audits), with a kind filter (`&k=`), an unread
@@ -187,6 +197,10 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/proposals` | `?review=UUID` | `[{key, state 'pushable'\|'pushed'\|'on-checklist'\|'text', title?, text, detail?, section?, owner?, estimate_minutes?, source, items: [codes]}]` (`app/lib/docsHub.ts`) |
 | POST | `/api/agent/proposals` | `{review_id, all: true}` push every pushable proposal, each with its own defaults | `{items, already, failed}` 201 |
 | POST | `/api/agent/proposals` | `{review_id, key, section?, owner?, estimate_minutes?}` push one pushable proposal to the checklist (the proposal is re-read from the review; the key is claimed atomically) | `{item}` 201; 409 `{error, existing}` when it was already pushed or its title is already an item; 400 for a text-only proposal |
+| GET | `/api/agent/settings` | `?review=UUID` (a Jarvis review) | `[{key, text, changes: [{key, value}], decision: {state, at, changes?, error?, note?} \| null}]`; 404 when it isn't a Jarvis review |
+| GET | `/api/agent/settings` | `?queued=1` | `[{review_id, week_start, key, text, changes, at}]`: Apply pressed, not written yet |
+| POST | `/api/agent/settings` | `{review_id, key, action: 'apply'\|'done'\|'dismiss'\|'undo'}` the same as the buttons (the suggestion is re-read from the review; the state change is conditional) | `{suggestion}`; 409 when the state doesn't allow it (already applied, waiting for the Mac, nothing to undo) |
+| PATCH | `/api/agent/settings` | `{review_id, key, state: 'applied'\|'failed', error?, note?}` the Mac's answer to a queued Apply | `{ok}`; 404 when that key isn't queued |
 | GET | `/api/agent/economics` | `?project=ID` (`&full=1` includes `data`) | `{project_id, file, sha, synced_at, error, error_at}`; 404 when none synced |
 | PUT | `/api/agent/economics` | `{project_id, file, sha, data}` (an evaluated model, `data.v = 1`, ≤ 2 MB) or `{project_id, file, error}` (keeps the last good data) | `{economics}` without `data` |
 | GET | `/api/agent/metrics` | `?project=ID&since=YYYY-MM-DD&limit=N` (default 400, newest kept) | `[{project_id, date, metrics, source, updated_at}]` oldest first; `[]` before the table exists |
