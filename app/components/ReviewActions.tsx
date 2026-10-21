@@ -1,8 +1,9 @@
 "use client";
 import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ackReview, pushAllReviewTasks, pushReviewTask, rerunReview, track } from "@/lib/actions";
+import { ackReview, pushAllReviewTasks, pushReviewTask, rerunReview, track, decideAdviceAction } from "@/lib/actions";
 import { OWNERS, type Proposal } from "@/lib/docsHub";
+import { OUTCOME_LABEL, type Outcome } from "@/lib/ledger";
 import { Ack, imeGuard, useSubmit } from "./Submit";
 
 /** On a 'failed' weekly report: the Mac worker writes that report again, for the same week. */
@@ -70,6 +71,60 @@ export function AddAllButton({ reviewId, count }: { reviewId: string; count: num
       </button>
       <Ack s={s} busy="Adding…" />
     </span>
+  );
+}
+
+type Followed = { key: string; text: string; items: string[]; pushed_item?: string | null; status: string; reason: string; outcome: Outcome };
+
+/**
+ * The follow-through ledger for one review's Top 3: what happened to each, and the owner's call on it. Rejected
+ * advice is never proposed again; the next review and the recap open with this list.
+ */
+export function FollowThrough({ reviewId, projectId, list, titles }: { reviewId: string; projectId: string; list: Followed[]; titles: Record<string, string> }) {
+  return (
+    <section className="hub-props" aria-labelledby={`ft-${reviewId}`}>
+      <div className="hub-props-h">
+        <h3 className="ph-t" id={`ft-${reviewId}`}>Follow-through</h3>
+        <span className="hint">The next review opens with this. Rejected advice is never proposed again.</span>
+      </div>
+      <ul className="hub-plist">
+        {list.map((a) => <FollowRow key={a.key} reviewId={reviewId} projectId={projectId} a={a} titles={titles} />)}
+      </ul>
+    </section>
+  );
+}
+
+function FollowRow({ reviewId, projectId, a, titles }: { reviewId: string; projectId: string; a: Followed; titles: Record<string, string> }) {
+  const [rejecting, setRejecting] = useState(false);
+  const [reason, setReason] = useState("");
+  const s = useSubmit();
+  const ids = [...new Set([...a.items, ...(a.pushed_item ? [a.pushed_item] : [])])];
+  const decide = (status: string, ok: string) => s.submit(() => decideAdviceAction(reviewId, a.key, status, reason), { ok, onOk: () => { setRejecting(false); setReason(""); } });
+  return (
+    <li className="hub-p">
+      <span className="hub-p-t">
+        <span>{a.text}</span>
+        {a.reason && <small>{a.reason}</small>}
+      </span>
+      <span className="hub-p-on">
+        <span className={`pill${a.outcome === "done" || a.outcome === "started" ? " go" : ""}`}>{OUTCOME_LABEL[a.outcome]}</span>
+        {ids.map((id) => <Link key={id} className="pill code" href={itemHref(projectId, id)} title={titles[id] || "No longer on the checklist"}>{id}</Link>)}
+        {a.status === "open" && !rejecting && <>
+          <button className="btn sm ghost" disabled={s.pending} onClick={() => decide("done", "Marked as done")}>Done</button>
+          <button className="btn sm ghost" disabled={s.pending} onClick={() => setRejecting(true)} title="Rejected advice is never proposed again">Reject</button>
+        </>}
+        {a.status !== "open" && <button className="btn sm ghost" disabled={s.pending} onClick={() => decide("open", "Reopened")}>Reopen</button>}
+        <Ack s={s} />
+      </span>
+      {rejecting && (
+        <form className="hub-push" onKeyDown={imeGuard} onSubmit={(e) => { e.preventDefault(); decide("rejected", "Rejected: it won't be proposed again"); }}>
+          <label className="sr" htmlFor={`rej-${reviewId}-${a.key}`}>Why (optional)</label>
+          <input id={`rej-${reviewId}-${a.key}`} className="input" placeholder="Why (optional)" maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} autoFocus />
+          <button className="btn sm" disabled={s.pending}>Reject</button>
+          <button type="button" className="btn sm ghost" onClick={() => { setRejecting(false); setReason(""); }}>Cancel</button>
+        </form>
+      )}
+    </li>
   );
 }
 

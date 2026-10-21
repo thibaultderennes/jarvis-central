@@ -16,6 +16,7 @@ import { cleanIds } from "./inbox";
 import { messageReviewId } from "./docsHub";
 import { DIGEST_KEY, gotIt, type DigestSeen } from "./fromClaude";
 import { laterDate, parseKeys, TRIAGE, type Triage } from "./overdue";
+import { isAdviceStatus } from "./ledger";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -345,6 +346,16 @@ export async function ackReview(id: string, acked: boolean): Promise<{ error?: s
   const r = await D.setReviewAck(id, !!acked);
   if (!r) return { error: "That report is gone." };
   await D.logActivity(acked ? "review_ack" : "review_unack", r.project_id ? `/p/${r.project_id}` : "/reviews", { type: r.type });
+  done();
+  return {};
+}
+/** Follow-through ledger: mark one Top 3 entry done, rejected (never proposed again), or open again. */
+export async function decideAdviceAction(review_id: string, key: string, status: string, reason = ""): Promise<{ error?: string }> {
+  await requireSession();
+  if (typeof key !== "string" || key.length > 80 || !isAdviceStatus(status)) return { error: "Unknown entry." };
+  const a = await D.decideAdvice(review_id, key, status, String(reason || ""));
+  if (!a) return { error: "That entry is gone." };
+  await D.logActivity(`advice_${status}`, a.project_id ? `/p/${a.project_id}` : "/reviews", {});
   done();
   return {};
 }

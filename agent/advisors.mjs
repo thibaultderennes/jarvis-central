@@ -99,16 +99,26 @@ Read the bundle first: ${file} (checklist state and changes, product metrics sna
 
 ${FOCUS[role]}
 
+Follow-through: the bundle opens with the last review's Top 3 and what happened to each (done, started, ignored, rejected) and lists every piece of advice ${OWNER} rejected. Never propose rejected advice again, in any wording. An entry ignored once may come back only with a new reason it matters now; otherwise drop it.
+
 Write your review in your persona's voice and format, adapted to a weekly review, under ~900 words. Use "## " headings. It must start with "## Verdict" (two sentences) and end with "## Top 3 for this week" (each tied to a checklist code in backticks or marked "new item:") and "## Questions for you".
 ${skills ? `\n${skills}\n` : ""}
 Output ONLY one JSON object, no prose before or after, no code fences:
 {"verdict": "on-track" | "at-risk" | "off-track", "headline": "<one sentence, max 120 chars>", "body_md": "<markdown>"}`;
 }
 
-export function synthesisPrompt({ p, W, reports, meta, skills = "" }) {
+export function synthesisPrompt({ p, W, reports, meta, skills = "", ledger = [], rejected = [] }) {
   const parts = reports.map((r) => `### ${r.label}${r.error ? " — FAILED" : ` — [${r.verdict}] ${r.headline}`}\n\n${r.error ? `(This advisor's run failed: ${r.error})` : r.body_md}`).join("\n\n---\n\n");
   return `${reports.length} advisors (${reports.map((r) => r.label.split(" ")[0]).join(", ")}) reviewed the project "${p.name}" for the week ${W.startDate}..${W.lastDate}. Numbers for the week: ${JSON.stringify(meta)}.
 Synthesise their reports for ${OWNER}. Stance: ${STANCE} Use only what the reports say; don't add new facts or numbers.
+${ledger.length ? `
+Last review's Top 3 and what happened (the review is posted with this list on top already: don't repeat it as a section):
+${ledger.join("\n")}
+An entry ignored again: name it in "Where they agree" or "Where they disagree" only if an advisor gives a new reason it matters now.
+` : ""}${rejected.length ? `
+Advice ${OWNER} rejected. Never put any of it, in any wording, in the Top 3 or the proposals, even if an advisor repeats it:
+${rejected.join("\n")}
+` : ""}
 ${HEADLESS}
 Aim for 500 words or fewer in body_md: the advisors' tabs keep the detail.
 
