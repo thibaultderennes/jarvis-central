@@ -259,3 +259,25 @@ alter table reviews add column if not exists acked_at timestamptz;
 alter table reviews add column if not exists pushed jsonb not null default '{}';
 update reviews set acked_at = created_at where acked_at is null and created_at < now() - interval '7 days' and not exists (select 1 from kv where key = 'migrate.reviews_ack_backfill');
 insert into kv (key, value) values ('migrate.reviews_ack_backfill', to_jsonb(now())) on conflict (key) do nothing;
+-- Follow-through ledger (lib/ledger.ts): each advisor review's Top 3, one row per entry (key = its proposal key).
+-- `status` is what the owner decided: open, done, or rejected (never proposed again); "started" and "ignored" are
+-- read from the checklist when the next review runs, not stored. `decided_by` = founder | agent | auto.
+create table if not exists advice (
+  review_id uuid not null references reviews(id) on delete cascade,
+  key text not null,
+  project_id text,
+  week_start date,
+  rank int not null default 0,
+  text text not null,
+  items jsonb not null default '[]',
+  status text not null default 'open' check (status in ('open','done','rejected')),
+  reason text not null default '',
+  decided_by text,
+  decided_at timestamptz,
+  created_at timestamptz not null default now(),
+  primary key (review_id, key)
+);
+create index if not exists advice_project on advice (project_id, week_start desc);
+-- 0.7.5. The Jarvis review's "Your settings" suggestions: `decisions` = {suggestion key: {state, at, changes?, error?}}
+-- (Apply queues the config keys for the Mac, Done / Dismiss record the owner's call; next week's review reads it).
+alter table reviews add column if not exists decisions jsonb not null default '{}';

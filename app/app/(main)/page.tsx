@@ -8,13 +8,17 @@ import { redirect } from "next/navigation";
 import { BOXES, OLD_TAB_ANCHOR, SECTIONS, sanitizeLayout } from "@/lib/dashLayout";
 import DashCanvas from "@/components/DashCanvas";
 import { Glyph } from "@/components/brand";
+import FromClaude from "@/components/FromClaude";
+import { DIGEST_KEY, type DigestSeen } from "@/lib/fromClaude";
+import { digestGroups, digestKey } from "./digest";
+import { overdueQueue } from "@/lib/overdue";
 import { hintsFor, makeCtx, RENDER } from "./boxes";
 import "./home.css";
 
 /**
  * Home: one page. The Now rail (the next thing to do in one sentence, today as a line, one summary line), then every
- * box on one grid you arrange with Customize: your top 3 first, then the overview, the timeline and the stats
- * (layout in kv `dashboard.layout`). The jump links under the title scroll to each section; old `?tab=` links land on
+ * box on one grid you arrange with Customize: Needs you, the overdue queue, the review digest and your top 3 first, then
+ * the rest of the overview, the timeline and the stats, folded (layout in kv `dashboard.layout`). The jump links under the title scroll to each section; old `?tab=` links land on
  * theirs.
  */
 export default async function Home({ searchParams }: { searchParams: Promise<{ tab?: string; w?: string; bucket?: string; proj?: string }> }) {
@@ -22,10 +26,10 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   const sp = await searchParams;
   if (sp.tab) {
     const q = new URLSearchParams(Object.entries(sp).filter(([k, v]) => k !== "tab" && typeof v === "string") as [string, string][]).toString();
-    redirect(`/${q ? `?${q}` : ""}#${OLD_TAB_ANCHOR[sp.tab] || "box-top3"}`);
+    redirect(`/${q ? `?${q}` : ""}#${OLD_TAB_ANCHOR[sp.tab] || "box-needs"}`);
   }
   const c = makeCtx(sp);
-  const [b, saved] = await Promise.all([c.base(), D.kvGet("dashboard.layout")]);
+  const [b, saved, seen] = await Promise.all([c.base(), D.kvGet("dashboard.layout"), D.kvGet<DigestSeen>(DIGEST_KEY)]);
   const when = new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: TZ });
 
   if (!b.projects.length) return (
@@ -43,6 +47,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   const [rendered, hints, rail] = await Promise.all([Promise.all(ids.map((id) => RENDER[id](c))), hintsFor(c, ids), nowRail(c)]);
   const nodes = Object.fromEntries(ids.map((id, i) => [id, rendered[i]]));
   const open = b.live.filter(D.isOpen).length;
+  const digest = digestGroups(b.msgs, seen?.value, b.byId, b.topIds);
 
   return (
     <>
@@ -56,24 +61,25 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
         </nav>
       </div>
       {rail}
+      <FromClaude key={digestKey(digest)} groups={digest} />
       <DashCanvas tab="home" places={places} nodes={nodes} hints={hints} />
     </>
   );
 }
 
-/** The Now rail: one sentence for the next thing (oldest "Needs you" row, else the most overdue item), today as a line, one summary line. */
+/** The Now rail: one sentence for the next thing (oldest "Needs you" row, else the top of the overdue queue), today as a line, one summary line. */
 async function nowRail(c: ReturnType<typeof makeCtx>) {
   const [b, cal, todos] = await Promise.all([c.base(), c.todayCal(), c.todos()]);
   const { needs, byId, topIds, live, projects } = b;
   const open = live.filter(D.isOpen);
-  const overdue = open.filter((i) => i.due && i.due < c.t).sort((x, y) => x.due!.localeCompare(y.due!) || Number(y.critical) - Number(x.critical));
+  const overdue = overdueQueue(open, c.t);
   const dueToday = open.filter((i) => i.due === c.t).length;
   const lateProjects = new Set(overdue.map((i) => i.project_id)).size;
   const nd = projects.flatMap((p) => p.deadlines.filter((d) => d.date >= c.t).map((d) => ({ ...d, p }))).sort((x, y) => x.date.localeCompare(y.date))[0];
   const now = new Date().toLocaleTimeString("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 
   const n = needs.rows[0], o = overdue[0];
-  const verb: Record<string, string> = { decide: "Decide", merge: "Approve the pull request for", reply: "Read Claude's reply on" };
+  const verb: Record<string, string> = { decide: "Decide", merge: "Approve the pull request for", reply: "Answer Claude:" };
   const next = n ? { text: <>{verb[n.kind]} <b>{n.title}</b></>, p: n.project_id ? byId[n.project_id] : null, href: n.href, action: n.action, why: `waiting ${Math.max(0, daysBetween(n.at.slice(0, 10), c.t))} d` }
     : o ? { text: <>Finish <b>{o.title}</b></>, p: byId[o.project_id], href: `/p/${o.project_id}#item-${o.id}`, action: "Open", why: `due ${fmtDate(o.due!)}` } : null;
 
@@ -102,7 +108,7 @@ async function nowRail(c: ReturnType<typeof makeCtx>) {
         {!marks.length && <li className="past"><span className="t" />{calendarConfigured() ? (cal.error ? "Calendar unavailable right now" : "No more events today") : "Connect a calendar to see today here"}</li>}
       </ol>
       <p className="nr-sum">
-        {overdue.length ? <Link href="/today" className="nr-bad"><b>{overdue.length} late</b> in {lateProjects} project{lateProjects === 1 ? "" : "s"}</Link> : "Nothing late"}
+        {overdue.length ? <Link href="/today#td-overdue" className="nr-bad"><b>{overdue.length} late</b> in {lateProjects} project{lateProjects === 1 ? "" : "s"}</Link> : "Nothing late"}
         {dueToday ? ` · ${dueToday} due today` : ""}
         {nd && <> · next deadline <b>{nd.p.name} · {nd.label}</b> {daysBetween(c.t, nd.date) === 0 ? "today" : `in ${daysBetween(c.t, nd.date)} days`}</>}
       </p>

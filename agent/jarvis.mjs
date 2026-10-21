@@ -15,6 +15,8 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   builds [--project P]                            in-progress items Claude is building (build status, PR)
   inbox [--project P] [--all]                     messages waiting for Claude, then replies you haven't treated (pending)
   reply <message-id> "text" [--status answered|done|needs_you]
+  treat <message-id...> | treat --kind fyi|reply|decision|all [--project P]   mark replies treated in one go
+  untreat <message-id...>                         put treated replies back to pending (the undo printed by treat)
   todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
   todos [--from D] [--to D]                       default: today → +6 days
   reviews [--type project|recap|coaching|jarvis|doc|security|screening] [--project P] [--limit N] [--unacked] [--full]
@@ -23,6 +25,10 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   proposals <review-id>                           the tasks a review proposes: already on the checklist, pushed, or to push (with a key)
   push <review-id> <key> [--section S] [--owner founder|claude|both] [--estimate MIN]   push one proposal to the checklist (never twice)
   push <review-id> --all                          push every proposal not on the checklist yet, each with its own defaults
+  advice <project> [--review ID] [--rejected]     follow-through ledger: the last review's Top 3 and what happened (done/started/ignored/rejected)
+  advice <review-id> <key> done|rejected|open [--reason T]   decide one entry; rejected advice is never proposed again
+  settings <review-id> [<key> done|dismiss|undo]   a Jarvis review's "Your settings": list them, or decide one
+                                                  (Apply only from the review page: the agent token can't change your config)
   audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
   stats [--bucket day|week|month] [--n N] [--project P] [--items]   added / finished / cancelled per bucket (14 days, 12 weeks, 12 months)
   metrics <project> [--days N]                    product numbers per snapshot (users, active_users, visits, revenue…)
@@ -46,11 +52,19 @@ function parse(argv) {
     if (a.startsWith("--")) {
       const k = a.slice(2);
       const next = argv[i + 1];
-      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel", "items", "unacked"].includes(k)) { flags[k] = next; i++; }
+      if (next !== undefined && !next.startsWith("--") && !["open", "all", "json", "critical", "life", "full", "force", "cancel", "items", "unacked", "rejected"].includes(k)) { flags[k] = next; i++; }
       else flags[k] = true;
     } else pos.push(a);
   }
   return { pos, flags };
+}
+// Same as inboxKind in app/lib/inbox.ts (the site's "Treat all FYI"): keep the two in step.
+const FYI_KINDS = ["refine", "comment", "merged", "scheduled", "now"], REPORT_MODES = ["review", "plan", "screen"];
+function inboxKind(root, last, turns = 1) {
+  if (["new", "seen", "working"].includes(last.status)) return "working";
+  if (["needs_you", "error"].includes(last.status)) return "decision";
+  if (turns === 1 && (FYI_KINDS.includes(String(root.meta?.kind || "")) || REPORT_MODES.includes(root.mode || ""))) return "fyi";
+  return "reply";
 }
 const out = (x) => process.stdout.write(x + "\n");
 const pad = (s, n) => String(s ?? "").padEnd(n);
@@ -115,6 +129,12 @@ async function main() {
         if (k === "blocked_by") v = v.split(",").map((x) => x.trim()).filter(Boolean); // "" clears
         if (k === "due") v = v === "" || v === "none" ? null : date(v);
         body[k] = v;
+      }
+      // "In progress" on a Claude item is the owner's go for a build, and the owner field decides who builds: a headless
+      // run (the worker, the weekly jobs) may not give either, whatever text it read (docs/audits, H8.2).
+      if (process.env.JARVIS_HEADLESS === "1" && (body.status === "doing" || "owner" in body)) {
+        out("Not changed: only you can set an item in progress or change its owner (on the site, or in your own terminal).");
+        process.exit(2);
       }
       const { item } = await api("PATCH", "/api/agent/items", body);
       return out(json ? JSON.stringify(item, null, 2) : "Updated " + itemLine(item));
@@ -185,6 +205,27 @@ async function main() {
       if (pending.length) { out(`\n# Pending on the owner's side (${pending.length}: replied, opened, not yet marked treated)`); for (const m of pending) show(m); }
       return;
     }
+    case "treat": case "untreat": {
+      // Mark replies treated in one call: by id, or every untreated one of a kind (and project). untreat reverses it.
+      const treated = cmd === "treat";
+      let ids = rest;
+      if (!ids.length) {
+        if (!flags.kind && !flags.project) { out(`Give message ids, or --kind fyi|reply|decision|all [--project P].\n\n${HELP}`); process.exit(2); }
+        const kind = flags.kind && flags.kind !== true ? flags.kind : "all";
+        if (!["fyi", "reply", "decision", "all"].includes(kind)) { out(`Bad kind ${kind}: fyi, reply, decision or all.`); process.exit(2); }
+        const ms = (await api("GET", "/api/agent/messages" + qs({ limit: 200 }))).sort((a, b) => a.created_at.localeCompare(b.created_at)); // newest 200, like the inbox
+        const roots = new Map();
+        for (const m of ms) { const k = m.thread_id || m.id; if (!roots.has(k)) roots.set(k, []); roots.get(k).push(m); }
+        ids = [...roots.values()].filter((t) => !t[0].thread_id).map((t) => ({ root: t[0], last: t[t.length - 1], n: t.length }))
+          .filter(({ root, last }) => !root.archived && !last.archived &&(treated ? !last.treated_at : last.treated_at) && (!flags.project || root.project_id === flags.project))
+          .filter(({ root, last, n }) => { const k = inboxKind(root, last, n); return k !== "working" && (kind === "all" || k === kind); })
+          .map(({ last }) => last.id);
+        if (!ids.length) return out(`Nothing to ${treated ? "treat" : "untreat"}.`);
+      }
+      const r = await api("PATCH", "/api/agent/messages", { ids, treated });
+      if (json) return out(JSON.stringify(r, null, 2));
+      return out(`${treated ? "Treated" : "Back to pending"}: ${r.ids.length} message${r.ids.length === 1 ? "" : "s"}${r.ids.length ? `\n  ${r.ids.join("\n  ")}` : ""}${treated && r.ids.length ? `\nUndo: jarvis untreat ${r.ids.join(" ")}` : ""}`);
+    }
     case "reply": {
       const id = need(rest[0], "<message-id>"), text = need(rest[1], '"text"');
       const status = flags.status || "answered";
@@ -254,6 +295,40 @@ async function main() {
         const { item } = await api("POST", "/api/agent/proposals", { review_id: id, key, section: flags.section, owner: flags.owner, estimate_minutes: flags.estimate });
         return out(json ? JSON.stringify(item, null, 2) : `Added to ${item.project_id}/${item.section}: [${item.id}] ${item.title}`);
       } catch (e) { out(`Not pushed: ${e.message}`); process.exit(1); }
+    }
+    case "advice": {
+      const target = need(rest[0], "<project> or <review-id>");
+      if (rest[1]) {
+        const status = need(rest[2], "done|rejected|open");
+        const { advice: a } = await api("PATCH", "/api/agent/advice", { review_id: target, key: rest[1], status, reason: typeof flags.reason === "string" ? flags.reason : "" });
+        return out(json ? JSON.stringify(a, null, 2) : `${a.outcome}: ${a.text}`);
+      }
+      const rs = await api("GET", "/api/agent/advice" + qs(flags.rejected ? { project: target, status: "rejected", limit: 200 } : flags.review ? { review: flags.review } : { project: target, latest: "1" }));
+      if (json) return out(JSON.stringify(rs, null, 2));
+      if (!rs.length) return out(flags.rejected ? "No rejected advice." : "No Top 3 recorded yet.");
+      if (!flags.rejected) out(`${rs[0].review_title} (review ${rs[0].review_id})`);
+      for (const a of rs) out(`${pad(a.outcome, 8)} ${pad(a.key, 9)} ${flags.rejected ? `${a.week_start || ""} ` : ""}${a.text}${a.reason ? `\n         ${a.reason}` : ""}`);
+      return;
+    }
+    case "settings": {
+      // A Jarvis review's "Your settings": list them, or decide one (the same as the buttons on the review).
+      const id = need(rest[0], "<review-id> (a Jarvis review: jarvis reviews --type jarvis)");
+      if (rest[1]) {
+        const key = rest[1], action = need(rest[2], "done|dismiss|undo");
+        try {
+          const { suggestion } = await api("POST", "/api/agent/settings", { review_id: id, key, action });
+          return out(json ? JSON.stringify(suggestion, null, 2) : action === "apply" ? "Queued: the worker writes it into jarvis.config.json on its next pass." : `Recorded: ${suggestion.decision ? suggestion.decision.state : "undecided"}.`);
+        } catch (e) { out(`Not recorded: ${e.message}`); process.exit(1); }
+      }
+      const ss = await api("GET", "/api/agent/settings" + qs({ review: id }));
+      if (json) return out(JSON.stringify(ss, null, 2));
+      if (!ss.length) return out("This review suggests no settings.");
+      for (const s of ss) {
+        out(`${pad(s.decision?.state || "open", 9)} ${pad(s.key, 9)} ${s.text.length > 160 ? s.text.slice(0, 160) + "…" : s.text}`);
+        for (const c of s.changes) out(`${" ".repeat(19)}${c.key} → ${JSON.stringify(c.value)}`);
+        if (s.decision?.error) out(`${" ".repeat(19)}error: ${s.decision.error}`);
+      }
+      return;
     }
     case "audits": {
       const project = need(rest[0], "<project>");

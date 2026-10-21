@@ -10,6 +10,7 @@ import WebsiteCard, { type WebsiteRun } from "@/components/WebsiteCard";
 import { siteSummary, websiteKind } from "@/lib/website";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
+import LogOpen from "@/components/LogOpen";
 import ProjectSettings from "@/components/ProjectSettings";
 import PlanButton from "@/components/PlanButton";
 import Costs from "@/components/Costs";
@@ -22,7 +23,7 @@ import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
 import { effectiveBuildMode, isBuildMode, nextReview, reviewEvery } from "@/lib/projectSettings";
 import { filterHub, HUB_KINDS, hubDate, hubKind, hubList, isHubKind, reviewProposals, type HubKind } from "@/lib/docsHub";
-import { AckButton, AddAllButton, Proposals } from "@/components/ReviewActions";
+import { AckButton, AddAllButton, Proposals, RerunButton, FollowThrough } from "@/components/ReviewActions";
 import "./project.css";
 import "../../finance/finance.css";
 
@@ -326,8 +327,13 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
   const proposals = reviewProposals(r, items);
   const titles = Object.fromEntries(items.map((i) => [i.id, i.title]));
   const toPush = proposals.filter((x) => x.state === "pushable").length;
+  // The follow-through ledger for an advisor review's Top 3 (a review from before the ledger is recorded on first view).
+  const followed = r.type !== "project" ? [] : await D.getAdvice({ review: r.id })
+    .then(async (l) => (l.length ? l : D.syncAdvice(r).then(() => D.getAdvice({ review: r.id }))))
+    .catch(() => []);
   return (
     <article className="panel pb hub-doc">
+      <LogOpen kind="review_open" page={`/p/${p.id}`} id={r.id} detail={{ id: r.id, type: r.type, via: "project" }} />
       <div className="hub-doc-h">
         {r.verdict && <span className={`verdict v-${r.verdict}`}>{r.verdict.replace("-", " ")}</span>}
         <span className="lbl">{r.title}</span>
@@ -335,6 +341,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
         <span className="sp" />
         {/* Stays at the top of the report while you scroll it: read state, and the proposed tasks in one click. */}
         <span className="hub-doc-act">
+          {r.verdict === "failed" && r.week_start && <RerunButton id={r.id} queued={await D.rerunQueued(r.id)} />}
           {toPush > 0 && <a className="btn sm ghost" href={`#props-${r.id}`}>{proposals.length} proposed task{proposals.length === 1 ? "" : "s"} ↓</a>}
           <AddAllButton reviewId={r.id} count={toPush} />
           <AckButton id={r.id} ackedOn={r.acked_at ? fmtDate(r.acked_at.slice(0, 10)) : null} />
@@ -351,6 +358,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
         <p className="hub-tabhead">{cur.verdict && <span className={`verdict v-${cur.verdict}`}>{cur.verdict.replace("-", " ")}</span>}{cur.headline}</p>
       )}
       <Markdown>{cur ? cur.body_md : r.body_md}</Markdown>
+      {followed.length > 0 && <FollowThrough reviewId={r.id} projectId={p.id} list={followed} titles={titles} />}
       {proposals.length > 0 && <Proposals reviewId={r.id} projectId={p.id} list={proposals} sections={p.sections.map((s) => ({ id: s.id, name: s.name, owner_default: s.owner_default }))} titles={titles} />}
       <Thread reviewId={r.id} projectId={r.project_id} tab={cur?.key || null} messages={thread} canBuild />
     </article>

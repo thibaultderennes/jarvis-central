@@ -8,7 +8,9 @@ import { VERSION } from "@/lib/instance";
 import { pruneClickEvents, usageSummary } from "@/lib/usage";
 import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
 import { today } from "@/lib/time";
-import { reviewProposals } from "@/lib/docsHub";
+import { reviewProposals, settingSuggestions } from "@/lib/docsHub";
+import { cleanIds } from "@/lib/inbox";
+import { isAdviceStatus } from "@/lib/ledger";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -43,11 +45,16 @@ async function handle(req: NextRequest, ctx: Ctx) {
     case "PATCH items": {
       if (!b.project_id || !b.id) return bad("project_id and id are required");
       if (b.status && !["todo", "doing", "done", "cancelled"].includes(b.status)) return bad("status must be todo, doing, done or cancelled");
-      if (b.build_status !== undefined && b.build_status !== null && !["working", "pr_open", "merge_requested", "merged", "failed", "sent_back"].includes(b.build_status)) return bad("bad build_status");
+      if (b.build_status !== undefined && b.build_status !== null && !["working", "pr_open", "merged", "failed", "sent_back"].includes(b.build_status))
+        return bad(b.build_status === "merge_requested" ? "merge_requested only from the owner's Approve & merge on the site" : "bad build_status", b.build_status === "merge_requested" ? 403 : 400);
       if (b.due && !isDate(b.due)) return bad("due must be YYYY-MM-DD");
       const { project_id, id, ...patch } = b;
       const it = await D.updateItem(project_id, id, patch, "agent");
-      return it ? J({ item: it }) : bad("No such item", 404);
+      if (!it) return bad("No such item", 404);
+      // Linked todos follow, as when the owner ticks or reopens it on the site ("doing" leaves them alone).
+      if (b.status === "done" || b.status === "cancelled") await D.syncLinkedTodos(project_id, id, true);
+      else if (b.status === "todo") await D.syncLinkedTodos(project_id, id, false);
+      return J({ item: it });
     }
     case "DELETE items": {
       const p = sp.get("project"), id = sp.get("id");
@@ -91,14 +98,19 @@ async function handle(req: NextRequest, ctx: Ctx) {
     }
     case "PATCH todos": {
       // The daily roll-forward (agent/rollover.mjs): move a todo to a day (null = Someday), reorder, untime, count carries.
+      // `done` ticks or unticks it (the MCP server); a linked item follows, as on the Today page.
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(b.id || ""))) return bad("id (a todo uuid) required");
       if (b.date !== undefined && b.date !== null && !isDate(b.date)) return bad("date must be YYYY-MM-DD or null");
       if ((b.rolled_from && !isDate(b.rolled_from)) || (b.rolled_at && !isDate(b.rolled_at))) return bad("rolled_from and rolled_at must be YYYY-MM-DD");
       if (b.time !== undefined && b.time !== null && !/^\d{2}:\d{2}$/.test(b.time)) return bad("time must be HH:MM or null");
       if (b.sort !== undefined && !Number.isFinite(b.sort)) return bad("sort must be a number");
       if (b.rollovers !== undefined && !(Number.isInteger(b.rollovers) && b.rollovers >= 0)) return bad("rollovers must be a whole number, 0 or more");
-      const t = await D.patchTodo(String(b.id), { date: b.date, sort: b.sort, time: b.time, rollovers: b.rollovers, rolled_from: b.rolled_from, rolled_at: b.rolled_at });
-      return t ? J({ todo: t }) : bad("No such todo", 404);
+      if (b.done !== undefined && typeof b.done !== "boolean") return bad("done must be true or false");
+      const t = await D.patchTodo(String(b.id), { date: b.date, sort: b.sort, time: b.time, rollovers: b.rollovers, rolled_from: b.rolled_from, rolled_at: b.rolled_at, done: b.done });
+      if (!t) return bad("No such todo", 404);
+      // Unticking goes back to todo, never doing: doing is the go signal that queues a build on Claude's items.
+      if (b.done !== undefined && t.project_id && t.item_id) await D.updateItem(t.project_id, t.item_id, { status: b.done ? "done" : "todo" }, "agent");
+      return J({ todo: t });
     }
 
     case "GET messages": return J(await D.getMessages({ thread: sp.get("thread") || undefined, review: sp.get("review") || undefined, status: sp.get("status") || undefined, limit: +(sp.get("limit") || (sp.get("since") ? 200 : 20)), since: sp.get("since") || undefined, includeArchived: true }));
@@ -110,6 +122,13 @@ async function handle(req: NextRequest, ctx: Ctx) {
       return J({ message: await D.insertMessage({ text: String(b.text), project_id: b.project_id, status: b.status, reply: b.reply, meta: b.meta, mode: b.mode, item_id: b.item_id, thread_id: b.thread_id }) }, 201);
     }
     case "PATCH messages": {
+      // Bulk: { ids: [...], treated: true|false } treats several at once (agent CLI `jarvis treat`).
+      if (b.ids !== undefined) {
+        const ids = cleanIds(b.ids);
+        if (!ids.length) return bad("ids must be a list of message uuids");
+        if (typeof b.treated !== "boolean") return bad("treated (true or false) required with ids");
+        return J({ treated: b.treated, ids: await D.setTreated(ids, b.treated) });
+      }
       if (!b.id) return bad("id required");
       const msg = await D.patchMessage(b.id, b);
       return msg ? J({ message: msg }) : bad("No such message", 404);
@@ -196,6 +215,44 @@ async function handle(req: NextRequest, ctx: Ctx) {
         if (e instanceof D.PushError) return bad(e.message, e.status);
         throw e;
       }
+    }
+    case "GET advice": {
+      // The follow-through ledger: Top 3 entries with what happened to each (lib/ledger.ts). latest=1 → each project's
+      // newest advisor review only (before=YYYY-MM-DD: older than that week); status=rejected → advice never to repeat.
+      const st = sp.get("status") || undefined, before = sp.get("before") || undefined;
+      if (st && !isAdviceStatus(st)) return bad("status must be open, done or rejected");
+      const status = st && isAdviceStatus(st) ? st : undefined;
+      if (before && !isDate(before)) return bad("before must be YYYY-MM-DD");
+      try { return J(await D.getAdvice({ project: sp.get("project") || undefined, review: sp.get("review") || undefined, status, before, latest: sp.get("latest") === "1", limit: +(sp.get("limit") || 100) })); }
+      catch (e) { return J({ error: `advice unavailable (has the deploy migrated?): ${(e as Error).message}` }, 503); }
+    }
+    case "PATCH advice": {
+      // {review_id, key, status: done|rejected|open, reason?}: a decision on one Top 3 entry.
+      if (!b.review_id || typeof b.key !== "string" || !isAdviceStatus(b.status)) return bad("review_id, key and status (open, done or rejected) are required");
+      const a = await D.decideAdvice(String(b.review_id), b.key, b.status, typeof b.reason === "string" ? b.reason : "", "agent");
+      return a ? J({ advice: a }) : bad("No such entry in that review's Top 3", 404);
+    }
+    case "GET settings": {
+      // The Jarvis review's "Your settings" suggestions: ?review=UUID → that review's, with what was decided;
+      // ?queued=1 → every one the owner pressed Apply on that the Mac hasn't written yet (agent/settingsapply.mjs).
+      if (sp.get("queued") === "1") return J(await D.queuedSettings());
+      const r = await D.getReview(sp.get("review") || "");
+      if (!r || r.type !== "jarvis") return bad("review (the id of a Jarvis review) required", 404);
+      return J(settingSuggestions(r));
+    }
+    case "PATCH settings": {
+      // The Mac's answer to a queued Apply: {review_id, key, state: 'applied'|'failed', error?, note?}.
+      if (!b.review_id || typeof b.key !== "string" || !["applied", "failed"].includes(b.state)) return bad("review_id, key and state (applied or failed) are required");
+      const ok = await D.settleSetting(String(b.review_id), b.key, { state: b.state, error: typeof b.error === "string" ? b.error : undefined, note: typeof b.note === "string" ? b.note : undefined });
+      return ok ? J({ ok: true }) : bad("No queued suggestion with that key", 404);
+    }
+    case "POST settings": {
+      // The CLI: {review_id, key, action: 'done'|'dismiss'|'undo'}. Apply (which changes jarvis.config.json) only from
+      // the owner's session on the review page: a headless run holding the agent token must not change the config.
+      if (b.action === "apply") return bad("Apply only from the review page", 403);
+      if (!b.review_id || typeof b.key !== "string" || !["done", "dismiss", "undo"].includes(b.action)) return bad("review_id, key and action (done, dismiss or undo) are required");
+      try { return J({ suggestion: await D.decideSetting(String(b.review_id), b.key, b.action) }); }
+      catch (e) { if (e instanceof D.PushError) return bad(e.message, e.status); throw e; }
     }
     case "POST reviews": {
       if (!b.type || !b.title || typeof b.body_md !== "string") return bad("type, title and body_md are required");

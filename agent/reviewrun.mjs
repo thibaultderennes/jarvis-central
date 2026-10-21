@@ -2,11 +2,15 @@
 // "Run now". Both are inbox messages with mode 'review'; the worker runs `weekly.mjs --only <id> --days <N>` for each.
 //
 //   node reviewrun.mjs due     which projects the worker would queue now (no API writes)
+//   node reviewrun.mjs words [N]   word counts of the last N project reviews (default 20): synthesis and each advisor,
+//                              "before→after" the stop-slop pass when the review recorded it (reviews pack, skillpacks.mjs)
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { api, qs, cacheDir, dateTZ, todayTZ, AGENT_DIR } from "./lib.mjs";
 import { reviewEvery, reviewsDue } from "./projectsettings.mjs";
+import { REPORTS, REPORT_NAMES, rerunArgs } from "./weeklyrun.mjs";
+import { wordCount } from "./skillpacks.mjs";
 
 const OPEN = ["new", "seen", "working"];
 const CHECK_EVERY_MS = 60 * 60_000; // the due check runs at most once an hour
@@ -54,26 +58,33 @@ const runWeekly = (args, timeoutMs) => new Promise((resolve) => {
     resolve({ ok: !err, error: err ? (String(stderr || "").trim().split("\n").pop() || err.message) : null }));
 });
 
-/** A mode 'review' message: the advisor review of one project over its last N days, then the reply in the inbox. */
+/**
+ * A mode 'review' message: the advisor review of one project over its last N days, then the reply in the inbox.
+ * meta.kind 'rerun' (Run again on a failed report) re-runs that calendar week instead: the project's review, or
+ * one cross-project report (meta.report: jarvis|recap|coaching, no project).
+ */
 export async function runProjectReview(message, project, log) {
-  if (!project) throw new Error("Pick a project for the review.");
-  const days = Math.max(1, Math.min(90, Math.round(Number(message.meta?.days)) || reviewEvery(project)));
+  const rerun = message.meta?.kind === "rerun" ? rerunArgs(message.meta, project?.id) : null;
+  const report = rerun && REPORTS.includes(message.meta.report) ? message.meta.report : null;
+  if (!project && !report) throw new Error("Pick a project for the review.");
+  const name = report ? `the ${REPORT_NAMES[report]}` : project.name;
+  const days = report ? null : Math.max(1, Math.min(90, Math.round(Number(message.meta?.days)) || reviewEvery(project)));
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "working", meta: { mode: "review", days } });
   const t0 = Date.now();
-  log("review run", project.id, { days, kind: message.meta?.kind });
-  // Three advisors and a synthesis, each with its own time limit in weekly.mjs: allow them all.
-  const res = await runWeekly(["--only", project.id, "--days", String(days)], 80 * 60_000);
+  log("review run", project?.id || report, { days, kind: message.meta?.kind, week: rerun ? message.meta.week : undefined });
+  // Three advisors and a synthesis, each with its own time limit and one retry in weekly.mjs: allow them all.
+  const res = await runWeekly(rerun || ["--only", project.id, "--days", String(days)], 150 * 60_000);
   const duration_s = Math.round((Date.now() - t0) / 1000);
-  const latest = res.ok ? (await api("GET", "/api/agent/reviews" + qs({ type: "project", project: project.id, limit: 5 })).catch(() => []))
+  const latest = res.ok ? (await api("GET", "/api/agent/reviews" + qs({ type: report || "project", ...(report ? {} : { project: project.id }), ...(rerun ? { week: message.meta.week } : {}), limit: 5 })).catch(() => []))
     .filter((r) => +new Date(r.created_at) >= t0 - 60_000).sort((a, b) => b.created_at.localeCompare(a.created_at))[0] : null;
-  if (!res.ok || !latest) {
-    const why = res.error || "the run finished without posting a review";
-    await api("PATCH", "/api/agent/messages", { id: message.id, status: "error", reply: `The review of ${project.name} didn't finish: ${why.slice(0, 400)}. The worker log has the details; press Run now to try again.`, meta: { mode: "review", days, duration_s } });
-    return log("review failed", project.id, why);
+  if (!res.ok || !latest || latest.verdict === "failed") {
+    const why = res.error || (latest ? String(latest.meta?.error || latest.headline).split("\n")[0] : "the run finished without posting a review");
+    await api("PATCH", "/api/agent/messages", { id: message.id, status: "error", reply: `The review of ${name} didn't finish: ${why.slice(0, 400)}. The worker log has the details; press ${rerun ? "Run again" : "Run now"} to try again.`, meta: { mode: "review", days, duration_s } });
+    return log("review failed", project?.id || report, why);
   }
-  const reply = `**${latest.title}**${latest.verdict ? ` · ${latest.verdict.replace("-", " ")}` : ""}\n\n${latest.headline || "Review posted."}\n\nIt is on ${project.name}'s Reviews page.`;
-  await api("PATCH", "/api/agent/messages", { id: message.id, status: "answered", reply, meta: { mode: "review", days, review: latest.id, duration_s, cost_usd: latest.meta?.cost_usd ?? null } });
-  log("review done", project.id, { verdict: latest.verdict, duration_s });
+  const reply = `**${latest.title}**${latest.verdict ? ` · ${latest.verdict.replace("-", " ")}` : ""}\n\n${latest.headline || "Review posted."}\n\nIt is on ${report ? "the" : `${project.name}'s`} Reviews page.`;
+  await api("PATCH", "/api/agent/messages", { id: message.id, status: "answered", reply, meta: { mode: "review", days, review_id: latest.id, review: latest.id, duration_s, cost_usd: latest.meta?.cost_usd ?? null } });
+  log("review done", project?.id || report, { verdict: latest.verdict, duration_s });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {
@@ -82,5 +93,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const projects = (await api("GET", "/api/agent/projects")).filter((p) => !p.archived);
     const due = await dueNow(projects);
     for (const p of projects.filter((x) => x.reviews_enabled !== false)) console.log(p.id.padEnd(22), `every ${reviewEvery(p)} days`, due.some((d) => d.id === p.id) ? "· due now" : reviewEvery(p) === 7 ? "· weekly run" : "");
-  } else console.log("usage: node reviewrun.mjs due");
+  } else if (cmd === "words") {
+    const n = Math.max(1, Math.min(200, Number(process.argv[3]) || 20));
+    const rows = await api("GET", "/api/agent/reviews" + qs({ type: "project", limit: n }));
+    const fmt = (w, text) => (w ? (w.before ? `${w.before}→${w.after}` : String(w.after)) : String(wordCount(text)));
+    for (const r of rows) {
+      const w = r.meta?.words || {};
+      const tabs = (r.meta?.tabs || []).map((t) => `${t.key} ${fmt(w[t.key], t.body_md)}`).join(", ");
+      console.log(`${dateTZ(new Date(r.created_at))} ${String(r.project_id).padEnd(12)} synthesis ${fmt(w.synthesis, r.body_md).padEnd(10)} ${tabs}`);
+    }
+  } else console.log("usage: node reviewrun.mjs due | words [N]");
 }

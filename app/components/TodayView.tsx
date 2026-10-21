@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import Link from "next/link";
 import { DndContext, KeyboardSensor, PointerSensor, TouchSensor, closestCenter, useSensor, useSensors, type DragEndEvent } from "@dnd-kit/core";
 import { SortableContext, arrayMove, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from "@dnd-kit/sortable";
@@ -10,8 +10,11 @@ import type { CalEvent } from "@/lib/calendar";
 import { lateLabel, type Waiting } from "@/lib/rollover";
 import { EditTitle, type BItem } from "./Board";
 import { Ack, imeGuard, useSubmit } from "./Submit";
+import { logOpen } from "./LogOpen";
 import { Glyph, HeaderVec } from "@/components/brand";
 import { Icon } from "./icons";
+import OverdueQueue from "./OverdueQueue";
+import { overdueQueue } from "@/lib/overdue";
 
 type P = { id: string; name: string; color: string };
 type Block = { project_id: string; item_id: string; title: string; start: string; end: string };
@@ -52,7 +55,8 @@ export default function TodayView(props: Props) {
   const dueHere = props.due.filter((i) => i.due === day && !onList.has(key(i)) && !handled.has(key(i)));
   const dueOpen = dueHere.filter((i) => i.status !== "done").sort((a, b) => Number(b.critical) - Number(a.critical));
   const backlog = props.backlog.filter((i) => !handled.has(key(i)) && !onList.has(key(i)) && i.due !== day);
-  const overdue = backlog.filter((i) => i.due && i.due < today).sort((a, b) => Number(b.critical) - Number(a.critical) || a.due!.localeCompare(b.due!));
+  // Every overdue open item, on the list or not: its own panel on today, critical first (lib/overdue.ts).
+  const overdue = useMemo(() => overdueQueue(props.backlog, today).map((i) => ({ ...i, due: i.due! })), [props.backlog, today]);
   const coming = backlog.filter((i) => !(i.due && i.due < today));
   const suggest = props.unplanned.filter((u) => !onList.has(`${u.project_id}/${u.item_id}`) && !handled.has(`${u.project_id}/${u.item_id}`));
   const lateTodo = (t: Todo) => { const k = tkey(t); const i = k ? props.backlog.find((x) => key(x) === k) : null; return !!i?.due && i.due < today; };
@@ -132,7 +136,7 @@ export default function TodayView(props: Props) {
           )}
           {done.length > 0 && (
             <details className="td-done">
-              <summary>Done <span className="ct">{done.length}</span></summary>
+              <summary data-track="Done today">Done <span className="ct">{done.length}</span></summary>
               <ol className="td-list">{done.map((t) => <Row key={t.id} t={t} p={t.project_id ? pmap[t.project_id] : undefined} next={false} late={false} onToggle={() => toggle(t)} onDelete={() => del(t)} />)}</ol>
             </details>
           )}
@@ -140,18 +144,24 @@ export default function TodayView(props: Props) {
 
         <Agenda events={evs} todos={list} blocks={props.blocks} on={props.calendarOn} error={props.calendarError} nowM={nowM} pmap={pmap} nextEv={nextEv} />
 
+        {overdue.length > 0 && (
+          <section id="td-overdue" className="panel td-overdue" aria-labelledby="h-overdue">
+            <div className="td-oqh"><h2 className="ph-t" id="h-overdue">Overdue</h2><span className="hint">every project, critical first</span></div>
+            <OverdueQueue items={overdue} projects={pmap} today={today} page="/today" limit={10} />
+          </section>
+        )}
+
         <details className="panel td-later">
-          <summary>
+          <summary data-track="Later">
             <span className="ph-t">Later</span>
             <span className="td-counts">
-              {overdue.length > 0 && <span className="late">{overdue.length} overdue</span>}
               <span>{coming.length} coming up</span>
               <span>{someday.length} someday</span>
               {suggest.length > 0 && <span>{suggest.length} from the plan</span>}
             </span>
           </summary>
-          <Later overdue={overdue} coming={coming} someday={someday} suggest={suggest} pmap={pmap} projects={projects} today={today} isToday={isToday}
-            onPull={pull} onDone={finish} onShift={shift} onTodo={(t) => move(t, day)} onDelete={del} />
+          <Later coming={coming} someday={someday} suggest={suggest} pmap={pmap} projects={projects} today={today} isToday={isToday}
+            onPull={pull} onTodo={(t) => move(t, day)} onDelete={del} />
         </details>
       </div>
     </div>
@@ -239,6 +249,10 @@ function QuickAdd({ day, projects }: { day: string; projects: P[] }) {
 const PX = 38; // pixels per hour on the agenda
 function Agenda({ events, todos, blocks, on, error, nowM, pmap, nextEv }: { events: CalEvent[]; todos: Todo[]; blocks: Block[]; on: boolean; error?: string; nowM: number; pmap: Record<string, P>; nextEv?: CalEvent }) {
   const [open, setOpen] = useState(false);
+  // calendar_view: the agenda is on screen beside the day (wide screens), or opened from its header (narrow ones).
+  const body = useRef<HTMLDivElement>(null);
+  const shown = () => !!body.current && getComputedStyle(body.current).display !== "none";
+  useEffect(() => { if (on && shown()) logOpen("calendar_view", "/today", { via: "agenda" }); }, [on]);
   const allDay = events.filter((e) => e.allDay);
   const used = new Set<Block>();
   const entries = [
@@ -257,9 +271,9 @@ function Agenda({ events, todos, blocks, on, error, nowM, pmap, nextEv }: { even
   return (
     <section className={`panel td-rail${open ? " open" : ""}`} aria-labelledby="h-agenda">
       <h2 className="td-railh" id="h-agenda">
-        <button className="td-railhead" aria-expanded={open} onClick={() => setOpen(!open)}><span className="ph-t">Agenda</span><span className="hint">{summary}</span><span className="chev" aria-hidden="true">▾</span></button>
+        <button className="td-railhead" aria-expanded={open} data-track={open ? "Close the agenda" : "Open the agenda"} onClick={() => { if (on && !shown()) logOpen("calendar_view", "/today", { via: "agenda" }); setOpen(!open); }}><span className="ph-t">Agenda</span><span className="hint">{summary}</span><span className="chev" aria-hidden="true">▾</span></button>
       </h2>
-      <div className="td-railbody">
+      <div className="td-railbody" ref={body}>
         {!on && <div className="empty">Google Calendar isn&apos;t connected yet. Add your calendar&apos;s secret iCal address in the site settings and appointments show here.</div>}
         {on && error && <div className="empty">Couldn&apos;t read your calendar just now ({error}). It retries every 5 minutes.</div>}
         {allDay.length > 0 && <div className="td-allday">{allDay.map((e) => <span key={e.id}>{e.title}</span>)}</div>}
@@ -283,9 +297,9 @@ function Agenda({ events, todos, blocks, on, error, nowM, pmap, nextEv }: { even
   );
 }
 
-function Later({ overdue, coming, someday, suggest, pmap, projects, today, isToday, onPull, onDone, onShift, onTodo, onDelete }: {
-  overdue: BItem[]; coming: BItem[]; someday: Todo[]; suggest: Props["unplanned"]; pmap: Record<string, P>; projects: P[]; today: string; isToday: boolean;
-  onPull: (it: { project_id: string; id: string; title: string }) => void; onDone: (it: BItem) => void; onShift: (it: BItem, d: string) => void; onTodo: (t: Todo) => void; onDelete: (t: Todo) => void;
+function Later({ coming, someday, suggest, pmap, projects, today, isToday, onPull, onTodo, onDelete }: {
+  coming: BItem[]; someday: Todo[]; suggest: Props["unplanned"]; pmap: Record<string, P>; projects: P[]; today: string; isToday: boolean;
+  onPull: (it: { project_id: string; id: string; title: string }) => void; onTodo: (t: Todo) => void; onDelete: (t: Todo) => void;
 }) {
   const [filter, setFilter] = useState("all"), [all, setAll] = useState(false);
   const add = isToday ? "+ Today" : "+ Day";
@@ -300,16 +314,6 @@ function Later({ overdue, coming, someday, suggest, pmap, projects, today, isTod
   );
   return (
     <div className="td-laterbody">
-      {overdue.length > 0 && (
-        <div className="td-grp">
-          <div className="bgroup"><span className="lbl">Overdue</span><span className="ct">{overdue.length}</span><span className="hint">finish, take on, or give a new day</span></div>
-          {overdue.map((i) => line(i, <>
-            <button className="btn ghost sm" onClick={() => onDone(i)}>✓ Done</button>
-            <button className="btn ghost sm" onClick={() => onPull(i)}>{add}</button>
-            <button className="btn ghost sm" onClick={() => onShift(i, addDays(today, 1))}>→ Tomorrow</button>
-          </>))}
-        </div>
-      )}
       {suggest.length > 0 && (
         <div className="td-grp">
           <div className="bgroup"><span className="lbl">The plan couldn&apos;t fit</span><span className="ct">{suggest.length}</span></div>
@@ -353,7 +357,7 @@ function WaitingLine({ w, pmap }: { w: Waiting; pmap: Record<string, P> }) {
   const crit = w.tasks.filter((t) => t.critical).length;
   return (
     <details className="td-waiting" data-track-section="Waiting">
-      <summary>
+      <summary data-track="Late tasks waiting">
         <b>{w.count} late {w.count === 1 ? "task is" : "tasks are"} waiting</b>
         {crit > 0 && <> · {crit} critical</>}
         {" · "}{w.full && w.load ? `this morning today was already at ${w.load.before} of ${w.load.cap} focus min` : "this morning's carry-over cap was reached"}

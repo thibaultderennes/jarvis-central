@@ -46,6 +46,7 @@ re-run it and redeploy after changing those.
 | `project_setup.cooldown_days` | `7` | Fewest days between two automatic runs on the same project. |
 | `project_setup.check_minutes` | `60` | How often the worker checks registered projects for an update run (new projects are picked up every pass). |
 | `project_setup.model` | `null` | Model for the setup session (`null` = `worker.build_model`, then Claude Code's default). |
+| `inbox.auto_treat_fyi_days` | `3` | A reply that is only FYI (a refine or comment note, a discussion answered without code) moves from Pending to Treated on its own once you opened it this many days ago; the worker checks hourly. Never applies to "needs you", errors, or anything with a branch or PR, and a reply you move back to Pending stays there. `0` = off. `node agent/inbox.mjs auto-treat --dry-run` lists what it would mark. |
 | `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Docs and reviews (Security audits). |
 | `audits.sync_minutes` | `60` | How often the worker mirrors those reports to the site (`0` = every worker pass). `node agent/audits.mjs sync` does it now. |
 | `economics.files` | `["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"]` | File names, relative to each project folder, that opt a project into unit economics: the first that exists is its model. See [`unit-economics.md`](unit-economics.md). |

@@ -15,10 +15,12 @@ Projects: every folder under `{{PROJECTS_ROOT}}` is a project (id = folder name,
 - `projects` · `items <project> [--open] [--section S]` · `item <project> <id>`
 - `set <project> <id> status=done due=YYYY-MM-DD note="…"` · `add <project> <section> "title" --due D --owner claude`
 - `inbox [--project P]` · `reply <message-id> "text" --status answered|done|needs_you`
+- `treat <message-id…>` or `treat --kind fyi|reply|decision|all [--project P]` (owner's request only) · `untreat <message-id…>` undoes it
 - `todo add "title" --date today --project P --item ID` · `todos`
 - `reviews --project P --type project|recap|coaching|jarvis|doc|security|screening [--unacked] --full`
 - `ack <review-id>` / `unack <review-id>` — only when the owner asks; the site's Docs and reviews shows what's new
 - `proposals <review-id>` · `push <review-id> <key> [--section S --owner claude --estimate 60]` — a review's proposed tasks; push adds one to the checklist once
+- `advice <project> [--rejected]` · `advice <review-id> <key> done|rejected|open [--reason T]` — the follow-through ledger: last review's Top 3 and what happened; rejected advice is never proposed again
 - `audits <project>` — security audit reports mirrored from the project's audits folder (date, verdict, headline)
 Owner values: `founder` = the owner (you'd say "you"), `claude`, `both`.
 

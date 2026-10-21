@@ -22,3 +22,15 @@ you don't carry it forever. Settings belong in `jarvis.config.json`, not in code
 Your instance is the working copy of the public repo. Run `node agent/install-hooks.mjs` once so the privacy guard
 checks every commit and push (including the worker's "Build it" branches). Ship a tool change the same way you'd
 review anyone's: branch, check, CHANGELOG, merge, tag, push.
+
+## Uninstall
+Removing Jarvis means removing it from each place it runs. In order:
+1. On the Mac: `bash agent/uninstall.sh` stops and removes the worker, planner and weekly jobs.
+2. Delete the Mac's settings and logs: `rm ~/.config/jarvis/env`, and the `jarvis` folder under `~/Library/Logs`.
+3. In the repo: `rm .git/hooks/pre-commit .git/hooks/pre-push` (the privacy guard), then delete the folder.
+4. On Vercel: delete the project (Settings → Advanced → Delete Project). That removes the site and its env vars.
+5. On Neon: delete the database (or the project). This is where your checklists, reviews and quotes live.
+6. On Google: in the Apps Script project, delete the time trigger, then the project; in Google Calendar, reset any
+   *secret address in iCal format* you gave Jarvis.
+7. On Apple: remove the Jarvis calendar subscription.
+8. In Claude Code: remove the `jarvis` skill from `~/.claude/skills` and the Jarvis block from `~/.claude/CLAUDE.md`.

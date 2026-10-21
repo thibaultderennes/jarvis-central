@@ -16,6 +16,13 @@
      `app/test/rollover.test.mjs`; `node agent/rollover.mjs --dry-run [--date D] [--fixture F]`. Rule: `docs/config.md`.
    - `weekly.mjs` weekly (default Monday 05:00): advisor reviews per project, recap, coaching, Jarvis usage review
      (fed the week's click aggregate from `GET /api/agent/usage`), then prunes click events past `usage.retention_days`.
+     Every report loads the **reviews skill pack** (pinned in `agent/skillpacks.mjs` `REVIEW_SOURCES`, one set per
+     report in `REVIEW_SETS`, all MIT): stop-slop on every report as the last pass; CEO + gstack openclaw ceo-review
+     (one scope mode, one thing to stop); PO + north-star-metric; synthesis + strategy-red-team ("Fails if", kill
+     criterion, cheapest test; aim ≤ 500 words). `skillUse()` checks the transcript; a report that skipped one gets one
+     follow-up turn. The review's `meta.words` has `{before, after}` per report (before = the draft before stop-slop,
+     as the model counted it) and `meta.skills` the skills used; `node agent/reviewrun.mjs words [N]` lists them.
+     `node agent/skillpacks.mjs reviews` fetches the pack.
    - `projects.mjs`: scans the projects root, scaffolds `CLAUDE.md`/`PRD.md` (offline; the full setup is `setup.mjs`), registers projects, drafts checklists.
    - `audits.mjs`: mirrors each project's security audit reports (`<dir>/<audits.dir>/*.md`, default `docs/audits`)
      to the site as `security` reviews (the project page's **Security** tab). The worker runs it once an hour
@@ -26,6 +33,11 @@
    - `metrics.mjs`: for each project with a source in `metrics.sources.<id>` (a URL fetched with a token from an env
      var, or a command run in the project folder, giving JSON numbers), posts the day's product-metrics snapshot for
      the project's **Stats** view and the Monday review; daily (`metrics.sync_minutes`). Keys: [`metrics.md`](metrics.md).
+   - `settingsapply.mjs`: writes the config keys of a Jarvis review's "Your settings" suggestion into
+     `jarvis.config.json` when the owner pressed Apply on it (`reviews.decisions`, state `queued`), then reports
+     `applied` or `failed` with the reason. Only keys under its `ALLOWED` list (planner, reviews, worker, project_setup,
+     usage, calendars, a few metrics and audits timings) are written, with the same type as the value they replace;
+     anything that points at a file, folder or command stays a hand edit. The worker checks every pass.
    - `rescan.mjs`: runs a project-folder scan when "Refresh project folders" was pressed on the Admin page (kv
      `projects.rescan`); the worker checks every pass, `node agent/rescan.mjs` runs one check by hand. It updates
      registered projects but never registers a new folder: new folders come back as `proposed` payloads that the owner
@@ -110,11 +122,22 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `todos(id uuid, date date null /* null = someday */, title, kind 'life'|'work', project_id null, item_id null, time text null 'HH:MM', sort real, done bool, done_at, created_at, source null 'plan'|'rollover', rollovers int /* times the daily roll-forward carried it */, rolled_from date null /* the day it was first meant for */, rolled_at date null /* the day it last rolled in */)`
 - `messages(id uuid, project_id null, text, status, reply, meta jsonb, created_at, updated_at, replied_at, archived bool, opened_at, treated_at, item_id null)`
   - status flow: `new` → `seen` (worker picked it) → `working` → `answered` | `done` | `needs_you` | `error`
-  - inbox groups on the site: **New** (a reply not yet opened, or work still with Claude) → **Pending** (`opened_at` set
-    once the reply was on screen) → **Treated** (`treated_at`, "Mark treated"; hidden = `archived`). `item_id` = the
-    build run of a checklist item.
-  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh'}`
+  - inbox lanes on the site (`app/lib/inboxLanes.ts`, from the latest turn and the first message): **Needs you**
+    (`needs_you`/`error`, or a reply opening with "NEEDS YOU:") · **Shipped** (`meta.pr_url`, or `meta.kind: 'merged'`)
+    · **Reports** (mode `review`/`screen`/`plan`/`setup`) · **FYI** (every other answer) · **With Claude**
+    (`new`/`seen`/`working`). Bundled by project, one line each (the reply's first bold sentence; the "due →" line for
+    new-item notes). Opening a line sets `opened_at`; "Got it" sets `treated_at`; "Later" sets `meta.later_until`
+    (tomorrow 8:00) and hides it until then; "Unread" clears all three; hidden = `archived`. `item_id` = the build run
+    of a checklist item.
+  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh', later_until?, review_id?}`;
+    `review_id` (older review runs: `review`) = the report this message delivered: marking the report read treats
+    the message, and treating the message marks the report read.
 - `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at, acked_at timestamptz null /* null = new on Docs and reviews */, pushed jsonb /* {proposal key: item code} */)`
+  - **Your settings** (the Jarvis review on `/reviews?id=`): each entry under "## Your settings" is a card
+    (`app/lib/docsHub.ts` `settingSuggestions`). `meta.settings` `[{text, changes: [{key, value}]}]` (the review returns
+    them) wins over the free text; a free-text entry that names "`a.b` → value" can be applied. Apply queues the
+    changes (re-read from the review) for `agent/settingsapply.mjs`; Done and Dismiss record the owner's call; next
+    week's Jarvis review bundle lists what was decided.
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - **Docs and reviews** (the project page's `?v=docs`) lists a project's reports newest first (advisor reviews, strategy
     docs, plans and refreshes, project setup, screenings, security audits), with a kind filter (`&k=`), an unread
@@ -124,6 +147,15 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
     entries under a "Top 3" heading can be pushed; other Top 3 entries show as text. A push records the key in
     `pushed`, so the same proposal is never added twice.
   - `doc` = long-lived documents (strategy reviews). `meta.tabs` may hold `[{key, label, body_md}]`.
+- `advice(review_id uuid → reviews on delete cascade, key /* its proposal key */, project_id, week_start, rank 1–3, text, items jsonb /* codes it names */, status 'open'|'done'|'rejected', reason, decided_by 'founder'|'agent'|'auto' null, decided_at, created_at)`, pk `(review_id, key)`
+  - The **follow-through ledger** (`app/lib/ledger.ts`): every advisor review's summary Top 3 is recorded when the
+    review is posted (a review from before the ledger is recorded on first read). What happened to an entry is read
+    from the checklist, not stored: **done** (marked done, or an item it names or was pushed as is done), **started**
+    (such an item is in progress), **ignored** (nothing moved once its week is over), **rejected** (the owner's call,
+    with an optional reason). The next project review and the recap open with the previous Top 3 and these outcomes,
+    written by `agent/weekly.mjs`, not by the model; the advisors and the synthesis get every rejected entry and must
+    never propose it again, and a new Top 3 entry that matches one (same key, or ≥ 60% the same words) is recorded as
+    rejected at once. The owner decides on the review page (Follow-through: Done, Reject, Reopen) or with the CLI.
   - `security` = one audit report file, mirrored by `agent/audits.mjs`; `week_start` is null and
     `meta = {kind: 'security-audit', file /* path relative to the project folder */, date /* from the file name */, sha /* sha256 of the file */, counts: {critical, high, medium, low} | null}`.
     Unique `(type, coalesce(project_id,''), meta->>'file')` whenever `meta.file` is set → a re-sync updates the row.
@@ -134,6 +166,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `metrics_snapshots(project_id, date, metrics jsonb /* {key: number}, see metrics.md */, source 'manual'|'url'|'command', created_at, updated_at)` —
   primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `dashboard.layout` (Home's box layout per tab), `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
+  `inbox.digest_at` (`{at, by}`: where the From Claude digest was last cleared, for all and per project),
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
   `rollover.today` (`{date, workday, carried, load: {before, after, cap}, waiting: [{title, key, critical, overdue, reason}]}`: what
   the morning roll-forward couldn't fit; Today shows it on that date only),
@@ -150,8 +183,15 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   sendBeacon, at most every 15 s or 25 events, and when the tab is hidden). Labels come from `data-track`, else
   aria-label/title/short button text with the row's own text (item and todo titles) replaced by `…` and numbers by `#`;
   content links are stored by path only; inputs are never read. `data-track-section="…"` names a region, `data-track-off`
-  excludes one. Off when `JARVIS_TRACK_CLICKS=off` (`usage.track_clicks: false`); rows older than
-  `usage.retention_days` (90) are deleted by the Monday run. `activity` keeps the server-side action log.
+  excludes one; every `<summary>` carries a `data-track` name (an unnamed disclosure falls back to its first words, then
+  "Disclosure in <section>"). Automated browsers record nothing: `navigator.webdriver`, a HeadlessChrome/Playwright/
+  Puppeteer user agent (`lib/automation.ts`, checked in the browser and again by `/api/usage`), or a browser that opened
+  a page with `?notrack` (kept in localStorage; `?notrack=0` undoes it). Off when `JARVIS_TRACK_CLICKS=off`
+  (`usage.track_clicks: false`); rows older than `usage.retention_days` (90) are deleted by the Monday run.
+  `activity` keeps the server-side action log, plus two opens logged from the browser by `components/LogOpen.tsx`
+  (server action `track`, only these kinds): `review_open` (`/reviews?id=` or a report in a project's Docs view) and
+  `calendar_view` (`/week`, and the Today agenda when it's on screen). `calendar_feed` / `calendar_sync` rows are
+  machines; the Jarvis review shows them as one line, outside the owner's counts.
 
 ## Agent API
 All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JSON in, JSON out. Errors: `{error}` + 4xx/5xx.
@@ -163,7 +203,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/items` | `?project=ID` (optional; all when absent) `&open=1` (todo/doing only) `&refine=pending` `&build=queue|working|pr_open|merge_requested|sent_back|…` | `[{item}]` |
 | POST | `/api/agent/items` | `{project_id, section, title, id?, detail?, due?, owner?, critical?, allow_duplicate?}` | `{item}` (id = slug of title if absent); 409 `{error, duplicate}` on an exact duplicate title |
 | GET | `/api/agent/duplicates` | `?project=ID` (optional) | `[[{item}, …]]` groups of exact duplicates, oldest first |
-| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`, `blocked_by`; fields outside `ITEM_FIELDS` in `app/lib/sqlbuild.ts` are ignored) | `{item}` (logs item_events with actor 'agent') |
+| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`, `blocked_by`; fields outside `ITEM_FIELDS` in `app/lib/sqlbuild.ts` are ignored); linked todos follow `status` as on the site (`done`/`cancelled` tick them, `todo` unticks them, `doing` leaves them) | `{item}` (logs item_events with actor 'agent') |
 | DELETE | `/api/agent/items` | `?project=ID&id=ITEM` | `{ok}` |
 | GET | `/api/agent/sprints` | `?project=ID&from=DATE&to=DATE` (overlapping the range) | `[{sprint}]` (`{id, project_id, name, start, end, created_at}`) |
 | POST | `/api/agent/sprints` | `{project_id, name, start, end, items?: [ids]}` | `{sprint, items /* how many joined */}` 201 |
@@ -172,10 +212,11 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/events` | `?since=ISO` | `[{event}]` |
 | GET | `/api/agent/todos` | `?from=DATE&to=DATE` (`&someday=1` adds undated ones) | `[{todo}]` |
 | POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?, sort?, source? 'plan'|'rollover', rolled_from?, rolled_at?}` | `{todo}` |
-| PATCH | `/api/agent/todos` | `{id, date? /* null = Someday */, sort?, time? /* null = untimed */, rollovers?, rolled_from?, rolled_at?}` (the daily roll-forward; only given fields change) | `{todo}`; 404 when there's no such todo |
+| PATCH | `/api/agent/todos` | `{id, date? /* null = Someday */, sort?, time? /* null = untimed */, rollovers?, rolled_from?, rolled_at?, done? true\|false}` (the daily roll-forward, the MCP server's ticks; only given fields change; with `done`, a linked item follows: done, or back to todo) | `{todo}`; 404 when there's no such todo |
 | GET | `/api/agent/messages` | `?status=new&limit=5` (oldest first) or `?since=ISO` | `[{message}]` |
 | POST | `/api/agent/messages` | `{text, project_id?, status? 'answered'|'new'|…, reply?, meta?, mode?, item_id?, thread_id?}` a note already answered, or (`status: 'new'`) work queued for the worker | `{message: {id}}` |
 | PATCH | `/api/agent/messages` | `{id, status?, reply?, meta?, opened?, treated?}` (meta merged; reply sets replied_at and clears opened_at) | `{message}` |
+| PATCH | `/api/agent/messages` | `{ids: [uuid…], treated: true\|false}` bulk treat / untreat in one update (≤ 200; work still with Claude is skipped) | `{treated, ids}` (the ids changed) |
 | GET | `/api/agent/stats` | `?bucket=day\|week\|month` (default `day`) `&n=` buckets (default 14 days / 12 weeks from Monday / 12 months, owner's timezone; `days=` still works) `&project=ID` `&items=1` | `{bucket, from, to, tracking_since, overdue_open, days: [{date (bucket start), added, done, done_late, cancelled, items?: {added: [{id, project_id, title}], done: [{id, project_id, title, late}]}}]}` |
 | GET | `/api/agent/costs` | `?project=ID` (`project=` empty = independent only; absent = all) `&all=1` (inactive too) | `[{cost}]` |
 | POST | `/api/agent/costs` | `{name, amount, currency?, period?, project_id?, next_renewal?, notes?}` | `{cost}` |
@@ -184,9 +225,15 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/reviews` | `?type=&project=&limit=` newest first; `&unacked=1` only the unread ones | `[{review}]` (with `acked_at`, `pushed`) |
 | POST | `/api/agent/reviews` | `{type, project_id?, week_start?, title, verdict?, headline?, body_md, meta?}` upsert (key: `week_start` for weekly types, else `meta.file` when set, else `id`, else insert); an upsert that changes `body_md` makes it new again (`acked_at` cleared) | `{review}` |
 | PATCH | `/api/agent/reviews` | `{id, acked: true\|false}` mark a report as read, or as unread again | `{review}`; 404 when there's no such review |
+| GET | `/api/agent/advice` | `?project=ID&review=UUID&status=open\|done\|rejected&latest=1&before=YYYY-MM-DD&limit=N` (`latest=1`: each project's newest advisor review, older than `before`) | `[{review_id, key, project_id, week_start, rank, text, items, pushed_item, status, reason, decided_by, decided_at, review_title, outcome 'done'\|'started'\|'ignored'\|'rejected'\|'open'}]`; 503 before the migration |
+| PATCH | `/api/agent/advice` | `{review_id, key, status: 'done'\|'rejected'\|'open', reason?}` a decision on one Top 3 entry | `{advice}`; 404 when the review has no such entry |
 | GET | `/api/agent/proposals` | `?review=UUID` | `[{key, state 'pushable'\|'pushed'\|'on-checklist'\|'text', title?, text, detail?, section?, owner?, estimate_minutes?, source, items: [codes]}]` (`app/lib/docsHub.ts`) |
 | POST | `/api/agent/proposals` | `{review_id, all: true}` push every pushable proposal, each with its own defaults | `{items, already, failed}` 201 |
 | POST | `/api/agent/proposals` | `{review_id, key, section?, owner?, estimate_minutes?}` push one pushable proposal to the checklist (the proposal is re-read from the review; the key is claimed atomically) | `{item}` 201; 409 `{error, existing}` when it was already pushed or its title is already an item; 400 for a text-only proposal |
+| GET | `/api/agent/settings` | `?review=UUID` (a Jarvis review) | `[{key, text, changes: [{key, value}], decision: {state, at, changes?, error?, note?} \| null}]`; 404 when it isn't a Jarvis review |
+| GET | `/api/agent/settings` | `?queued=1` | `[{review_id, week_start, key, text, changes, at}]`: Apply pressed, not written yet |
+| POST | `/api/agent/settings` | `{review_id, key, action: 'done'\|'dismiss'\|'undo'}` the same as the buttons; `apply` → 403 (Apply only from the owner's session on the review page) (the suggestion is re-read from the review; the state change is conditional) | `{suggestion}`; 409 when the state doesn't allow it (already applied, waiting for the Mac, nothing to undo) |
+| PATCH | `/api/agent/settings` | `{review_id, key, state: 'applied'\|'failed', error?, note?}` the Mac's answer to a queued Apply | `{ok}`; 404 when that key isn't queued |
 | GET | `/api/agent/economics` | `?project=ID` (`&full=1` includes `data`) | `{project_id, file, sha, synced_at, error, error_at}`; 404 when none synced |
 | PUT | `/api/agent/economics` | `{project_id, file, sha, data}` (an evaluated model, `data.v = 1`, ≤ 2 MB) or `{project_id, file, error}` (keeps the last good data) | `{economics}` without `data` |
 | GET | `/api/agent/metrics` | `?project=ID&since=YYYY-MM-DD&limit=N` (default 400, newest kept) | `[{project_id, date, metrics, source, updated_at}]` oldest first; `[]` before the table exists |
@@ -238,15 +285,23 @@ title contain every word (case- and accent-insensitive, archived projects left o
 ## Site pages
 - `/` Home (0.7.3): one page, three tabs, `?tab=overview|timeline|stats` (`/timeline` and `/stats` redirect there,
   keeping `?w=`, `?bucket=`, `?proj=`). The **Now rail** above every tab: the next thing (the oldest Needs you row,
-  else the most overdue item), today's timed events and todos with "now" among them, one summary line. Below it the tab's
+  else the most overdue item), today's timed events and todos with "now" among them, one summary line. Under it (and atop
+  the Inbox) **From Claude**: what Claude finished since you last looked, one line per conversation grouped by project,
+  Needs you left out (`lib/fromClaude.ts`); "Got it" per project or for all moves the mark in kv `inbox.digest_at`
+  (`{at, by: {project id | "_": time}}`), and it never looks back more than 7 days. The sidebar's Inbox count leaves
+  FYI replies out. Below it the tab's
   boxes on a 12-column grid (`components/DashCanvas.tsx`, boxes rendered on the server in `app/(main)/boxes.tsx`, list
   and defaults in `lib/dashLayout.ts`): **Customize** to drag a box by its title bar, resize from its corner, fold,
   remove, add back from the library, arrow keys to move and Shift + arrows to resize; boxes settle so they never overlap.
   The layout is saved per tab in kv `dashboard.layout` (`{overview|timeline|stats: [{id, x, y, w, h, min?}]}`, cleaned by
   `sanitizeLayout`). Overview boxes: Needs you (`app/lib/needs.ts` `needsYou()` → `{rows, count}`: open items in each
-  project's decide section owned by you, items with a PR waiting for Approve & merge, replies you haven't opened; oldest
-  first), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
-  upcoming milestones, the next 7 days. Stats: every cross-project chart. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
+  project's decide section owned by you, items with a PR waiting for Approve & merge, conversations in the Inbox's
+  Needs-you lane that aren't treated or put off, and
+  each project's newest advisor review from the last 14 days while it's unread (`latestProjectReviews`); oldest first.
+  A review row folds open in place: verdict, Top 3 with item codes (`docsHub.ts` `reviewDigest`), Add all to checklist,
+  Mark as read, the full text folded again; opening it logs activity `review_open`), Overdue (`app/lib/overdue.ts`), this week's reviews, the top-3 project cards with pace, sprints this week, inbox; the
+  default layout puts Needs you, Overdue, the reviews and the top 3 first. Timeline: the timeline, upcoming milestones,
+  the next 7 days. Stats: every cross-project chart, folded to their titles by default. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
   Inbox, the Timeline tab, the Stats tab and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · the Timeline tab (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,
   open items' due dates per day, the Sunday-plan blocks of every planned week in range, calendar events; built in `app/lib/timeline.ts`

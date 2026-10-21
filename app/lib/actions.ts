@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { headers } from "next/headers";
 import { requireSession } from "./auth";
+import { isAutomatedUA } from "./automation";
 import { sql } from "./db";
 import * as D from "./data";
 import { isDate, today } from "./time";
@@ -10,6 +12,11 @@ import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
 import { normSiteUrl, websiteKind } from "./website";
 import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSettings";
 import { validateProjectName } from "./newProject";
+import { cleanIds } from "./inbox";
+import { messageReviewId } from "./docsHub";
+import { DIGEST_KEY, gotIt, type DigestSeen } from "./fromClaude";
+import { laterDate, parseKeys, TRIAGE, type Triage } from "./overdue";
+import { isAdviceStatus } from "./ledger";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -115,6 +122,32 @@ export async function moveItemsDue(project_id: string, ids: string[], due: strin
   await D.logActivity("item_due", `/timeline`, { ids: list, due, via: "timeline" });
   done();
   return {};
+}
+/**
+ * The overdue queue (Home and Today): one action on one item or a selection, across projects. Re-date and Later go
+ * through the same logged path as setDue, Done as setItemStatus (linked todos follow), Give to Claude sets the owner.
+ */
+export async function triageOverdue(keys: string[], act: Triage, due: string | null = null, page = "/"): Promise<{ error?: string; n?: number }> {
+  await requireSession();
+  if (!TRIAGE.includes(act)) return { error: "Unknown action." };
+  const list = parseKeys(keys);
+  if (!list.length) return { error: "Select an item first." };
+  const t = today(), to = act === "later" ? laterDate(t) : due;
+  if ((act === "due" || act === "later") && (!to || !isDate(to) || to < t)) return { error: "Pick today or a later day." };
+  const patch: Partial<D.Item> = act === "done" ? { status: "done" } : act === "claude" ? { owner: "claude" } : { due: to };
+  let n = 0;
+  for (const k of list) {
+    if (!(await D.updateItem(k.project_id, k.id, patch))) continue;
+    if (act === "done") await sql()`update todos set done = true, done_at = ${new Date().toISOString()} where project_id = ${k.project_id} and item_id = ${k.id}`;
+    n++;
+  }
+  if (!n) return { error: "Those items are gone. Reload the page." };
+  const ids = list.map((k) => `${k.project_id}/${k.id}`), via = "overdue", from = page === "/today" ? "/today" : "/";
+  if (act === "done") await D.logActivity("item_status", from, { ids, status: "done", via });
+  else if (act === "claude") await D.logActivity("item_owner", from, { ids, owner: "claude", via });
+  else await D.logActivity("item_due", from, { ids, due: to, via, later: act === "later" });
+  done();
+  return { n };
 }
 /**
  * Timeline drag on a milestone: the project's deadline moves now; `prd` keeps the date PRD.md still has, and the Mac
@@ -273,11 +306,37 @@ export async function markOpened(ids: string[]) {
   if (!list.length) return;
   await sql()`update messages set opened_at = now() where id = any(${list}::uuid[]) and opened_at is null and status not in ('new', 'seen', 'working')`;
 }
-export async function markTreated(id: string, treated = true) {
+/** Treat one message or many in a single update (row checkboxes, "Got it" on a project, "Treat all FYI", Undo). */
+export async function markTreated(ids: string | string[], treated = true): Promise<{ ids: string[] }> {
   await requireSession();
-  await D.patchMessage(id, { treated });
-  await D.logActivity("message_treated", "/inbox", { treated });
+  const list = cleanIds(Array.isArray(ids) ? ids : [ids]);
+  const changed = await D.setTreated(list, treated);
+  // A message that delivered a report: treating it marks the report read (back to pending makes it new again).
+  const rows = changed.length ? await sql()`select meta from messages where id = any(${changed}::uuid[])` : [];
+  const reviews = rows.map((r) => messageReviewId(r.meta as Record<string, unknown>)).filter((x): x is string => !!x);
+  for (const review of reviews) await D.setReviewAck(review, treated);
+  await D.logActivity("message_treated", "/inbox", { treated, n: changed.length, reviews: reviews.length });
   done();
+  return { ids: changed };
+}
+/** Back to unread: clears opened and treated, and any "later", so the conversation returns to its lane in bold. */
+export async function markUnread(id: string) {
+  await requireSession();
+  if (!/^[0-9a-f-]{36}$/.test(id)) return;
+  await sql()`update messages set opened_at = null, treated_at = null, archived = false, meta = meta - 'later_until', updated_at = now() where id = ${id}`;
+  await D.logActivity("message_unread", "/inbox", {});
+  done();
+}
+/** "Later": the conversation leaves its lane until `until` (at most 30 days ahead); null brings it back now. */
+export async function laterMessage(id: string, until: string | null): Promise<{ error?: string }> {
+  await requireSession();
+  if (!/^[0-9a-f-]{36}$/.test(id)) return { error: "Unknown message." };
+  const t = until ? +new Date(until) : 0;
+  if (until && (!t || t < Date.now() || t > Date.now() + 30 * 864e5)) return { error: "Pick a time in the next 30 days." };
+  await D.patchMessage(id, { meta: { later_until: until ? new Date(t).toISOString() : null } });
+  await D.logActivity("message_later", "/inbox", { later: !!until });
+  done();
+  return {};
 }
 
 /* ---------- docs and reviews (the project page's one place for every report) ---------- */
@@ -287,6 +346,16 @@ export async function ackReview(id: string, acked: boolean): Promise<{ error?: s
   const r = await D.setReviewAck(id, !!acked);
   if (!r) return { error: "That report is gone." };
   await D.logActivity(acked ? "review_ack" : "review_unack", r.project_id ? `/p/${r.project_id}` : "/reviews", { type: r.type });
+  done();
+  return {};
+}
+/** Follow-through ledger: mark one Top 3 entry done, rejected (never proposed again), or open again. */
+export async function decideAdviceAction(review_id: string, key: string, status: string, reason = ""): Promise<{ error?: string }> {
+  await requireSession();
+  if (typeof key !== "string" || key.length > 80 || !isAdviceStatus(status)) return { error: "Unknown entry." };
+  const a = await D.decideAdvice(review_id, key, status, String(reason || ""));
+  if (!a) return { error: "That entry is gone." };
+  await D.logActivity(`advice_${status}`, a.project_id ? `/p/${a.project_id}` : "/reviews", {});
   done();
   return {};
 }
@@ -323,10 +392,32 @@ export async function pushAllReviewTasks(review_id: string): Promise<{ error?: s
   }
 }
 
+/** Apply (queue the config keys for the Mac), Done, Dismiss or Undo on one "Your settings" line of a Jarvis review. */
+export async function decideSettingSuggestion(review_id: string, key: string, action: "apply" | "done" | "dismiss" | "undo"): Promise<{ error?: string }> {
+  await requireSession();
+  if (typeof key !== "string" || key.length > 80 || !["apply", "done", "dismiss", "undo"].includes(action)) return { error: "Unknown suggestion." };
+  try {
+    await D.decideSetting(review_id, key, action);
+    await D.logActivity(`setting_${action}`, "/reviews", { key });
+    done();
+    return {};
+  } catch (e) {
+    if (e instanceof D.PushError) { done(); return { error: e.message }; }
+    throw e;
+  }
+}
+
 /* ---------- telemetry (feeds the weekly Jarvis review) ---------- */
+// Opens that no other action records (components/LogOpen.tsx). Anything else is logged by the action that does it.
+const OPEN_KINDS = new Set(["review_open", "calendar_view"]);
 export async function track(kind: string, page: string, detail: Record<string, unknown> = {}) {
   await requireSession();
-  await D.logActivity(kind.slice(0, 40), page.slice(0, 120), detail);
+  if (!OPEN_KINDS.has(kind) || typeof page !== "string" || !page.startsWith("/")) return;
+  if (isAutomatedUA((await headers()).get("user-agent"))) return;
+  // Codes only (ids, types, a via): short strings, numbers and booleans.
+  const d = Object.fromEntries(Object.entries(detail || {}).slice(0, 6)
+    .filter(([, v]) => typeof v === "number" || typeof v === "boolean" || (typeof v === "string" && v.length <= 60)));
+  await D.logActivity(kind, page.slice(0, 120), d);
 }
 
 /* ---------- projects: top 3 and per-project settings ---------- */
@@ -382,6 +473,23 @@ export async function requestReview(project_id: string): Promise<{ error?: strin
   const days = reviewEvery(p.review_every_days);
   await D.insertMessage({ text: `Run the advisor review of ${p.name} now (the last ${days} days).`, project_id, status: "new", mode: "review", meta: { kind: "now", days } });
   await D.logActivity("project_review", `/p/${project_id}`, { project_id, days });
+  done();
+  return {};
+}
+
+/** Run again on a 'failed' weekly report: the Mac worker re-runs that week's report (agent/reviewrun.mjs, meta.kind 'rerun'). */
+const RERUN_TYPES: Record<string, string> = { project: "", jarvis: "Jarvis review", recap: "week recap", coaching: "working-with-AI report" };
+export async function rerunReview(id: string): Promise<{ error?: string }> {
+  await requireSession();
+  const r = await D.getReview(id);
+  if (!r || r.verdict !== "failed" || !r.week_start || !(r.type in RERUN_TYPES)) return { error: "Only a failed weekly report can run again." };
+  if (r.type === "project" && !r.project_id) return { error: "This report has no project." };
+  if (await D.rerunQueued(r.id)) return {};
+  const p = r.project_id ? await D.getProject(r.project_id) : null;
+  const what = r.type === "project" ? `${p?.name || r.project_id}'s review` : `the ${RERUN_TYPES[r.type]}`;
+  await D.insertMessage({ text: `Run ${what} again (week of ${r.week_start}): the last run didn't finish.`, project_id: r.type === "project" ? r.project_id : null, status: "new", mode: "review",
+    meta: { kind: "rerun", week: r.week_start, review: r.id, ...(r.type === "project" ? {} : { report: r.type }) } });
+  await D.logActivity("review_rerun", r.project_id ? `/p/${r.project_id}` : "/reviews", { id: r.id, type: r.type });
   done();
   return {};
 }
@@ -560,6 +668,16 @@ export async function declineProject(id: string) {
   await D.logActivity("project_decline", "/admin", { project: id });
   done();
 }
+/** "Got it" on the From Claude digest: for one project (null = General) or, with no argument, for everything. */
+export async function digestGotIt(project?: string | null) {
+  await requireSession();
+  if (project !== undefined && project !== null && !ID_OK(project)) return;
+  const cur = (await D.kvGet<DigestSeen>(DIGEST_KEY))?.value;
+  await D.kvSet(DIGEST_KEY, gotIt(cur, project, new Date().toISOString()));
+  await D.logActivity("digest_got_it", null, { all: project === undefined });
+  done();
+}
+
 export type Prefs = { show_done_default?: boolean; finance_currency?: string };
 export async function savePrefs(p: Prefs) {
   await requireSession();

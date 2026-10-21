@@ -41,6 +41,8 @@ function defaults() {
   ex.usage = { track_clicks: true, retention_days: 90, ...(ex.usage || {}) };
   // Project setup session (setup.mjs): runs on its own when a project is created or loaded, and when one is updated with a gap.
   ex.project_setup = { auto_on_load: true, auto_on_update: true, cooldown_days: 7, check_minutes: 60, model: null, ...(ex.project_setup || {}) };
+  // FYI inbox replies opened this many days ago are marked treated by the worker (agent/inbox.mjs); 0 = off.
+  ex.inbox = { auto_treat_fyi_days: 3, ...(ex.inbox || {}) };
   return ex;
 }
 
@@ -63,6 +65,8 @@ export const CONFIG_ERROR = _settings.configError;
 export const TZ = process.env.JARVIS_TZ || CONFIG.timezone || "UTC";
 export const PROJECTS_ROOT = CONFIG.projects_root;
 export const OWNER = CONFIG.owner_name || "the owner";
+/** Activity kinds written by machines (calendar feed polls and syncs), never by the owner: kept out of usage counts. */
+export const MACHINE_KINDS = new Set(["calendar_feed", "calendar_sync"]);
 export const ENV_FILE = path.join(HOME, ".config", "jarvis", "env");
 export const LOG_DIR = process.platform === "darwin" ? path.join(HOME, "Library", "Logs", "jarvis") : path.join(HOME, ".local", "state", "jarvis", "logs");
 const CACHE_DIR = path.join(HOME, ".cache", "jarvis");
@@ -90,12 +94,14 @@ export async function api(method, pathAndQuery, body) {
   const cfg = loadConfig();
   if (!cfg.JARVIS_URL || !cfg.JARVIS_AGENT_TOKEN)
     throw new ApiError(`Missing JARVIS_URL or JARVIS_AGENT_TOKEN in ${ENV_FILE}`, 0);
+  // "proxy-injected": a cloud session (a Claude Code routine) whose network proxy adds the token itself (a network secret).
+  const auth = cfg.JARVIS_AGENT_TOKEN === "proxy-injected" ? {} : { Authorization: `Bearer ${cfg.JARVIS_AGENT_TOKEN}` };
   const url = cfg.JARVIS_URL + pathAndQuery;
   let res;
   try {
     res = await fetch(url, {
       method,
-      headers: { Authorization: `Bearer ${cfg.JARVIS_AGENT_TOKEN}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...auth, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(30_000),
     });

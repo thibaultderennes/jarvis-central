@@ -11,6 +11,10 @@ import { HBars, StackedColumns, type Series } from "@/components/Charts";
 import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
 import DailyStats from "@/components/DailyStats";
 import { EmptyArt } from "@/components/brand";
+import OverdueQueue from "@/components/OverdueQueue";
+import { overdueQueue } from "@/lib/overdue";
+import Markdown from "@/components/Markdown";
+import { AckButton, AddAllButton, ReviewFold } from "@/components/ReviewActions";
 
 /** What every box may read, loaded once per request and only when a box on the open tab asks for it. */
 export type Ctx = ReturnType<typeof makeCtx>;
@@ -18,12 +22,12 @@ const once = <T,>(f: () => Promise<T>) => { let p: Promise<T> | undefined; retur
 export function makeCtx(q: { w?: string; bucket?: string; proj?: string }) {
   const t = today();
   const base = once(async () => {
-    const [projects, items, msgs, reviews] = await Promise.all([D.getProjects(), D.getItems(), D.getMessages({ limit: 200 }), D.getReviews({ limit: 40 })]);
+    const [projects, items, msgs, reviews, latest] = await Promise.all([D.getProjects(), D.getItems(), D.getMessages({ limit: 200 }), D.getReviews({ limit: 40 }), D.latestProjectReviews()]);
     const { featured, others } = D.splitFeatured(projects);
     const topIds = new Set(featured.map((p) => p.id));
     const byId = Object.fromEntries(projects.map((p) => [p.id, p]));
     const live = items.filter((i) => byId[i.project_id]);
-    return { projects, featured, others, topIds, byId, live, msgs, reviews, needs: computeNeeds(projects, live, msgs) };
+    return { projects, featured, others, topIds, byId, live, msgs, reviews, needs: computeNeeds(projects, live, msgs, latest) };
   });
   return {
     t, q, base,
@@ -36,14 +40,52 @@ export function makeCtx(q: { w?: string; bucket?: string; proj?: string }) {
   };
 }
 
-const KIND: Record<Need["kind"], [string, string]> = { decide: ["Decide", "you"], merge: ["PR ready", "go"], reply: ["Reply", ""] };
+const KIND: Record<Need["kind"], [string, string]> = { decide: ["Decide", "you"], merge: ["PR ready", "go"], reply: ["Claude asks", ""], review: ["Review", "you"] };
 const SHOWN = 10;
+const clip = (s: string, n = 140) => (s.length > n ? s.slice(0, n - 1) + "…" : s);
 
 async function needs(c: Ctx) {
   const { needs, byId, topIds } = await c.base();
   const ago = (at: string) => { const n = daysBetween(isoInTZ(new Date(at)), c.t); return n <= 0 ? "today" : n === 1 ? "yesterday" : `${n} d ago`; };
   const row = (n: Need) => {
     const p = n.project_id ? byId[n.project_id] : null, [label, cls] = KIND[n.kind], age = daysBetween(isoInTZ(new Date(n.at)), c.t);
+    const r = n.review;
+    // An unread advisor review: the row opens its digest in place; the full text stays folded below it.
+    if (r && p) return (
+      <li key={n.key} className="need-rev" data-c={D.displayColor(p, topIds)}>
+        <ReviewFold id={r.id} projectId={p.id} row={<>
+          <span className={`pill ${cls}`}>{label}</span>
+          <span className="np"><i className="dot" />{p.name}</span>
+          <span className="nt" title={n.title}>{n.title}</span>
+          <span className={`due${age > 7 ? " soon" : ""}`}>{ago(n.at)}</span>
+          <span className="btn sm ghost">Top 3</span>
+        </>}>
+          <div className="need-dig">
+            <div className="dig-h">
+              {r.verdict && <span className={`verdict v-${r.verdict}`}>{r.verdict.replace("-", " ")}</span>}
+              <span>{r.title}</span>
+            </div>
+            {r.top.length ? (
+              <ol>
+                {r.top.map((x) => (
+                  <li key={x.key}>
+                    {clip(x.title || x.text)}
+                    {x.items.map((id) => <Link key={id} className="pill code" href={`/p/${p.id}?v=checklist#item-${encodeURIComponent(id)}`}>{id}</Link>)}
+                    {x.state === "pushable" && <span className="pill">new</span>}
+                  </li>
+                ))}
+              </ol>
+            ) : <span className="hint">No Top 3 in this review: open it for the full text.</span>}
+            <div className="dig-act">
+              <AddAllButton reviewId={r.id} count={r.toPush} />
+              <AckButton id={r.id} ackedOn={null} />
+              <Link className="btn sm ghost" href={n.href}>Open the review</Link>
+            </div>
+            {r.body_md && <details className="dig-full"><summary>Full text</summary><Markdown>{r.body_md}</Markdown></details>}
+          </div>
+        </ReviewFold>
+      </li>
+    );
     return (
       <li key={n.key} className="need" data-c={p ? D.displayColor(p, topIds) : "other"}>
         <span className={`pill${cls ? " " + cls : ""}`}>{label}</span>
@@ -54,13 +96,20 @@ async function needs(c: Ctx) {
       </li>
     );
   };
-  if (!needs.count) return <div className="empty"><EmptyArt kind="clear" /><b>Nothing needs you right now.</b> Decisions only you can make, pull requests waiting for Approve &amp; merge and new replies from Claude land here.</div>;
+  if (!needs.count) return <div className="empty"><EmptyArt kind="clear" /><b>Nothing needs you right now.</b> Decisions only you can make, pull requests waiting for Approve &amp; merge questions Claude stopped on and each project&apos;s unread advisor review land here. Everything else Claude did is in From Claude.</div>;
   return (
     <div className="needs">
       <ul className="needlist">{needs.rows.slice(0, SHOWN).map(row)}</ul>
-      {needs.count > SHOWN && <details className="needmore"><summary>Show {needs.count - SHOWN} more</summary><ul className="needlist">{needs.rows.slice(SHOWN).map(row)}</ul></details>}
+      {needs.count > SHOWN && <details className="needmore"><summary data-track="Show more needs-you">Show {needs.count - SHOWN} more</summary><ul className="needlist">{needs.rows.slice(SHOWN).map(row)}</ul></details>}
     </div>
   );
+}
+
+async function overdue(c: Ctx) {
+  const { live, byId, topIds } = await c.base();
+  const list = overdueQueue(live, c.t).map((i) => ({ project_id: i.project_id, id: i.id, title: i.title, due: i.due!, critical: i.critical, owner: i.owner, status: i.status }));
+  const projects = Object.fromEntries(Object.values(byId).map((p) => [p.id, { name: p.name, color: D.displayColor(p, topIds) }]));
+  return <OverdueQueue items={list} projects={projects} today={c.t} page="/" limit={8} />;
 }
 
 async function top3(c: Ctx) {
@@ -209,12 +258,13 @@ async function time(c: Ctx) {
   return rows.length ? <HBars rows={rows} format="minutes" /> : <div className="empty">This fills in after the first Monday review reads your Claude sessions for the week.</div>;
 }
 
-export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { needs, top3, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
+export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { needs, overdue, top3, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
 
 /** One-line hints shown in a box's title bar. */
 export async function hintsFor(c: Ctx, ids: string[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (ids.includes("needs")) { const { needs } = await c.base(); if (needs.count) out.needs = `${needs.count} · oldest first`; }
+  if (ids.includes("overdue")) { const { live } = await c.base(); const n = overdueQueue(live, c.t).length; if (n) out.overdue = `${n} across projects · critical first`; }
   if (ids.includes("timeline")) { const d = await c.timeline(); out.timeline = `${fmtDate(d.from)} – ${fmtDate(d.to)}`; }
   if (ids.includes("time")) { const { reviews } = await c.base(); const w = reviews.find((r) => r.type === "project")?.week_start; if (w) out.time = `week of ${fmtDate(w)}`; }
   if (ids.includes("calendar")) out.calendar = `next 7 days · ${TZ.split("/").pop()?.replace("_", " ")}`;

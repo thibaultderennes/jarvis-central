@@ -101,15 +101,21 @@ export function validateProjectName(name, taken = []) {
   return { id, name: n };
 }
 
-/** A path the setup session may create inside the project: relative, no `..`, not git internals, secrets or dependencies. */
+/**
+ * A path the setup session may create inside the project: relative, no `..`, not git internals, secrets or
+ * dependencies, and nothing that runs code later (Claude Code settings and hooks, CI workflows, git hooks, direnv,
+ * editor tasks, package scripts).
+ */
 export function safeRelPath(p) {
   const s = String(p || "").replace(/\\/g, "/").replace(/^\.\/+/, "");
   if (!s || s.startsWith("/") || /^[a-z]:/i.test(s) || s.length > 200) return null;
   const parts = s.split("/");
   if (parts.some((x) => !x || x === "." || x === "..")) return null;
   if (parts[0] === ".git" || parts.includes("node_modules")) return null;
+  if ([".claude", ".github", ".husky", ".vscode", ".devcontainer"].includes(parts[0])) return null;
   const base = parts[parts.length - 1];
   if (/^\.env/.test(base) && !/^\.env\.(example|sample|template)$/.test(base)) return null;
+  if ([".envrc", "package.json", "Makefile", ".npmrc", ".mcp.json"].includes(base)) return null;
   if (/\.(pem|key|p12|pfx)$/i.test(base) || /^(id_rsa|id_ed25519|credentials)/i.test(base)) return null;
   return s;
 }

@@ -2,7 +2,8 @@ import { q, sql } from "./db";
 import { addDays, mondayOf, today, TZ } from "./time";
 import { itemUpdate, projectUpsert } from "./sqlbuild";
 import type { BuildMode } from "./projectSettings";
-import { pushPlan, reviewProposals } from "./docsHub";
+import { parseEntry, pushPlan, reviewProposals, topEntries, decideSuggestion, settingSuggestions, type Change, type Decision, type SettingAction, type Suggestion } from "./docsHub";
+import { matchRejected, outcome, topThree, type Advice, type AdviceStatus, type Outcome } from "./ledger";
 
 export type Section = { id: string; name: string; note?: string; notes?: boolean; owner_default?: string };
 export type Project = {
@@ -58,6 +59,8 @@ export type Review = {
   acked_at?: string | null;
   /** Proposed tasks pushed to the checklist: {proposal key: item code} (lib/docsHub.ts). */
   pushed?: Record<string, string>;
+  /** The Jarvis review's "Your settings": {suggestion key: decision} (lib/docsHub.ts). Undefined until the 0.7.5 migration ran. */
+  decisions?: Record<string, Decision>;
 };
 
 // Postgres `date` comes back as a Date or string depending on driver settings; normalise to YYYY-MM-DD.
@@ -68,7 +71,7 @@ const normSprint = (r: Record<string, unknown>) => ({ id: r.id, project_id: r.pr
 const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
 const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at), rollovers: Number(r.rollovers) || 0, rolled_from: d10(r.rolled_from), rolled_at: d10(r.rolled_at) }) as Todo;
 const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at), opened_at: ts(r.opened_at), treated_at: ts(r.treated_at) }) as Message;
-const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at), acked_at: ts(r.acked_at), pushed: r.pushed && typeof r.pushed === "object" ? r.pushed : {} }) as Review;
+const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at), acked_at: ts(r.acked_at), pushed: r.pushed && typeof r.pushed === "object" ? r.pushed : {}, decisions: r.decisions && typeof r.decisions === "object" ? r.decisions : {} }) as Review;
 /** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
 export const newestFileFirst = (a: Review, b: Review) => String(b.meta?.date || "").localeCompare(String(a.meta?.date || "")) || b.created_at.localeCompare(a.created_at);
 const normProject = (r: Record<string, unknown>) => ({ ...r, updated_at: ts(r.updated_at) }) as Project;
@@ -238,10 +241,12 @@ export async function addTodo(t: { date: string | null; title: string; kind?: st
     values (${t.date}, ${t.title}, ${kind}, ${t.project_id || null}, ${t.item_id || null}, ${t.time || null}, ${m.s}, ${t.source || null}, ${t.rolled_from || null}, ${t.rolled_at || null}) returning *`;
   return normTodo(rows[0]);
 }
-/** Agent edit of a todo (the daily roll-forward): only the fields given change. Returns null when there's no such todo. */
-export async function patchTodo(id: string, p: { date?: string | null; sort?: number; time?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null }): Promise<Todo | null> {
+/** Agent edit of a todo (the daily roll-forward, a tick from the MCP server): only the fields given change. Returns null when there's no such todo. */
+export async function patchTodo(id: string, p: { date?: string | null; sort?: number; time?: string | null; rollovers?: number; rolled_from?: string | null; rolled_at?: string | null; done?: boolean }): Promise<Todo | null> {
   const has = (k: keyof typeof p) => p[k] !== undefined;
   const rows = await sql()`update todos set
+      done_at = case when ${has("done")} then (case when ${p.done ?? false}::boolean then coalesce(done_at, now()) else null end) else done_at end,
+      done = case when ${has("done")} then ${p.done ?? false}::boolean else done end,
       date = case when ${has("date")} then ${p.date ?? null}::date else date end,
       sort = case when ${has("sort")} then ${p.sort ?? null}::real else sort end,
       time = case when ${has("time")} then ${p.time ?? null}::text else time end,
@@ -250,6 +255,11 @@ export async function patchTodo(id: string, p: { date?: string | null; sort?: nu
       rolled_at = case when ${has("rolled_at")} then ${p.rolled_at ?? null}::date else rolled_at end
     where id = ${id} returning *`;
   return rows[0] ? normTodo(rows[0]) : null;
+}
+/** Todos linked to an item follow its status, as on the site: ticked when it's done or cancelled, unticked when it reopens. */
+export async function syncLinkedTodos(project_id: string, item_id: string, done: boolean) {
+  await sql()`update todos set done = ${done}, done_at = ${done ? new Date().toISOString() : null}
+    where project_id = ${project_id} and item_id = ${item_id} and done = ${!done}`;
 }
 
 /* ---------- messages ---------- */
@@ -278,6 +288,14 @@ export async function patchMessage(id: string, p: { status?: string; reply?: str
     where id = ${id} returning *`;
   return rows[0] ? normMsg(rows[0]) : null;
 }
+/** Treat (or un-treat) several messages in one update; work still with Claude is skipped. Returns the ids changed. */
+export async function setTreated(ids: string[], treated: boolean): Promise<string[]> {
+  if (!ids.length) return [];
+  const rows = treated
+    ? await sql()`update messages set treated_at = now(), updated_at = now() where id = any(${ids}::uuid[]) and treated_at is null and status not in ('new', 'seen', 'working') returning id`
+    : await sql()`update messages set treated_at = null, updated_at = now() where id = any(${ids}::uuid[]) and treated_at is not null returning id`;
+  return rows.map((r) => r.id as string);
+}
 /** A message the agent leaves or queues: already answered (a note), or new work for the worker (a build run of an item). */
 export async function insertMessage(m: { text: string; project_id?: string | null; status?: string; reply?: string; meta?: Record<string, unknown>; mode?: string; item_id?: string | null; thread_id?: string | null }): Promise<{ id: string }> {
   const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen", "website", "review", "setup"].includes(m.mode || "") ? m.mode! : "discuss";
@@ -285,8 +303,11 @@ export async function insertMessage(m: { text: string; project_id?: string | nul
     values (${m.text.slice(0, 4000)}, ${m.project_id || null}, ${status}, ${(m.reply || "").slice(0, 8000)}, ${JSON.stringify(m.meta || {})}, ${mode}, ${m.item_id || null}, ${m.thread_id || null}, ${status === "new" ? null : new Date().toISOString()}) returning id`;
   return { id: row.id as string };
 }
-/** Inbox groups for the owner: new (a reply they haven't opened, or work still with Claude), pending (opened, not treated), treated. */
-export const inboxGroup = (m: Message): "new" | "pending" | "treated" => (m.treated_at || m.archived ? "treated" : m.opened_at && !["new", "seen", "working"].includes(m.status) ? "pending" : "new");
+/** A Run again for that failed report is already queued or running. */
+export async function rerunQueued(reviewId: string): Promise<boolean> {
+  const rows = await sql()`select id from messages where mode = 'review' and meta->>'kind' = 'rerun' and meta->>'review' = ${reviewId} and status in ('new', 'seen', 'working') limit 1`;
+  return rows.length > 0;
+}
 
 /* ---------- reviews ---------- */
 /**
@@ -300,8 +321,15 @@ export async function getReviews(opts: { type?: string; project?: string; limit?
   if (opts.week) { params.push(opts.week); where.push(`week_start = $${params.length}`); }
   if (opts.unacked) where.push("acked_at is null");
   params.push(Math.min(opts.limit || 50, 500));
-  const cols = opts.light ? "id, type, project_id, week_start, title, verdict, headline, '' as body_md, meta - 'tabs' as meta, created_at, acked_at, pushed" : "*";
+  const cols = opts.light ? "id, type, project_id, week_start, title, verdict, headline, '' as body_md, meta - 'tabs' as meta, created_at, acked_at, pushed, decisions" : "*";
   const rows = await q(`select ${cols} from reviews ${where.length ? "where " + where.join(" and ") : ""} order by week_start desc nulls last, created_at desc limit $${params.length}`, params);
+  return rows.map(normReview);
+}
+/** Each project's newest advisor review from the last 14 days, read or not (the Monday digest in Needs you). */
+export async function latestProjectReviews(opts: { light?: boolean } = {}): Promise<Review[]> {
+  const cols = opts.light ? "id, type, project_id, week_start, title, verdict, headline, '' as body_md, meta - 'tabs' as meta, created_at, acked_at, pushed" : "*";
+  const rows = await q(`select distinct on (project_id) ${cols} from reviews where type = 'project' and project_id is not null
+    and created_at > now() - interval '14 days' order by project_id, week_start desc nulls last, created_at desc`, []);
   return rows.map(normReview);
 }
 export async function getReview(id: string): Promise<Review | null> {
@@ -319,7 +347,10 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
         body_md = excluded.body_md, meta = excluded.meta, created_at = now(),
         acked_at = case when reviews.body_md is distinct from excluded.body_md then null else reviews.acked_at end
       returning *`;
-    return normReview(rows[0]);
+    const rev = normReview(rows[0]);
+    // The follow-through ledger records its Top 3; a ledger failure never loses the review itself.
+    if (rev.type === "project") await syncAdvice(rev).catch((e) => console.error("advice sync failed", rev.id, e));
+    return rev;
   }
   const file = typeof r.meta?.file === "string" && r.meta.file ? r.meta.file : null;
   if (file && !r.week_start) {
@@ -343,11 +374,19 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
     values (${r.type}, ${r.project_id || null}, ${r.week_start || null}, ${r.title}, ${r.verdict || null}, ${r.headline || ""}, ${r.body_md}, ${meta}) returning *`;
   return normReview(rows[0]);
 }
-/** Mark a report as read (or new again). Null when there's no such review. */
+/**
+ * Mark a report as read (or new again). Null when there's no such review. The inbox messages that delivered it
+ * (meta.review_id, or meta.review from older review runs) follow: treated when it is read, pending again when not.
+ */
 export async function setReviewAck(id: string, acked: boolean): Promise<Review | null> {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   const rows = await sql()`update reviews set acked_at = ${acked ? new Date().toISOString() : null} where id = ${id} returning *`;
-  return rows[0] ? normReview(rows[0]) : null;
+  if (!rows[0]) return null;
+  if (acked) await sql()`update messages set treated_at = now(), updated_at = now()
+    where (meta->>'review_id' = ${id} or (meta->>'review' = ${id} and coalesce(meta->>'kind', '') <> 'rerun')) and treated_at is null and status not in ('new', 'seen', 'working')`;
+  else await sql()`update messages set treated_at = null, updated_at = now()
+    where (meta->>'review_id' = ${id} or (meta->>'review' = ${id} and coalesce(meta->>'kind', '') <> 'rerun')) and treated_at is not null`;
+  return normReview(rows[0]);
 }
 export class AlreadyPushedError extends Error { constructor(public existing: string) { super(`Already on the checklist as "${existing}"`); } }
 /**
@@ -399,6 +438,126 @@ export async function pushAllProposals(review_id: string, actor = "founder"): Pr
   return { added, already, failed };
 }
 export class PushError extends Error { constructor(msg: string, public status = 400) { super(msg); } }
+
+/* ---------- follow-through ledger (lib/ledger.ts) ---------- */
+export type AdviceRow = Advice & { outcome: Outcome; review_title: string };
+const UUID = /^[0-9a-f-]{36}$/;
+const normAdvice = (r: Record<string, unknown>) => ({
+  review_id: String(r.review_id), key: String(r.key), project_id: (r.project_id as string) ?? null, week_start: d10(r.week_start),
+  rank: Number(r.rank) || 0, text: String(r.text || ""), items: Array.isArray(r.items) ? (r.items as string[]) : [],
+  status: r.status as AdviceStatus, reason: String(r.reason || ""), decided_by: (r.decided_by as string) ?? null, decided_at: ts(r.decided_at),
+  pushed_item: typeof r.pushed_item === "string" && !r.pushed_item.startsWith("pending:") ? r.pushed_item : null,
+  review_title: String(r.review_title || ""),
+});
+
+/**
+ * Record a project review's Top 3 in the ledger. Runs on every post; a re-run of the same week keeps the owner's
+ * decisions and drops the open entries it no longer lists. An entry that repeats rejected advice is rejected at once.
+ */
+export async function syncAdvice(r: Review): Promise<void> {
+  if (r.type !== "project" || !r.project_id) return;
+  const ids = new Set((await getItems({ project: r.project_id })).map((i) => i.id));
+  const entries = topThree(topEntries(r.body_md).map((e) => parseEntry(e, "Summary", ids)));
+  const rejected = (await sql()`select key, text, week_start, reason from advice where project_id = ${r.project_id} and status = 'rejected' and review_id <> ${r.id}`)
+    .map((x) => ({ key: String(x.key), text: String(x.text), week_start: d10(x.week_start), reason: String(x.reason || "") }));
+  await sql()`delete from advice where review_id = ${r.id} and status = 'open' and not (key = any(${entries.map((e) => e.key)}))`;
+  for (const e of entries) {
+    const hit = matchRejected(e, rejected);
+    const reason = hit ? `Repeats advice rejected on the review of ${hit.week_start || "an earlier week"}${hit.reason ? `: ${hit.reason}` : ""}` : "";
+    await sql()`insert into advice (review_id, key, project_id, week_start, rank, text, items, status, reason, decided_by, decided_at)
+      values (${r.id}, ${e.key}, ${r.project_id}, ${r.week_start}, ${e.rank}, ${e.text}, ${JSON.stringify(e.items)}, ${hit ? "rejected" : "open"}, ${reason}, ${hit ? "auto" : null}, ${hit ? new Date().toISOString() : null})
+      on conflict (review_id, key) do update set rank = excluded.rank, text = excluded.text, items = excluded.items, project_id = excluded.project_id, week_start = excluded.week_start`;
+  }
+}
+
+/**
+ * Ledger entries with what happened to each (lib/ledger.ts `outcome`, against the live checklist).
+ * `latest` = the Top 3 of each project's newest advisor review (before `before`, when given): what the next review
+ * and the recap open with. A review from before the ledger existed is recorded on first read.
+ */
+export async function getAdvice(opts: { project?: string; review?: string; status?: AdviceStatus; before?: string; latest?: boolean; limit?: number } = {}): Promise<AdviceRow[]> {
+  const where: string[] = [], params: unknown[] = [];
+  let past = false;
+  if (opts.latest) {
+    const w = ["type = 'project'", "project_id is not null", "week_start is not null", "coalesce(verdict, '') not in ('idle', 'failed')"], p: unknown[] = [];
+    if (opts.project) { p.push(opts.project); w.push(`project_id = $${p.length}`); }
+    if (opts.before) { p.push(opts.before); w.push(`week_start < $${p.length}`); }
+    const revs = await q(`select distinct on (project_id) * from reviews where ${w.join(" and ")} order by project_id, week_start desc, created_at desc`, p);
+    if (!revs.length) return [];
+    for (const r of revs) {
+      const [has] = await sql()`select 1 from advice where review_id = ${r.id as string} limit 1`;
+      if (!has) await syncAdvice(normReview(r));
+    }
+    params.push(revs.map((r) => r.id)); where.push(`a.review_id = any($${params.length})`);
+    past = true; // the next review is running, or has: the week each Top 3 was for is over
+  }
+  if (opts.review) { if (!UUID.test(opts.review)) return []; params.push(opts.review); where.push(`a.review_id = $${params.length}`); }
+  if (opts.project) { params.push(opts.project); where.push(`a.project_id = $${params.length}`); }
+  if (opts.status) { params.push(opts.status); where.push(`a.status = $${params.length}`); }
+  params.push(Math.min(opts.limit || 100, 1000));
+  const rows = await q(`select a.*, r.pushed->>a.key as pushed_item, r.title as review_title, r.created_at as review_created from advice a join reviews r on r.id = a.review_id
+    ${where.length ? "where " + where.join(" and ") : ""} order by a.week_start desc nulls last, a.project_id, a.rank limit $${params.length}`, params);
+  if (!rows.length) return [];
+  const projects = [...new Set(rows.map((r) => r.project_id as string).filter(Boolean))];
+  const st = new Map<string, string>();
+  for (const i of await sql()`select project_id, id, status from items where project_id = any(${projects})`) st.set(`${i.project_id}\u0000${i.id}`, String(i.status));
+  const weekAgo = Date.now() - 7 * 864e5;
+  return rows.map((r) => {
+    const a = normAdvice(r);
+    const mine = new Map([...a.items, ...(a.pushed_item ? [a.pushed_item] : [])].map((id) => [id, st.get(`${a.project_id}\u0000${id}`) || ""]));
+    return { ...a, outcome: outcome(a, mine, past || Date.parse(ts(r.review_created) || "") < weekAgo) };
+  });
+}
+
+/** The owner's (or an agent's) decision on one entry: done, rejected (never proposed again), or open again. */
+export async function decideAdvice(review_id: string, key: string, status: AdviceStatus, reason = "", by = "founder"): Promise<AdviceRow | null> {
+  if (!UUID.test(review_id)) return null;
+  const set = async () => (await sql()`update advice set status = ${status}, reason = ${status === "open" ? "" : reason.slice(0, 500)},
+    decided_by = ${status === "open" ? null : by}, decided_at = ${status === "open" ? null : new Date().toISOString()}
+    where review_id = ${review_id} and key = ${key} returning key`).length > 0;
+  if (!(await set())) {
+    // A review posted before the ledger existed: record its Top 3, then try again.
+    const r = await getReview(review_id);
+    if (!r || r.type !== "project") return null;
+    await syncAdvice(r);
+    if (!(await set())) return null;
+  }
+  return (await getAdvice({ review: review_id })).find((a) => a.key === key) || null;
+}
+/**
+ * Apply, Done, Dismiss or Undo on one "Your settings" suggestion of a Jarvis review. The suggestion (and the config
+ * changes Apply queues) is re-read from the stored review, never taken from the caller; the write only lands if the
+ * state is still the one it was decided from, so two clicks, or a click and the Mac, can't cross.
+ */
+export async function decideSetting(review_id: string, key: string, action: SettingAction): Promise<Suggestion> {
+  const r = await getReview(review_id);
+  if (!r || r.type !== "jarvis") throw new PushError("No such Jarvis review", 404);
+  const s = settingSuggestions(r).find((x) => x.key === key);
+  if (!s) throw new PushError("That suggestion isn't in this review.", 404);
+  const plan = decideSuggestion(s, action, new Date().toISOString());
+  if ("error" in plan) throw new PushError(plan.error, 409);
+  const rows = plan.decision
+    ? await sql()`update reviews set decisions = coalesce(decisions, '{}'::jsonb) || jsonb_build_object(${key}::text, ${JSON.stringify(plan.decision)}::jsonb)
+        where id = ${r.id} and coalesce(decisions->${key}::text->>'state', '') = any(${plan.from}) returning id`
+    : await sql()`update reviews set decisions = coalesce(decisions, '{}'::jsonb) - ${key}::text
+        where id = ${r.id} and coalesce(decisions->${key}::text->>'state', '') = any(${plan.from}) returning id`;
+  if (!rows[0]) throw new PushError("Someone else just decided this one: reload the page.", 409);
+  return { ...s, decision: plan.decision };
+}
+/** Suggestions the owner pressed Apply on that the Mac hasn't written yet, oldest review first. */
+export async function queuedSettings(): Promise<{ review_id: string; week_start: string | null; key: string; text: string; changes: Change[]; at: string }[]> {
+  const rows = await sql()`select * from reviews where type = 'jarvis' and jsonb_path_exists(decisions, '$.* ? (@.state == "queued")') order by week_start, created_at`;
+  return rows.map(normReview).flatMap((r) => settingSuggestions(r).filter((s) => s.decision?.state === "queued")
+    .map((s) => ({ review_id: r.id, week_start: r.week_start, key: s.key, text: s.text, changes: s.decision!.changes || [], at: s.decision!.at })));
+}
+/** The Mac's answer to a queued Apply: written (with a note, e.g. "the worker picks it up on restart") or why not. */
+export async function settleSetting(review_id: string, key: string, out: { state: "applied" | "failed"; error?: string; note?: string }): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/.test(review_id)) return false;
+  const patch = { state: out.state, at: new Date().toISOString(), ...(out.error ? { error: out.error.slice(0, 500) } : {}), ...(out.note ? { note: out.note.slice(0, 500) } : {}) };
+  const rows = await sql()`update reviews set decisions = jsonb_set(decisions, array[${key}::text], (decisions->${key}::text) || ${JSON.stringify(patch)}::jsonb)
+    where id = ${review_id} and type = 'jarvis' and decisions->${key}::text->>'state' = 'queued' returning id`;
+  return !!rows[0];
+}
 
 /* ---------- kv / activity ---------- */
 export async function kvGet<T = unknown>(key: string): Promise<{ value: T; updated_at: string } | null> {
