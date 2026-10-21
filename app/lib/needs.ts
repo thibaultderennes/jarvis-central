@@ -41,7 +41,7 @@ export function computeNeeds(projects: Project[], items: ItemLite[], msgs: MsgLi
   for (const t of needsThreads(msgs))
     rows.push({ key: `r:${t.root.id}`, kind: "reply", project_id: t.root.project_id, item_id: null, title: t.line, at: t.at, href: "/inbox", action: "Answer" });
   for (const r of reviews) {
-    if (r.type !== "project" || !r.project_id || r.acked_at || !byId.has(r.project_id)) continue;
+    if (r.type !== "project" || !r.project_id || r.acked_at || r.verdict === "failed" || !byId.has(r.project_id)) continue;
     const its = items.filter((i) => i.project_id === r.project_id);
     rows.push({
       key: `v:${r.id}`, kind: "review", project_id: r.project_id, item_id: null, title: r.headline || r.title, at: r.created_at,

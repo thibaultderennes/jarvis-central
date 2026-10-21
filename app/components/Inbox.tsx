@@ -78,7 +78,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
     if (!focus || !ids.includes(focus)) return;
     setFocus(rest[Math.min(Math.max(i, 0), rest.length - 1)]?.root.id || null);
   };
-  const gotIt = (t: Thread) => { if (inFlight(t.last) || t.handled) return; stepPast([t.root.id]); start(() => markTreated(t.last.id, true)); };
+  const gotIt = (t: Thread) => { if (inFlight(t.last) || t.handled) return; stepPast([t.root.id]); start(async () => { await markTreated(t.last.id, true); }); };
   // Bulk "Got it" (a project bundle, ⇧E, or the whole lane) shows a short Undo.
   const [undo, setUndo] = useState<{ ids: string[]; label: string } | null>(null);
   useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 8000); return () => clearTimeout(t); }, [undo]);

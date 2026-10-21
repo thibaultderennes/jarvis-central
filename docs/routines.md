@@ -24,6 +24,10 @@ reviews, so it never replaces the review your computer posts for the same week. 
 prompt) posts it as the project's review itself, for when you switch that project over.
 
 ## Set it up (you, on claude.ai: about 10 minutes)
+
+> **Security:** the cloud environment attaches your agent token to every request to your site, so anything the
+> session runs can use it. Give the routine only the tools it needs (no WebFetch or WebSearch), and treat its
+> environment's network secret like the token itself: rotate it with `app/scripts/setup.mjs secrets` if in doubt.
 1. **Environment** (claude.ai/code → environments → new): network access **Custom**, allowed domains: your site's
    host, with **Also include default list of common package managers** checked.
    - Variables: `JARVIS_URL=https://your-jarvis.vercel.app`, `JARVIS_TZ=<your timezone>`,

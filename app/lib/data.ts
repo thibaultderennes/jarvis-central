@@ -381,9 +381,9 @@ export async function setReviewAck(id: string, acked: boolean): Promise<Review |
   const rows = await sql()`update reviews set acked_at = ${acked ? new Date().toISOString() : null} where id = ${id} returning *`;
   if (!rows[0]) return null;
   if (acked) await sql()`update messages set treated_at = now(), updated_at = now()
-    where (meta->>'review_id' = ${id} or meta->>'review' = ${id}) and treated_at is null`;
+    where (meta->>'review_id' = ${id} or (meta->>'review' = ${id} and coalesce(meta->>'kind', '') <> 'rerun')) and treated_at is null and status not in ('new', 'seen', 'working')`;
   else await sql()`update messages set treated_at = null, updated_at = now()
-    where (meta->>'review_id' = ${id} or meta->>'review' = ${id}) and treated_at is not null`;
+    where (meta->>'review_id' = ${id} or (meta->>'review' = ${id} and coalesce(meta->>'kind', '') <> 'rerun')) and treated_at is not null`;
   return normReview(rows[0]);
 }
 export class AlreadyPushedError extends Error { constructor(public existing: string) { super(`Already on the checklist as "${existing}"`); } }
@@ -477,7 +477,7 @@ export async function getAdvice(opts: { project?: string; review?: string; statu
   const where: string[] = [], params: unknown[] = [];
   let past = false;
   if (opts.latest) {
-    const w = ["type = 'project'", "project_id is not null", "week_start is not null"], p: unknown[] = [];
+    const w = ["type = 'project'", "project_id is not null", "week_start is not null", "coalesce(verdict, '') not in ('idle', 'failed')"], p: unknown[] = [];
     if (opts.project) { p.push(opts.project); w.push(`project_id = $${p.length}`); }
     if (opts.before) { p.push(opts.before); w.push(`week_start < $${p.length}`); }
     const revs = await q(`select distinct on (project_id) * from reviews where ${w.join(" and ")} order by project_id, week_start desc, created_at desc`, p);

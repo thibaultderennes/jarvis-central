@@ -84,7 +84,7 @@ export async function runProjectReview(message, project, log) {
   }
   const reply = `**${latest.title}**${latest.verdict ? ` · ${latest.verdict.replace("-", " ")}` : ""}\n\n${latest.headline || "Review posted."}\n\nIt is on ${report ? "the" : `${project.name}'s`} Reviews page.`;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "answered", reply, meta: { mode: "review", days, review_id: latest.id, review: latest.id, duration_s, cost_usd: latest.meta?.cost_usd ?? null } });
-  log("review done", project.id, { verdict: latest.verdict, duration_s });
+  log("review done", project?.id || report, { verdict: latest.verdict, duration_s });
 }
 
 if (import.meta.url === `file://${process.argv[1]}`) {

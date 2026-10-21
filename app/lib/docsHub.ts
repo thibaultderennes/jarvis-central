@@ -49,6 +49,7 @@ export const isAcked = (r: Pick<HubReview, "acked_at">) => !!r.acked_at;
  * report read treats that message, and treating the message marks the report read, so a report is cleared once.
  */
 export function messageReviewId(meta: Record<string, unknown> | null | undefined): string | null {
+  if (meta?.kind === "rerun") return null; // a Run again on a failed report isn't the report itself
   for (const v of [meta?.review_id, meta?.review]) if (typeof v === "string" && /^[0-9a-f-]{36}$/.test(v)) return v;
   return null;
 }
