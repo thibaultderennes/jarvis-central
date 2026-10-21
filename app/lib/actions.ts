@@ -10,6 +10,7 @@ import { defaultTab, isTab, sanitizeLayout, sanitizeTab } from "./dashLayout";
 import { normSiteUrl, websiteKind } from "./website";
 import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSettings";
 import { validateProjectName } from "./newProject";
+import { messageReviewId } from "./docsHub";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -275,8 +276,11 @@ export async function markOpened(ids: string[]) {
 }
 export async function markTreated(id: string, treated = true) {
   await requireSession();
-  await D.patchMessage(id, { treated });
-  await D.logActivity("message_treated", "/inbox", { treated });
+  const m = await D.patchMessage(id, { treated });
+  // A message that delivered a report: treating it marks the report read (back to pending makes it new again).
+  const review = m && messageReviewId(m.meta);
+  if (review) await D.setReviewAck(review, treated);
+  await D.logActivity("message_treated", "/inbox", { treated, review: !!review });
   done();
 }
 

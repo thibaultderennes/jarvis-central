@@ -113,7 +113,9 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
   - inbox groups on the site: **New** (a reply not yet opened, or work still with Claude) → **Pending** (`opened_at` set
     once the reply was on screen) → **Treated** (`treated_at`, "Mark treated"; hidden = `archived`). `item_id` = the
     build run of a checklist item.
-  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh'}`
+  - `meta`: `{branch, pr_url, cost_usd, duration_s, mode: 'answer'|'code'|'review', build_mode?: 'goibniu'|'lugh', review_id?}`;
+    `review_id` (older review runs: `review`) = the report this message delivered: marking the report read treats
+    the message, and treating the message marks the report read.
 - `reviews(id uuid, type 'project'|'recap'|'coaching'|'jarvis'|'doc'|'security'|'screening', project_id null, week_start date null, title, verdict null 'on-track'|'at-risk'|'off-track'|'idle', headline, body_md, meta jsonb, created_at, acked_at timestamptz null /* null = new on Docs and reviews */, pushed jsonb /* {proposal key: item code} */)`
   - unique `(type, coalesce(project_id,''), week_start)` for weekly types → re-running a Monday overwrites.
   - **Docs and reviews** (the project page's `?v=docs`) lists a project's reports newest first (advisor reviews, strategy
