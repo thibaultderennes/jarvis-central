@@ -3,6 +3,31 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+
+## 0.7.5 — 2026-10-21
+Version chosen for the 14 Oct builds plus the first audit's fixes (`docs/audits/2026-10-21-audit.md`).
+
+- **Security (audit H8.1–H8.4): headless Claude runs are locked down.** Every run is denied reading or writing
+  `~/.config/jarvis`, `~/.ssh`, `~/.config/gh`, `~/.aws` and `.env` files, and is told that what it reads is data,
+  not instructions. Build runs execute every shell command in the OS sandbox: no network except localhost, writes only
+  in the worktree and its git dir, no retry outside it. A headless run can no longer set an item in progress or change
+  its owner (your go for a build), the agent API refuses `build_status: merge_requested` (only Approve & merge on the
+  site) and refuses Apply on a settings suggestion, and the setup run can't create files that run code later
+  (`.claude/`, `.github/`, `.husky/`, `.envrc`, `package.json`, …).
+- **Security (audit H3.1/H3.2): sessions end when they should.** Log out signs out every device (a copied cookie stops
+  working), and a new password or authenticator (`setup.mjs login`) signs every session out with no second step.
+- **Security (audit H9.9):** `next` 16.4.2 (16.0.0–16.3.7 had six high advisories); `npm audit` is clean.
+- **Privacy (audit SUED):** the public site and `docs/security.md` now say exactly where data goes (Anthropic,
+  GitHub, Google, your metrics sources); a privacy page (`site/privacy.html`); advisor reviews and screenings on the
+  site are labelled as Claude's, screenings as not legal advice; the fonts ship the full OFL text; `docs/updating.md`
+  has uninstall steps.
+- **Fixes on merge:** a Run again on a failed cross-project report no longer ends as an error; a Run again message
+  isn't treated when its failed report is marked read (and the reverse); failed reviews stay out of Needs you; an
+  idle or failed week no longer hides the previous Top 3 from the follow-through ledger; the routine trial's prompt
+  drops web search and treats what it reads as data (`docs/routines.md` warns about the token in the environment).
+- **Upgrade notes:** you'll be asked to sign in once (the session cookie format changed). Re-run `agent/install.sh`
+  so the worker restarts with the sandboxed build runs and the settings applier. Build runs need the Claude Code
+  sandbox (macOS, Linux, WSL2); a test that needs the internet will fail inside it.
 - **The Monday run survives sleep and timeouts.** On a Mac, `weekly.mjs` now holds `caffeinate -is` until it exits
   (one-project runs from the worker too), so the machine no longer sleeps mid-run and times out every step after it.
   An advisor or report whose `claude` hits its time limit (including the exit-143 kill) is retried once on a shorter
@@ -26,11 +51,9 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   cost, failed advisors, runs that never posted). Trial runs post a separate "Routine trial · …" report so they never
   replace that week's review. Project reviews now record `meta.runner` and `meta.duration_s`; `JARVIS_AGENT_TOKEN=proxy-injected`
   lets the CLI run behind a cloud environment's network secret. Setup and the trial plan: `docs/routines.md`.
-- **Treat inbox messages in bulk.** New and Pending are bundled by project, each bundle with a "Got it" that marks
-  its replies treated; rows have checkboxes ("Mark selected treated"), and "Treat all FYI" clears the receipts and
-  reports that only repeat what is already on the checklist or the project page (new-item and comment receipts,
-  merged notes, advisor reviews, project plans, screenings). Each shows an Undo for a few seconds. Decisions
-  (needs you, failed) and replies to what you asked are never swept up as FYI. `PATCH /api/agent/messages` takes
+- **Treat inbox messages in bulk.** In the inbox lanes (below), "Got it for all" on a project bundle (⇧E) or on the
+  whole lane clears them in one update, with an Undo for a few seconds. Decisions (needs you, failed) and work still
+  with Claude are never swept up. `PATCH /api/agent/messages` takes
   `{ids, treated}` (one update), and the CLI has `jarvis treat <id…>` / `jarvis treat --kind fyi --project P` and
   `jarvis untreat <id…>`.
 - **Inbox lanes replace New / Pending / Treated.** Five lanes: Needs you, Shipped, Reports, FYI and With Claude,
@@ -109,7 +132,7 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   worker, project_setup, usage and calendars keys and a few metrics/audits timings, with the same type as before:
   anything that points at a file, folder or command stays a hand edit. Next week's Jarvis review reads what you chose
   and won't push a dismissed one again without new evidence. Older reviews get the cards too, parsed from their text.
-  The review now also returns its settings as data (`meta.settings`). CLI: `settings <review-id> [<key> apply|done|dismiss|undo]`.
+  The review now also returns its settings as data (`meta.settings`). CLI: `settings <review-id> [<key> done|dismiss|undo]` (Apply only from the review page: the agent token can't change your config).
   API: `GET|POST|PATCH /api/agent/settings`. Database: `reviews.decisions` (additive).
   Upgrade notes: deploy the site together with the agent update (an older site has no `/api/agent/settings`; the
   worker skips it), then `agent/install.sh` so the worker restarts with `settingsapply.mjs`.
