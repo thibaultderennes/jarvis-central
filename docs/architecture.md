@@ -140,6 +140,7 @@ JARVIS_AGENT_TOKEN=<64 hex chars>
 - `metrics_snapshots(project_id, date, metrics jsonb /* {key: number}, see metrics.md */, source 'manual'|'url'|'command', created_at, updated_at)` —
   primary key `(project_id, date)`; a POST merges its keys into the day's row. Read by the project's Stats view and `weekly.mjs`.
 - `kv(key pk, value jsonb, updated_at)` — `worker.heartbeat`, `dashboard.layout` (Home's box layout per tab), `weekly.heartbeat`, `prefs` (`{show_done_default, finance_currency}`, the Admin page),
+  `inbox.digest_at` (`{at, by}`: where the From Claude digest was last cleared, for all and per project),
   `economics.<project id>` (`{project_id, file, sha, synced_at, error, error_at, data}`, see `unit-economics.md`),
   `rollover.today` (`{date, workday, carried, load: {before, after, cap}, waiting: [{title, key, critical, overdue, reason}]}`: what
   the morning roll-forward couldn't fit; Today shows it on that date only),
@@ -245,14 +246,18 @@ title contain every word (case- and accent-insensitive, archived projects left o
 ## Site pages
 - `/` Home (0.7.3): one page, three tabs, `?tab=overview|timeline|stats` (`/timeline` and `/stats` redirect there,
   keeping `?w=`, `?bucket=`, `?proj=`). The **Now rail** above every tab: the next thing (the oldest Needs you row,
-  else the most overdue item), today's timed events and todos with "now" among them, one summary line. Below it the tab's
+  else the most overdue item), today's timed events and todos with "now" among them, one summary line. Under it (and atop
+  the Inbox) **From Claude**: what Claude finished since you last looked, one line per conversation grouped by project,
+  Needs you left out (`lib/fromClaude.ts`); "Got it" per project or for all moves the mark in kv `inbox.digest_at`
+  (`{at, by: {project id | "_": time}}`), and it never looks back more than 7 days. The sidebar's Inbox count leaves
+  FYI replies out. Below it the tab's
   boxes on a 12-column grid (`components/DashCanvas.tsx`, boxes rendered on the server in `app/(main)/boxes.tsx`, list
   and defaults in `lib/dashLayout.ts`): **Customize** to drag a box by its title bar, resize from its corner, fold,
   remove, add back from the library, arrow keys to move and Shift + arrows to resize; boxes settle so they never overlap.
   The layout is saved per tab in kv `dashboard.layout` (`{overview|timeline|stats: [{id, x, y, w, h, min?}]}`, cleaned by
   `sanitizeLayout`). Overview boxes: Needs you (`app/lib/needs.ts` `needsYou()` → `{rows, count}`: open items in each
-  project's decide section owned by you, items with a PR waiting for Approve & merge, replies you haven't opened; oldest
-  first), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
+  project's decide section owned by you, items with a PR waiting for Approve & merge, conversations in the Inbox's
+  Needs-you lane that aren't treated or put off; oldest first), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
   upcoming milestones, the next 7 days. Stats: every cross-project chart. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
   Inbox, the Timeline tab, the Stats tab and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · the Timeline tab (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,

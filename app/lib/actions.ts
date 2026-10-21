@@ -12,6 +12,7 @@ import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSe
 import { validateProjectName } from "./newProject";
 import { cleanIds } from "./inbox";
 import { messageReviewId } from "./docsHub";
+import { DIGEST_KEY, gotIt, type DigestSeen } from "./fromClaude";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -605,6 +606,16 @@ export async function declineProject(id: string) {
   await D.logActivity("project_decline", "/admin", { project: id });
   done();
 }
+/** "Got it" on the From Claude digest: for one project (null = General) or, with no argument, for everything. */
+export async function digestGotIt(project?: string | null) {
+  await requireSession();
+  if (project !== undefined && project !== null && !ID_OK(project)) return;
+  const cur = (await D.kvGet<DigestSeen>(DIGEST_KEY))?.value;
+  await D.kvSet(DIGEST_KEY, gotIt(cur, project, new Date().toISOString()));
+  await D.logActivity("digest_got_it", null, { all: project === undefined });
+  done();
+}
+
 export type Prefs = { show_done_default?: boolean; finance_currency?: string };
 export async function savePrefs(p: Prefs) {
   await requireSession();

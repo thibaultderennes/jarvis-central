@@ -7,6 +7,7 @@ import Sidebar, { type NavProject } from "@/components/Sidebar";
 import UsageTracker from "@/components/UsageTracker";
 import { trackingEnabled } from "@/lib/usage";
 import { needsYou } from "@/lib/needs";
+import { unreadCount } from "@/lib/fromClaude";
 import CommandPalette from "@/components/CommandPalette";
 import Shortcuts from "@/components/Shortcuts";
 
@@ -23,8 +24,8 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   // Top-3 keep their colour slot; every other project shares "other", as in the charts.
   const nav = (p: (typeof projects)[number], top: boolean): NavProject => ({ id: p.id, name: p.name, color: top ? p.color : "other", open: counts[p.id]?.open || 0, late: counts[p.id]?.late || 0, soon: counts[p.id]?.soon || 0 });
   const waiting = msgs.filter((m) => ["new", "seen", "working"].includes(m.status)).length;
-  // "new" in the badge = replies you haven't opened yet (they move to Pending once seen in the inbox).
-  const fresh = msgs.filter((m) => ["answered", "done", "needs_you", "error"].includes(m.status) && !m.opened_at && !m.treated_at).length;
+  // "new" in the badge = conversations with a reply you haven't opened yet, FYI left out (it waits in the From Claude digest).
+  const fresh = unreadCount(msgs);
   return (
     <Sidebar pinned={featured.map((p) => nav(p, true))} projects={others.map((p) => nav(p, false))} waiting={waiting} fresh={fresh}
       todayLeft={todos.filter((x) => !x.done).length} needs={needs.count} workerAt={hb?.value?.at || null} rail={jar.get(RAIL_COOKIE)?.value === "1"} railCookie={RAIL_COOKIE}

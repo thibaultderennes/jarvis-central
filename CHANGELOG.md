@@ -53,6 +53,13 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 - Inbox auto-treat is on by default after updating the agent (`git pull`): replies you opened 3+ days ago that are
   only FYI move to Treated on the next worker pass. Set `inbox.auto_treat_fyi_days` to `0` in `jarvis.config.json`
   to keep the old behaviour. No site redeploy needed.
+- **From Claude digest on Home and atop the Inbox.** What Claude finished since you last looked, one line per
+  conversation (the reply's first bold sentence) grouped by project, each tagged Shipped, Report or FYI. "Got it"
+  clears one project or everything (kv `inbox.digest_at`); it never reaches back more than 7 days and hides itself
+  when there's nothing new.
+- **Home's Needs you shows only real decisions.** Reply rows now come only from conversations where Claude stopped and
+  needs you (needs-you or failed status, or a reply opening "NEEDS YOU:"), until you treat them or put them off; FYI,
+  shipped and report replies go to the digest instead. The sidebar's Inbox count leaves FYI replies out.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

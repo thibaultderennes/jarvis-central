@@ -8,6 +8,9 @@ import { redirect } from "next/navigation";
 import { BOXES, OLD_TAB_ANCHOR, SECTIONS, sanitizeLayout } from "@/lib/dashLayout";
 import DashCanvas from "@/components/DashCanvas";
 import { Glyph } from "@/components/brand";
+import FromClaude from "@/components/FromClaude";
+import { DIGEST_KEY, type DigestSeen } from "@/lib/fromClaude";
+import { digestGroups, digestKey } from "./digest";
 import { hintsFor, makeCtx, RENDER } from "./boxes";
 import "./home.css";
 
@@ -25,7 +28,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
     redirect(`/${q ? `?${q}` : ""}#${OLD_TAB_ANCHOR[sp.tab] || "box-top3"}`);
   }
   const c = makeCtx(sp);
-  const [b, saved] = await Promise.all([c.base(), D.kvGet("dashboard.layout")]);
+  const [b, saved, seen] = await Promise.all([c.base(), D.kvGet("dashboard.layout"), D.kvGet<DigestSeen>(DIGEST_KEY)]);
   const when = new Date().toLocaleDateString("en-CA", { weekday: "long", month: "long", day: "numeric", timeZone: TZ });
 
   if (!b.projects.length) return (
@@ -43,6 +46,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   const [rendered, hints, rail] = await Promise.all([Promise.all(ids.map((id) => RENDER[id](c))), hintsFor(c, ids), nowRail(c)]);
   const nodes = Object.fromEntries(ids.map((id, i) => [id, rendered[i]]));
   const open = b.live.filter(D.isOpen).length;
+  const digest = digestGroups(b.msgs, seen?.value, b.byId, b.topIds);
 
   return (
     <>
@@ -56,6 +60,7 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
         </nav>
       </div>
       {rail}
+      <FromClaude key={digestKey(digest)} groups={digest} />
       <DashCanvas tab="home" places={places} nodes={nodes} hints={hints} />
     </>
   );
@@ -73,7 +78,7 @@ async function nowRail(c: ReturnType<typeof makeCtx>) {
   const now = new Date().toLocaleTimeString("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit" });
 
   const n = needs.rows[0], o = overdue[0];
-  const verb: Record<string, string> = { decide: "Decide", merge: "Approve the pull request for", reply: "Read Claude's reply on" };
+  const verb: Record<string, string> = { decide: "Decide", merge: "Approve the pull request for", reply: "Answer Claude:" };
   const next = n ? { text: <>{verb[n.kind]} <b>{n.title}</b></>, p: n.project_id ? byId[n.project_id] : null, href: n.href, action: n.action, why: `waiting ${Math.max(0, daysBetween(n.at.slice(0, 10), c.t))} d` }
     : o ? { text: <>Finish <b>{o.title}</b></>, p: byId[o.project_id], href: `/p/${o.project_id}#item-${o.id}`, action: "Open", why: `due ${fmtDate(o.due!)}` } : null;
 
