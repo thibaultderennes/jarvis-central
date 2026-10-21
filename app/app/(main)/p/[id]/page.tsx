@@ -22,7 +22,7 @@ import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
 import { effectiveBuildMode, isBuildMode, nextReview, reviewEvery } from "@/lib/projectSettings";
 import { filterHub, HUB_KINDS, hubDate, hubKind, hubList, isHubKind, reviewProposals, type HubKind } from "@/lib/docsHub";
-import { AckButton, AddAllButton, Proposals } from "@/components/ReviewActions";
+import { AckButton, AddAllButton, FollowThrough, Proposals } from "@/components/ReviewActions";
 import "./project.css";
 import "../../finance/finance.css";
 
@@ -326,6 +326,10 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
   const proposals = reviewProposals(r, items);
   const titles = Object.fromEntries(items.map((i) => [i.id, i.title]));
   const toPush = proposals.filter((x) => x.state === "pushable").length;
+  // The follow-through ledger for an advisor review's Top 3 (a review from before the ledger is recorded on first view).
+  const followed = r.type !== "project" ? [] : await D.getAdvice({ review: r.id })
+    .then(async (l) => (l.length ? l : D.syncAdvice(r).then(() => D.getAdvice({ review: r.id }))))
+    .catch(() => []);
   return (
     <article className="panel pb hub-doc">
       <div className="hub-doc-h">
@@ -351,6 +355,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
         <p className="hub-tabhead">{cur.verdict && <span className={`verdict v-${cur.verdict}`}>{cur.verdict.replace("-", " ")}</span>}{cur.headline}</p>
       )}
       <Markdown>{cur ? cur.body_md : r.body_md}</Markdown>
+      {followed.length > 0 && <FollowThrough reviewId={r.id} projectId={p.id} list={followed} titles={titles} />}
       {proposals.length > 0 && <Proposals reviewId={r.id} projectId={p.id} list={proposals} sections={p.sections.map((s) => ({ id: s.id, name: s.name, owner_default: s.owner_default }))} titles={titles} />}
       <Thread reviewId={r.id} projectId={r.project_id} tab={cur?.key || null} messages={thread} canBuild />
     </article>

@@ -9,6 +9,7 @@ import { pruneClickEvents, usageSummary } from "@/lib/usage";
 import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
 import { today } from "@/lib/time";
 import { reviewProposals } from "@/lib/docsHub";
+import { isAdviceStatus } from "@/lib/ledger";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -196,6 +197,22 @@ async function handle(req: NextRequest, ctx: Ctx) {
         if (e instanceof D.PushError) return bad(e.message, e.status);
         throw e;
       }
+    }
+    case "GET advice": {
+      // The follow-through ledger: Top 3 entries with what happened to each (lib/ledger.ts). latest=1 → each project's
+      // newest advisor review only (before=YYYY-MM-DD: older than that week); status=rejected → advice never to repeat.
+      const st = sp.get("status") || undefined, before = sp.get("before") || undefined;
+      if (st && !isAdviceStatus(st)) return bad("status must be open, done or rejected");
+      const status = st && isAdviceStatus(st) ? st : undefined;
+      if (before && !isDate(before)) return bad("before must be YYYY-MM-DD");
+      try { return J(await D.getAdvice({ project: sp.get("project") || undefined, review: sp.get("review") || undefined, status, before, latest: sp.get("latest") === "1", limit: +(sp.get("limit") || 100) })); }
+      catch (e) { return J({ error: `advice unavailable (has the deploy migrated?): ${(e as Error).message}` }, 503); }
+    }
+    case "PATCH advice": {
+      // {review_id, key, status: done|rejected|open, reason?}: a decision on one Top 3 entry.
+      if (!b.review_id || typeof b.key !== "string" || !isAdviceStatus(b.status)) return bad("review_id, key and status (open, done or rejected) are required");
+      const a = await D.decideAdvice(String(b.review_id), b.key, b.status, typeof b.reason === "string" ? b.reason : "", "agent");
+      return a ? J({ advice: a }) : bad("No such entry in that review's Top 3", 404);
     }
     case "POST reviews": {
       if (!b.type || !b.title || typeof b.body_md !== "string") return bad("type, title and body_md are required");
