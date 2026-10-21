@@ -67,6 +67,12 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   see the slips. The Now rail's "N late" link opens the Today panel, and "Do next" falls back to the top of the queue.
 - **Upgrade notes:** if you saved a Home layout with Customize, the Overdue box isn't on it yet: Customize → Add box →
   Overdue. A default layout gets it under Needs you.
+- **Monday digest in Needs you.** Each project's newest advisor review, while unread, is a "Review" row in Needs you
+  on Home (and in its count). The row opens in place to a short digest: the verdict, the Top 3 with their item codes,
+  Add all to checklist, Mark as read and a link to the review, with the full text folded below. Opening it logs
+  `review_open` for the Jarvis review. Marking it read (here or on the project's Docs and reviews) clears the row; a
+  newer review replaces it, and reviews older than 14 days drop out. Reviews appear only here, never in the inbox's
+  replies, so there is one digest of them, not two.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

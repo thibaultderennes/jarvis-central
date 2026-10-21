@@ -322,6 +322,13 @@ export async function getReviews(opts: { type?: string; project?: string; limit?
   const rows = await q(`select ${cols} from reviews ${where.length ? "where " + where.join(" and ") : ""} order by week_start desc nulls last, created_at desc limit $${params.length}`, params);
   return rows.map(normReview);
 }
+/** Each project's newest advisor review from the last 14 days, read or not (the Monday digest in Needs you). */
+export async function latestProjectReviews(opts: { light?: boolean } = {}): Promise<Review[]> {
+  const cols = opts.light ? "id, type, project_id, week_start, title, verdict, headline, '' as body_md, meta - 'tabs' as meta, created_at, acked_at, pushed" : "*";
+  const rows = await q(`select distinct on (project_id) ${cols} from reviews where type = 'project' and project_id is not null
+    and created_at > now() - interval '14 days' order by project_id, week_start desc nulls last, created_at desc`, []);
+  return rows.map(normReview);
+}
 export async function getReview(id: string): Promise<Review | null> {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   const rows = await sql()`select * from reviews where id = ${id}`;

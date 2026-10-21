@@ -1,7 +1,7 @@
 "use client";
-import { useState } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
-import { ackReview, pushAllReviewTasks, pushReviewTask, rerunReview } from "@/lib/actions";
+import { ackReview, pushAllReviewTasks, pushReviewTask, rerunReview, track } from "@/lib/actions";
 import { OWNERS, type Proposal } from "@/lib/docsHub";
 import { Ack, imeGuard, useSubmit } from "./Submit";
 
@@ -34,6 +34,21 @@ export function AckButton({ id, ackedOn }: { id: string; ackedOn: string | null 
       </button>
       <Ack s={s} />
     </span>
+  );
+}
+
+/** A review's digest in Needs you: folded under its row; opening it logs review_open (once per page load). */
+export function ReviewFold({ id, projectId, row, children }: { id: string; projectId: string; row: ReactNode; children: ReactNode }) {
+  const logged = useRef(false);
+  return (
+    <details onToggle={(e) => {
+      if (!e.currentTarget.open || logged.current) return;
+      logged.current = true;
+      track("review_open", `/p/${projectId}`, { review: id, from: "needs" }).catch(() => {});
+    }}>
+      <summary className="need" data-track="review_open">{row}</summary>
+      {children}
+    </details>
   );
 }
 
