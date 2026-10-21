@@ -40,6 +40,10 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   bundle), "Later" hides it until tomorrow at 8:00, "Unread" brings it back; got-it and later ones stay listed under
   each lane. Keys: `j`/`k` move, `o` open, `e` got it, `⇧E` got it for the project, `r` reply, `h` later, `u`
   unread, `1`–`5` lanes. On a phone, swipe a line right for got it, left for later.
+- **A report is cleared once, not twice.** Marking a report read also marks the inbox message that delivered it as
+  treated, and "Mark treated" on that message marks the report read (unread / back to pending work the same way).
+  Review runs now write `meta.review_id` on their reply, like plans, screenings and setup; older messages are matched
+  on `meta.review`.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

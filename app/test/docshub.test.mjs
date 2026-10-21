@@ -2,7 +2,7 @@
 // plan and its double-push guard. The database side (lib/data.ts pushProposal) claims the key atomically on top of this.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterHub, hubKind, hubList, isAcked, parseEntry, parseEstimate, pickSection, proposalKey, pushPlan, pushedAs, reviewProposals, topEntries, unackedCount } from "../lib/docsHub.ts";
+import { filterHub, hubKind, hubList, isAcked, messageReviewId, parseEntry, parseEstimate, pickSection, proposalKey, pushPlan, pushedAs, reviewProposals, topEntries, unackedCount } from "../lib/docsHub.ts";
 
 const R = (o) => ({ id: "r1", type: "project", title: "Demo · week of 5 Oct", created_at: "2026-10-05T05:00:00Z", body_md: "", meta: {}, acked_at: null, pushed: {}, ...o });
 const SECTIONS = [{ id: "build", name: "Build", owner_default: "claude" }, { id: "launch", name: "Launch" }];
@@ -18,6 +18,16 @@ const BODY = `## Where they agree
 
 ## Questions for you
 - new item: Not a proposal, wrong section`;
+
+test("messageReviewId: meta.review_id, else meta.review from older review runs; nothing else", () => {
+  const a = "11111111-2222-3333-4444-555555555555", b = "66666666-7777-8888-9999-000000000000";
+  assert.equal(messageReviewId({ review_id: a, review: b }), a);
+  assert.equal(messageReviewId({ review: b }), b);
+  assert.equal(messageReviewId({ review_id: null, review: b }), b);
+  assert.equal(messageReviewId({ review: "not-an-id; drop" }), null);
+  assert.equal(messageReviewId({}), null);
+  assert.equal(messageReviewId(null), null);
+});
 
 test("hubKind: reviews, strategy docs, plans, setup, screenings, audits; cross-project ones are left out", () => {
   assert.equal(hubKind(R({})), "review");

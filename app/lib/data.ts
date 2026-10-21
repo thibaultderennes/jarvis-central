@@ -361,11 +361,19 @@ export async function upsertReview(r: Partial<Review> & { type: Review["type"]; 
     values (${r.type}, ${r.project_id || null}, ${r.week_start || null}, ${r.title}, ${r.verdict || null}, ${r.headline || ""}, ${r.body_md}, ${meta}) returning *`;
   return normReview(rows[0]);
 }
-/** Mark a report as read (or new again). Null when there's no such review. */
+/**
+ * Mark a report as read (or new again). Null when there's no such review. The inbox messages that delivered it
+ * (meta.review_id, or meta.review from older review runs) follow: treated when it is read, pending again when not.
+ */
 export async function setReviewAck(id: string, acked: boolean): Promise<Review | null> {
   if (!/^[0-9a-f-]{36}$/.test(id)) return null;
   const rows = await sql()`update reviews set acked_at = ${acked ? new Date().toISOString() : null} where id = ${id} returning *`;
-  return rows[0] ? normReview(rows[0]) : null;
+  if (!rows[0]) return null;
+  if (acked) await sql()`update messages set treated_at = now(), updated_at = now()
+    where (meta->>'review_id' = ${id} or meta->>'review' = ${id}) and treated_at is null`;
+  else await sql()`update messages set treated_at = null, updated_at = now()
+    where (meta->>'review_id' = ${id} or meta->>'review' = ${id}) and treated_at is not null`;
+  return normReview(rows[0]);
 }
 export class AlreadyPushedError extends Error { constructor(public existing: string) { super(`Already on the checklist as "${existing}"`); } }
 /**

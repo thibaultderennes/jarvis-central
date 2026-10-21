@@ -11,6 +11,7 @@ import { normSiteUrl, websiteKind } from "./website";
 import { isBuildMode, normEvery, reviewEvery, type BuildMode } from "./projectSettings";
 import { validateProjectName } from "./newProject";
 import { cleanIds } from "./inbox";
+import { messageReviewId } from "./docsHub";
 
 const done = () => revalidatePath("/", "layout");
 const ID_OK = (s: unknown) => typeof s === "string" && /^[a-z0-9][a-z0-9-]{0,60}$/.test(s);
@@ -279,7 +280,11 @@ export async function markTreated(ids: string | string[], treated = true): Promi
   await requireSession();
   const list = cleanIds(Array.isArray(ids) ? ids : [ids]);
   const changed = await D.setTreated(list, treated);
-  await D.logActivity("message_treated", "/inbox", { treated, n: changed.length });
+  // A message that delivered a report: treating it marks the report read (back to pending makes it new again).
+  const rows = changed.length ? await sql()`select meta from messages where id = any(${changed}::uuid[])` : [];
+  const reviews = rows.map((r) => messageReviewId(r.meta as Record<string, unknown>)).filter((x): x is string => !!x);
+  for (const review of reviews) await D.setReviewAck(review, treated);
+  await D.logActivity("message_treated", "/inbox", { treated, n: changed.length, reviews: reviews.length });
   done();
   return { ids: changed };
 }

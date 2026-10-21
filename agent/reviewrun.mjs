@@ -80,7 +80,7 @@ export async function runProjectReview(message, project, log) {
     return log("review failed", project?.id || report, why);
   }
   const reply = `**${latest.title}**${latest.verdict ? ` · ${latest.verdict.replace("-", " ")}` : ""}\n\n${latest.headline || "Review posted."}\n\nIt is on ${report ? "the" : `${project.name}'s`} Reviews page.`;
-  await api("PATCH", "/api/agent/messages", { id: message.id, status: "answered", reply, meta: { mode: "review", days, review: latest.id, duration_s, cost_usd: latest.meta?.cost_usd ?? null } });
+  await api("PATCH", "/api/agent/messages", { id: message.id, status: "answered", reply, meta: { mode: "review", days, review_id: latest.id, review: latest.id, duration_s, cost_usd: latest.meta?.cost_usd ?? null } });
   log("review done", project.id, { verdict: latest.verdict, duration_s });
 }
 
