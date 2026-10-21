@@ -33,6 +33,13 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   (needs you, failed) and replies to what you asked are never swept up as FYI. `PATCH /api/agent/messages` takes
   `{ids, treated}` (one update), and the CLI has `jarvis treat <id…>` / `jarvis treat --kind fyi --project P` and
   `jarvis untreat <id…>`.
+- **Inbox lanes replace New / Pending / Treated.** Five lanes: Needs you, Shipped, Reports, FYI and With Claude,
+  picked from each conversation's status, mode, `meta.kind` and `meta.pr_url`. Inside a lane, conversations are
+  bundled by project, one line each: the reply's first bold sentence (the "due →" line for new-item notes), unread in
+  bold; open a line for the whole thread and the reply box. "Got it" treats a conversation (or a whole project
+  bundle), "Later" hides it until tomorrow at 8:00, "Unread" brings it back; got-it and later ones stay listed under
+  each lane. Keys: `j`/`k` move, `o` open, `e` got it, `⇧E` got it for the project, `r` reply, `h` later, `u`
+  unread, `1`–`5` lanes. On a phone, swipe a line right for got it, left for later.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

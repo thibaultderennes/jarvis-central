@@ -305,8 +305,6 @@ export async function rerunQueued(reviewId: string): Promise<boolean> {
   const rows = await sql()`select id from messages where mode = 'review' and meta->>'kind' = 'rerun' and meta->>'review' = ${reviewId} and status in ('new', 'seen', 'working') limit 1`;
   return rows.length > 0;
 }
-/** Inbox groups for the owner: new (a reply they haven't opened, or work still with Claude), pending (opened, not treated), treated. */
-export const inboxGroup = (m: Message): "new" | "pending" | "treated" => (m.treated_at || m.archived ? "treated" : m.opened_at && !["new", "seen", "working"].includes(m.status) ? "pending" : "new");
 
 /* ---------- reviews ---------- */
 /**
