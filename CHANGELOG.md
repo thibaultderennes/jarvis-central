@@ -44,6 +44,15 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   treated, and "Mark treated" on that message marks the report read (unread / back to pending work the same way).
   Review runs now write `meta.review_id` on their reply, like plans, screenings and setup; older messages are matched
   on `meta.review`.
+- **FYI inbox replies treat themselves.** Refine and comment notes and plain discussion answers no longer pile up in
+  Pending: once you opened one `inbox.auto_treat_fyi_days` days ago (default 3, `0` = off) the worker marks it
+  treated (hourly, `agent/inbox.mjs`). "Needs you", errors and anything with a branch or PR are never touched, and a
+  reply you move back to Pending stays there. `node agent/inbox.mjs auto-treat --dry-run` shows what it would mark.
+
+### Upgrade notes
+- Inbox auto-treat is on by default after updating the agent (`git pull`): replies you opened 3+ days ago that are
+  only FYI move to Treated on the next worker pass. Set `inbox.auto_treat_fyi_days` to `0` in `jarvis.config.json`
+  to keep the old behaviour. No site redeploy needed.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

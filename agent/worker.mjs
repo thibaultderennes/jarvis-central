@@ -19,6 +19,7 @@ import { syncMetricsDue, remindMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
 import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
+import { autoTreatDue } from "./inbox.mjs";
 import { prepareWebsiteSkills, websiteBrief, playwrightCommand, githubWebUrl } from "./website.mjs";
 import { prepareLughSkills, lughBrief, PLUGIN_NAME as LUGH_PLUGIN } from "./lugh.mjs";
 import { skillUse, missingSkillsPrompt } from "./skillpacks.mjs";
@@ -429,6 +430,8 @@ async function pass() {
     await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
+    // FYI replies (refine/comment notes, plain answers) opened inbox.auto_treat_fyi_days ago: mark them treated; hourly.
+    await autoTreatDue(log).catch((e) => logChanged("inbox-auto-treat", e.message, "inbox auto-treat failed", e.message));
     // A project loaded for the first time, or updated with a foundation gap: queue its setup session (setup.mjs).
     await queueSetupDue(projects, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.

@@ -16,6 +16,7 @@ API contract: `../docs/architecture.md`.
 | `metrics.mjs` | Fetches each project's product numbers from its source in `metrics.sources.<id>` (URL or command; see `docs/metrics.md`) and posts the day's snapshot for the Stats view; `sync [--project id] [--dry-run]` |
 | `milestones.mjs` | Milestones moved on the Timeline → the new date written into that PRD.md row (file only, no commit); the worker runs it every pass, `sync` and plans before reading the PRD |
 | `audits.mjs` | Mirrors each project's security audit reports (`audits.dir`, default `docs/audits/*.md`) to the project page's Docs and reviews (Security audits); `sync [--project id] [--dry-run]` runs it by hand |
+| `inbox.mjs` | Marks FYI inbox replies (refine/comment notes, plain answers) treated once opened `inbox.auto_treat_fyi_days` ago; the worker runs it hourly, `auto-treat [--dry-run]` by hand |
 | `plan.mjs` | Weekly planner: estimates open items, packs them around your calendar → todos + calendars |
 | `rollover.mjs` | Daily roll-forward: unfinished todos and overdue items back to the top of today by priority, within the day's caps; the worker runs it once a day (rule in `docs/config.md`) |
 | `weekly.mjs` | Weekly reviews: CEO / CMO / PO advisors per project + synthesis, recap, "working with AI" coaching, Jarvis usage |
@@ -85,6 +86,7 @@ node metrics.mjs sync --dry-run        # fetch product metrics without posting �
 node jarvis.mjs metrics <id> --set users=120 --set visits=900   # record numbers by hand (today; --date D)
 node audits.mjs sync --dry-run         # which audit reports would be mirrored · --project <id>
 node jarvis.mjs audits <id>            # the synced reports for a project (date, verdict, headline)
+node inbox.mjs auto-treat --dry-run    # which opened FYI replies would be marked treated
 ```
 
 ## Logs and state
