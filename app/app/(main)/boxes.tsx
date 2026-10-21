@@ -11,6 +11,8 @@ import { HBars, StackedColumns, type Series } from "@/components/Charts";
 import { BurnUp, Heatmap, OwnerBars, PaceBullets } from "@/components/Insights";
 import DailyStats from "@/components/DailyStats";
 import { EmptyArt } from "@/components/brand";
+import OverdueQueue from "@/components/OverdueQueue";
+import { overdueQueue } from "@/lib/overdue";
 
 /** What every box may read, loaded once per request and only when a box on the open tab asks for it. */
 export type Ctx = ReturnType<typeof makeCtx>;
@@ -61,6 +63,13 @@ async function needs(c: Ctx) {
       {needs.count > SHOWN && <details className="needmore"><summary>Show {needs.count - SHOWN} more</summary><ul className="needlist">{needs.rows.slice(SHOWN).map(row)}</ul></details>}
     </div>
   );
+}
+
+async function overdue(c: Ctx) {
+  const { live, byId, topIds } = await c.base();
+  const list = overdueQueue(live, c.t).map((i) => ({ project_id: i.project_id, id: i.id, title: i.title, due: i.due!, critical: i.critical, owner: i.owner, status: i.status }));
+  const projects = Object.fromEntries(Object.values(byId).map((p) => [p.id, { name: p.name, color: D.displayColor(p, topIds) }]));
+  return <OverdueQueue items={list} projects={projects} today={c.t} page="/" limit={8} />;
 }
 
 async function top3(c: Ctx) {
@@ -209,12 +218,13 @@ async function time(c: Ctx) {
   return rows.length ? <HBars rows={rows} format="minutes" /> : <div className="empty">This fills in after the first Monday review reads your Claude sessions for the week.</div>;
 }
 
-export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { needs, top3, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
+export const RENDER: Record<string, (c: Ctx) => Promise<React.ReactNode>> = { needs, top3, overdue, reviews, sprints, inbox, timeline, milestones, calendar, burnups, pace, owners, finished, daily, rhythm, ahead, time };
 
 /** One-line hints shown in a box's title bar. */
 export async function hintsFor(c: Ctx, ids: string[]): Promise<Record<string, string>> {
   const out: Record<string, string> = {};
   if (ids.includes("needs")) { const { needs } = await c.base(); if (needs.count) out.needs = `${needs.count} · oldest first`; }
+  if (ids.includes("overdue")) { const { live } = await c.base(); const n = overdueQueue(live, c.t).length; if (n) out.overdue = `${n} across projects · critical first`; }
   if (ids.includes("timeline")) { const d = await c.timeline(); out.timeline = `${fmtDate(d.from)} – ${fmtDate(d.to)}`; }
   if (ids.includes("time")) { const { reviews } = await c.base(); const w = reviews.find((r) => r.type === "project")?.week_start; if (w) out.time = `week of ${fmtDate(w)}`; }
   if (ids.includes("calendar")) out.calendar = `next 7 days · ${TZ.split("/").pop()?.replace("_", " ")}`;
