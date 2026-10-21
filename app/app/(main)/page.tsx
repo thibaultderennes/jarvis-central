@@ -11,6 +11,7 @@ import { Glyph } from "@/components/brand";
 import FromClaude from "@/components/FromClaude";
 import { DIGEST_KEY, type DigestSeen } from "@/lib/fromClaude";
 import { digestGroups, digestKey } from "./digest";
+import { overdueQueue } from "@/lib/overdue";
 import { hintsFor, makeCtx, RENDER } from "./boxes";
 import "./home.css";
 
@@ -66,12 +67,12 @@ export default async function Home({ searchParams }: { searchParams: Promise<{ t
   );
 }
 
-/** The Now rail: one sentence for the next thing (oldest "Needs you" row, else the most overdue item), today as a line, one summary line. */
+/** The Now rail: one sentence for the next thing (oldest "Needs you" row, else the top of the overdue queue), today as a line, one summary line. */
 async function nowRail(c: ReturnType<typeof makeCtx>) {
   const [b, cal, todos] = await Promise.all([c.base(), c.todayCal(), c.todos()]);
   const { needs, byId, topIds, live, projects } = b;
   const open = live.filter(D.isOpen);
-  const overdue = open.filter((i) => i.due && i.due < c.t).sort((x, y) => x.due!.localeCompare(y.due!) || Number(y.critical) - Number(x.critical));
+  const overdue = overdueQueue(open, c.t);
   const dueToday = open.filter((i) => i.due === c.t).length;
   const lateProjects = new Set(overdue.map((i) => i.project_id)).size;
   const nd = projects.flatMap((p) => p.deadlines.filter((d) => d.date >= c.t).map((d) => ({ ...d, p }))).sort((x, y) => x.date.localeCompare(y.date))[0];
@@ -107,7 +108,7 @@ async function nowRail(c: ReturnType<typeof makeCtx>) {
         {!marks.length && <li className="past"><span className="t" />{calendarConfigured() ? (cal.error ? "Calendar unavailable right now" : "No more events today") : "Connect a calendar to see today here"}</li>}
       </ol>
       <p className="nr-sum">
-        {overdue.length ? <Link href="/today" className="nr-bad"><b>{overdue.length} late</b> in {lateProjects} project{lateProjects === 1 ? "" : "s"}</Link> : "Nothing late"}
+        {overdue.length ? <Link href="/today#td-overdue" className="nr-bad"><b>{overdue.length} late</b> in {lateProjects} project{lateProjects === 1 ? "" : "s"}</Link> : "Nothing late"}
         {dueToday ? ` · ${dueToday} due today` : ""}
         {nd && <> · next deadline <b>{nd.p.name} · {nd.label}</b> {daysBetween(c.t, nd.date) === 0 ? "today" : `in ${daysBetween(c.t, nd.date)} days`}</>}
       </p>
