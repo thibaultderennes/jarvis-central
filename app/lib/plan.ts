@@ -14,7 +14,10 @@ export async function getPlan(week: string): Promise<WeekPlan | null> {
 }
 
 const hhmm = (s: unknown) => typeof s === "string" && /^\d{2}:\d{2}$/.test(s);
-/** Save a week's plan and replace that week's planner-made todos (done ones are kept). */
+/**
+ * Save a week's plan. Its blocks are calendar time for checklist items, not todos: Today shows the items and the
+ * blocks on its agenda. Undone todos an earlier planner made for that week are removed (done ones are kept).
+ */
 export async function savePlan(p: { week_start: string; blocks: Block[]; unscheduled?: WeekPlan["unscheduled"]; notes_md?: string; force?: boolean }): Promise<WeekPlan> {
   const end = addDays(p.week_start, 6);
   const blocks = (p.blocks || []).filter((b) => isDate(b.date) && b.date >= p.week_start && b.date <= end && hhmm(b.start) && hhmm(b.end) && b.title)
@@ -26,11 +29,6 @@ export async function savePlan(p: { week_start: string; blocks: Block[]; unsched
       force_resync = excluded.force_resync, version = week_plans.version + 1, updated_at = now()
     returning *`;
   await sql()`delete from todos where source = 'plan' and not done and date between ${p.week_start} and ${end}`;
-  let sort = 1;
-  for (const b of blocks) {
-    await sql()`insert into todos (date, title, kind, project_id, item_id, time, sort, source)
-      values (${b.date}, ${b.title}, 'work', ${b.project_id || null}, ${b.item_id || null}, ${b.start}, ${sort++}, 'plan')`;
-  }
   return norm(rows[0]);
 }
 

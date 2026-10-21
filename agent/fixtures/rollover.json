@@ -1,5 +1,5 @@
 {
- "_comment": "Daily roll-forward fixture: node agent/rollover.mjs --fixture agent/fixtures/rollover.json --date 2026-10-12 (a Monday). Friday left two todos undone, one of them carried three times already; one item is overdue with no todo; one project has planning off.",
+ "_comment": "Daily roll-forward fixture: node agent/rollover.mjs --fixture agent/fixtures/rollover.json --date 2026-10-12 (a Monday). Two items are overdue (one already carried three times, so it is flagged instead), one is in progress (on Today anyway), Friday left a personal todo undone, an old planner todo is ignored, and one project has planning off.",
  "projects": [
   { "id": "example-app", "name": "Example app" },
   { "id": "side-project", "name": "Side project", "plan_enabled": false }
@@ -12,10 +12,10 @@
   { "project_id": "side-project", "id": "logo", "title": "Pick a logo", "status": "todo", "due": "2026-10-05", "owner": "founder", "critical": false, "priority": 3 }
  ],
  "todos": [
-  { "id": "t1", "date": "2026-10-09", "title": "Ship the login page (1/2)", "done": false, "project_id": "example-app", "item_id": "ship-login", "time": "09:00", "sort": 1, "rollovers": 0 },
-  { "id": "t2", "date": "2026-10-09", "title": "Pricing page copy", "done": false, "project_id": "example-app", "item_id": "pricing-copy", "sort": 2, "rollovers": 3, "rolled_from": "2026-10-01" },
+  { "id": "t1", "date": "2026-10-09", "title": "Ship the login page (1/2)", "done": false, "project_id": "example-app", "item_id": "ship-login", "time": "09:00", "sort": 1, "rollovers": 0, "source": "plan" },
   { "id": "t3", "date": "2026-10-09", "title": "Call the accountant", "done": false, "project_id": null, "item_id": null, "sort": 3, "rollovers": 0 },
   { "id": "t4", "date": "2026-10-09", "title": "Groceries", "done": true, "project_id": null, "item_id": null, "sort": 4, "rollovers": 0 },
   { "id": "t5", "date": "2026-10-12", "title": "Team call prep", "done": false, "project_id": null, "item_id": null, "time": "11:00", "sort": 1, "rollovers": 0 }
- ]
+ ],
+ "prev": { "date": "2026-10-09", "items": [{ "key": "example-app/pricing-copy", "title": "Pricing page copy", "critical": false, "overdue": 8 }], "counts": { "example-app/pricing-copy": 3 } }
 }

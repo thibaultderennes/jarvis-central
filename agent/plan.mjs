@@ -2,6 +2,7 @@
 // Weekly planner: turns the owner's open checklist items into time blocks for the coming week.
 // Step A (claude -p, no tools): estimate minutes + priority for each candidate.
 // Step B (this file, no AI): pack them into free slots around calendar events and caps.
+// The blocks go to the week plan and your calendars; no todos are made (Today shows the items, and the blocks on its agenda).
 // The scheduler runs it at jarvis.config.json → planner.run (default Sunday 17:00, local time).
 //
 //   node plan.mjs                         plan next week (Sunday → tomorrow's week; other days → next Monday)
@@ -54,7 +55,10 @@ const localParts = (iso) => {
 };
 const BLOCKING_ALLDAY = /vacation|holiday|day off|off work|\booo\b|out of office|travel|flight|congé|vacances|férié/i;
 
-/** Busy intervals per date: {date: [[startMin, endMin], ...]} from calendar events and timed todos. */
+/**
+ * Busy intervals per date: {date: [[startMin, endMin], ...]} from calendar events and timed personal todos. Todos
+ * linked to an item (older planner or "+ Today" todos) aren't busy time: the item itself is what gets planned.
+ */
 export function busyByDay(events, todos, days) {
   const busy = Object.fromEntries(days.map((d) => [d, []]));
   const blockedDays = new Set();
@@ -73,7 +77,7 @@ export function busyByDay(events, todos, days) {
       if (to > from) busy[d].push([from, to]);
     }
   }
-  for (const t of todos) if (t.time && busy[t.date] && !t.done && t.source !== "plan") busy[t.date].push([toMin(t.time), toMin(t.time) + 60]);
+  for (const t of todos) if (t.time && busy[t.date] && !t.done && t.source !== "plan" && !t.item_id) busy[t.date].push([toMin(t.time), toMin(t.time) + 60]);
   for (const d of blockedDays) busy[d].push([0, 24 * 60]);
   return busy;
 }
@@ -170,7 +174,7 @@ export function pack({ candidates, weekStart, settings, busy }) {
 // ---------- data ----------
 /**
  * Offline fixture: a JSON file shaped like the API ({projects, items, events?, todos?, settings?}), plus an optional
- * `history` for planner.adapt: {todos, itemsDone, minutes, hoursOfDay} (see agent/adapt.mjs loadHistory).
+ * `history` for planner.adapt: {planned, todos, itemsDone, minutes, hoursOfDay} (see agent/adapt.mjs loadHistory).
  */
 function loadFixture(file) {
   const d = JSON.parse(fs.readFileSync(file, "utf8"));
@@ -191,16 +195,15 @@ async function loadLive(weekStart) {
   return { projects, items, events, todos, settings };
 }
 
-export function selectCandidates(items, weekStart, todos = []) {
+/** Your open items due by Sunday, in progress, or critical and due the week after; Claude's are listed apart. */
+export function selectCandidates(items, weekStart) {
   const sunday = addDays(weekStart, 6), nextSunday = addDays(weekStart, 13);
-  const planned = new Set(todos.filter((t) => t.item_id).map((t) => `${t.project_id}/${t.item_id}`));
   const wanted = (i) => (i.status === "todo" || i.status === "doing") && ((i.due && i.due <= sunday) || i.status === "doing" || (i.critical && i.due && i.due <= nextSunday));
   const mine = [], claude = [];
   for (const i of items) {
     if (!wanted(i)) continue;
     if (i.owner === "claude") { claude.push(i); continue; }
     const key = `${i.project_id}/${i.id}`;
-    if (planned.has(key)) continue;
     mine.push({ key, project_id: i.project_id, item_id: i.id, title: i.title, section: i.section, status: i.status, due: i.due || null, critical: !!i.critical, owner: i.owner || null, detail: (i.detail || "").slice(0, 300), note: (i.note || "").slice(0, 200) });
   }
   return { founder: mine, claude };
@@ -283,7 +286,7 @@ async function main() {
   // Never plan into the past: earlier days are closed, and today opens 15 minutes from now.
   const nowMin = (() => { const [h, m] = new Intl.DateTimeFormat("en-GB", { timeZone: TZ, hour: "2-digit", minute: "2-digit", hour12: false }).format(new Date()).split(":").map(Number); return h * 60 + m; })();
   for (const d of days) { if (d < today) busy[d].push([0, 24 * 60]); else if (d === today) busy[d].push([0, nowMin + 15]); }
-  const { founder, claude } = selectCandidates(data.items, weekStart, data.todos);
+  const { founder, claude } = selectCandidates(data.items, weekStart);
   log("plan start", { weekStart, candidates: founder.length, claude: claude.length, events: data.events.length, dry: DRY, fixture: !!FIXTURE });
 
   let est = null, cost = 0;
