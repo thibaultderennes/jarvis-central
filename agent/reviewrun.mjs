@@ -2,11 +2,14 @@
 // "Run now". Both are inbox messages with mode 'review'; the worker runs `weekly.mjs --only <id> --days <N>` for each.
 //
 //   node reviewrun.mjs due     which projects the worker would queue now (no API writes)
+//   node reviewrun.mjs words [N]   word counts of the last N project reviews (default 20): synthesis and each advisor,
+//                              "before→after" the stop-slop pass when the review recorded it (reviews pack, skillpacks.mjs)
 import { execFile } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { api, qs, cacheDir, dateTZ, todayTZ, AGENT_DIR } from "./lib.mjs";
 import { reviewEvery, reviewsDue } from "./projectsettings.mjs";
+import { wordCount } from "./skillpacks.mjs";
 
 const OPEN = ["new", "seen", "working"];
 const CHECK_EVERY_MS = 60 * 60_000; // the due check runs at most once an hour
@@ -82,5 +85,14 @@ if (import.meta.url === `file://${process.argv[1]}`) {
     const projects = (await api("GET", "/api/agent/projects")).filter((p) => !p.archived);
     const due = await dueNow(projects);
     for (const p of projects.filter((x) => x.reviews_enabled !== false)) console.log(p.id.padEnd(22), `every ${reviewEvery(p)} days`, due.some((d) => d.id === p.id) ? "· due now" : reviewEvery(p) === 7 ? "· weekly run" : "");
-  } else console.log("usage: node reviewrun.mjs due");
+  } else if (cmd === "words") {
+    const n = Math.max(1, Math.min(200, Number(process.argv[3]) || 20));
+    const rows = await api("GET", "/api/agent/reviews" + qs({ type: "project", limit: n }));
+    const fmt = (w, text) => (w ? (w.before ? `${w.before}→${w.after}` : String(w.after)) : String(wordCount(text)));
+    for (const r of rows) {
+      const w = r.meta?.words || {};
+      const tabs = (r.meta?.tabs || []).map((t) => `${t.key} ${fmt(w[t.key], t.body_md)}`).join(", ");
+      console.log(`${dateTZ(new Date(r.created_at))} ${String(r.project_id).padEnd(12)} synthesis ${fmt(w.synthesis, r.body_md).padEnd(10)} ${tabs}`);
+    }
+  } else console.log("usage: node reviewrun.mjs due | words [N]");
 }
