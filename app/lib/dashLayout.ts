@@ -10,37 +10,41 @@ export type Layout = Record<Tab, Place[]>;
 
 /** The page's sections, top to bottom: the jump links above the grid point at their first box. */
 export const SECTIONS = [
-  { id: "overview", label: "Overview", box: "top3" },
+  { id: "overview", label: "Overview", box: "needs" },
   { id: "timeline", label: "Timeline", box: "timeline" },
   { id: "stats", label: "Stats", box: "burnups" },
 ] as const;
 
-/** Every box: its section, its title, what it shows (the "Add box" library) and where it starts. Your top 3 comes first. */
-export const BOXES: Record<string, { tab: Tab; section: string; title: string; what: string; at: [number, number, number, number] }> = {
-  top3: { tab: "home", section: "overview", title: "Your top 3", what: "Your three main projects with pace against their next milestone", at: [0, 0, 12, 6] },
-  needs: { tab: "home", section: "overview", title: "Needs you", what: "Decisions, pull requests to approve, replies you haven't opened", at: [0, 6, 7, 6] },
-  reviews: { tab: "home", section: "overview", title: "This week's reviews", what: "The Monday reviews, recap and coaching", at: [7, 6, 5, 3] },
-  sprints: { tab: "home", section: "overview", title: "Sprints this week", what: "Sprints running or starting this week, across projects", at: [7, 9, 5, 3] },
-  overdue: { tab: "home", section: "overview", title: "Overdue", what: "Every overdue open item across projects, critical first: re-date, later, give to Claude or done, one or many", at: [0, 12, 12, 6] },
+/**
+ * Every box: its section, its title, what it shows (the "Add box" library), where it starts and whether it starts
+ * folded. The default leads with what asks for action: Needs you, the overdue queue, the review digest, then your top 3.
+ * The stats start folded to their titles under the one Stats section.
+ */
+export const BOXES: Record<string, { tab: Tab; section: string; title: string; what: string; at: [number, number, number, number]; fold?: true }> = {
+  needs: { tab: "home", section: "overview", title: "Needs you", what: "Decisions, pull requests to approve, replies you haven't opened", at: [0, 0, 7, 6] },
+  overdue: { tab: "home", section: "overview", title: "Overdue", what: "Every overdue open item across projects, critical first: re-date, later, give to Claude or done, one or many", at: [7, 0, 5, 6] },
+  reviews: { tab: "home", section: "overview", title: "This week's reviews", what: "The Monday reviews, recap and coaching", at: [0, 6, 12, 3] },
+  top3: { tab: "home", section: "overview", title: "Your top 3", what: "Your three main projects with pace against their next milestone", at: [0, 9, 12, 6] },
+  sprints: { tab: "home", section: "overview", title: "Sprints this week", what: "Sprints running or starting this week, across projects", at: [0, 15, 6, 3] },
+  inbox: { tab: "home", section: "overview", title: "Inbox", what: "The latest messages with Claude and where they stand", at: [6, 15, 6, 3] },
   timeline: { tab: "home", section: "timeline", title: "Timeline", what: "Milestones, due dates, sprints and planned blocks, 10 weeks", at: [0, 18, 12, 8] },
   milestones: { tab: "home", section: "timeline", title: "Upcoming milestones", what: "The next dated milestones from each PRD", at: [0, 26, 7, 4] },
   calendar: { tab: "home", section: "timeline", title: "This week", what: "Calendar events and planned focus, 7 days", at: [7, 26, 5, 4] },
-  burnups: { tab: "home", section: "stats", title: "Will each project make its next deadline?", what: "Burn-ups against each next milestone", at: [0, 30, 12, 4] },
-  pace: { tab: "home", section: "stats", title: "Pace vs needed", what: "Items finished per week against what the next deadline needs", at: [0, 34, 6, 5] },
-  owners: { tab: "home", section: "stats", title: "Who it's waiting on", what: "Open checklist items by owner", at: [6, 34, 6, 5] },
-  finished: { tab: "home", section: "stats", title: "Finished per week", what: "Checklist items done, last 4 weeks", at: [0, 39, 6, 5] },
-  daily: { tab: "home", section: "stats", title: "Added and finished", what: "Items added and finished per day, week or month", at: [6, 39, 6, 5] },
-  rhythm: { tab: "home", section: "stats", title: "Your rhythm", what: "Items finished, todos ticked and messages sent per day", at: [0, 44, 6, 4] },
-  ahead: { tab: "home", section: "stats", title: "Work ahead", what: "Open items due in the next 4 weeks", at: [6, 44, 6, 5] },
-  time: { tab: "home", section: "stats", title: "Where your time went", what: "Active minutes in Claude sessions per project, last week", at: [0, 49, 6, 4] },
-  inbox: { tab: "home", section: "overview", title: "Inbox", what: "The latest messages with Claude and where they stand", at: [6, 49, 6, 4] },
+  burnups: { tab: "home", section: "stats", title: "Will each project make its next deadline?", what: "Burn-ups against each next milestone", at: [0, 30, 12, 4], fold: true },
+  pace: { tab: "home", section: "stats", title: "Pace vs needed", what: "Items finished per week against what the next deadline needs", at: [0, 31, 6, 5], fold: true },
+  owners: { tab: "home", section: "stats", title: "Who it's waiting on", what: "Open checklist items by owner", at: [6, 31, 6, 5], fold: true },
+  finished: { tab: "home", section: "stats", title: "Finished per week", what: "Checklist items done, last 4 weeks", at: [0, 32, 6, 5], fold: true },
+  daily: { tab: "home", section: "stats", title: "Added and finished", what: "Items added and finished per day, week or month", at: [6, 32, 6, 5], fold: true },
+  rhythm: { tab: "home", section: "stats", title: "Your rhythm", what: "Items finished, todos ticked and messages sent per day", at: [0, 33, 6, 4], fold: true },
+  ahead: { tab: "home", section: "stats", title: "Work ahead", what: "Open items due in the next 4 weeks", at: [6, 33, 6, 5], fold: true },
+  time: { tab: "home", section: "stats", title: "Where your time went", what: "Active minutes in Claude sessions per project, last week", at: [0, 34, 6, 4], fold: true },
 };
 
 /** Where an old `?tab=` link lands on the one page. */
-export const OLD_TAB_ANCHOR: Record<string, string> = { overview: "box-top3", timeline: "box-timeline", stats: "box-burnups" };
+export const OLD_TAB_ANCHOR: Record<string, string> = { overview: "box-needs", timeline: "box-timeline", stats: "box-burnups" };
 
 export const isTab = (t: unknown): t is Tab => typeof t === "string" && (TABS as readonly string[]).includes(t);
-export const defaultTab = (tab: Tab): Place[] => Object.entries(BOXES).filter(([, b]) => b.tab === tab).map(([id, b]) => ({ id, x: b.at[0], y: b.at[1], w: b.at[2], h: b.at[3] }));
+export const defaultTab = (tab: Tab): Place[] => Object.entries(BOXES).filter(([, b]) => b.tab === tab).map(([id, b]) => ({ id, x: b.at[0], y: b.at[1], w: b.at[2], h: b.at[3], ...(b.fold ? { min: true } : {}) }));
 export const defaultLayout = (): Layout => ({ home: defaultTab("home") });
 
 const int = (v: unknown, lo: number, hi: number, d: number) => { const n = Math.round(Number(v)); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };

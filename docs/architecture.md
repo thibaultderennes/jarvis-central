@@ -285,8 +285,9 @@ title contain every word (case- and accent-insensitive, archived projects left o
   Needs-you lane that aren't treated or put off, and
   each project's newest advisor review from the last 14 days while it's unread (`latestProjectReviews`); oldest first.
   A review row folds open in place: verdict, Top 3 with item codes (`docsHub.ts` `reviewDigest`), Add all to checklist,
-  Mark as read, the full text folded again; opening it logs activity `review_open`), the top-3 project cards with pace, this week's reviews, sprints this week, inbox. Timeline: the timeline,
-  upcoming milestones, the next 7 days. Stats: every cross-project chart. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
+  Mark as read, the full text folded again; opening it logs activity `review_open`), Overdue (`app/lib/overdue.ts`), this week's reviews, the top-3 project cards with pace, sprints this week, inbox; the
+  default layout puts Needs you, Overdue, the reviews and the top 3 first. Timeline: the timeline, upcoming milestones,
+  the next 7 days. Stats: every cross-project chart, folded to their titles by default. Everywhere: ⌘K / Ctrl+K or `/` opens the jump palette
   (`components/CommandPalette.tsx`, also on `window` event `jarvis:palette`), `g h|t|w|i|l|s` jump to Home, Today, Week,
   Inbox, the Timeline tab, the Stats tab and `?` lists the shortcuts (`components/Shortcuts.tsx`) · `/today` · `/week` · the Timeline tab (ten weeks, last week → 8 weeks out by default; `?w=<weeks>` moves it from −26 to +52 with ← / Today / → controls, also on a project's Timeline view; days are at least 22 px wide so the chart scrolls sideways; one lane per project: PRD milestones,
   open items' due dates per day, the Sunday-plan blocks of every planned week in range, calendar events; built in `app/lib/timeline.ts`
