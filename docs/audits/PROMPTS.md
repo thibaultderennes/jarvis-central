@@ -6,7 +6,8 @@ TELL, regressions against the previous report ranked first. Fixes come as pull r
 merges on its own.
 
 This repo is a self-hosted tool with exactly one user per install (the owner). There are no customer accounts, no
-payments, no marketing emails and no public content, so most of SUED is about the tool's own docs and defaults. Run
+payments and no marketing emails, so most of SUED is about the tool's own docs and defaults. The one public page is
+`site/` (the product's static home page): the privacy and content checks apply to it. Run
 it against the main branch of this repo, not against anyone's instance: instance settings and data are never in git.
 
 Known and intentional, never a FAIL:

@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Privacy · Sentient Dash</title>
+<meta name="description" content="What this site and the Sentient Dash tool collect, and where your data goes.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#ECEEF1" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0D1015" media="(prefers-color-scheme: dark)">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="/styles.css">
+</head>
+<body>
+<a class="skip" href="#main">Skip to content</a>
+<header class="top">
+  <div class="wrap">
+    <a class="word" href="/" aria-label="Sentient Dash, home" translate="no">
+      <svg class="mark" width="26" height="26" viewBox="0 0 64 64" aria-hidden="true"><rect x="22" y="13" width="30" height="8" rx="4" fill="currentColor"/><rect x="12" y="28" width="40" height="8" rx="4" fill="currentColor"/><rect x="12" y="43" width="30" height="8" rx="4" fill="currentColor"/><path d="M22 17H16a4 4 0 0 0-4 4v7M52 36v7a4 4 0 0 1-4 4h-6" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"/><circle class="dot" cx="52" cy="17" r="5.2"/></svg>
+      Sentient <span>Dash</span>
+    </a>
+  </div>
+</header>
+<main id="main" class="wrap doc">
+  <h1>Privacy</h1>
+  <p class="meta">Last updated 21 October 2026.</p>
+
+  <h2>This website</h2>
+  <p>This page and the home page are static files. They set no cookies, run no scripts and load nothing from other sites: no analytics, no pixels, no ads.</p>
+  <p>The site is hosted by Vercel. Like any web host, Vercel keeps short-lived request logs (IP address, browser user agent, the page asked for) to run and protect the service. We don’t use those logs for anything else. Vercel’s own terms and privacy policy apply to them.</p>
+
+  <h2>The Sentient Dash tool</h2>
+  <p>Sentient Dash is software you install and run yourself. There is no Sentient Dash account and no central server: we never receive your data. When you run it, your data goes to services you choose and own:</p>
+  <ul>
+    <li><b>Your database and website</b> (Neon and Vercel, on your accounts): checklists, todos, plans, reviews, and summaries and short quotes of your own messages from Claude Code sessions.</li>
+    <li><b>Anthropic, through your own Claude plan</b>: the worker and the Monday reviews send prompts to Claude, including excerpts of your session transcripts for the coaching review. Anthropic’s terms for your plan apply.</li>
+    <li><b>GitHub</b>: build runs push branches and open pull requests on your repositories; skill packs are downloaded from public repositories.</li>
+    <li><b>Google or Apple calendars</b>, if you connect them, and any metrics sources you configure.</li>
+  </ul>
+  <p>Your project folders and full Claude Code transcripts stay on your Mac. The full list, and how to turn each part off, is in the <a href="https://github.com/thibaultderennes/jarvis-central/blob/main/docs/security.md">security and privacy notes</a>.</p>
+
+  <h2>Removing it</h2>
+  <p>The <a href="https://github.com/thibaultderennes/jarvis-central/blob/main/docs/updating.md#uninstall">uninstall steps</a> remove the worker and list what to delete on each service.</p>
+
+  <h2>Contact</h2>
+  <p>Questions about this page or the tool: open an issue on <a href="https://github.com/thibaultderennes/jarvis-central/issues">GitHub</a>.</p>
+  <div class="ctas"><a class="btn" href="/">Back to the home page</a></div>
+</main>
+</body>
+</html>
