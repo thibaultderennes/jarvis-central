@@ -163,7 +163,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/items` | `?project=ID` (optional; all when absent) `&open=1` (todo/doing only) `&refine=pending` `&build=queue|working|pr_open|merge_requested|sent_back|…` | `[{item}]` |
 | POST | `/api/agent/items` | `{project_id, section, title, id?, detail?, due?, owner?, critical?, allow_duplicate?}` | `{item}` (id = slug of title if absent); 409 `{error, duplicate}` on an exact duplicate title |
 | GET | `/api/agent/duplicates` | `?project=ID` (optional) | `[[{item}, …]]` groups of exact duplicates, oldest first |
-| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`, `blocked_by`; fields outside `ITEM_FIELDS` in `app/lib/sqlbuild.ts` are ignored) | `{item}` (logs item_events with actor 'agent') |
+| PATCH | `/api/agent/items` | `{project_id, id, ...fields}` (status may be `cancelled`; `build_status`, `pr_url`, `build_note`, `cancel_reason`, `duplicate_of`, `blocked_by`; fields outside `ITEM_FIELDS` in `app/lib/sqlbuild.ts` are ignored); linked todos follow `status` as on the site (`done`/`cancelled` tick them, `todo` unticks them, `doing` leaves them) | `{item}` (logs item_events with actor 'agent') |
 | DELETE | `/api/agent/items` | `?project=ID&id=ITEM` | `{ok}` |
 | GET | `/api/agent/sprints` | `?project=ID&from=DATE&to=DATE` (overlapping the range) | `[{sprint}]` (`{id, project_id, name, start, end, created_at}`) |
 | POST | `/api/agent/sprints` | `{project_id, name, start, end, items?: [ids]}` | `{sprint, items /* how many joined */}` 201 |
@@ -172,7 +172,7 @@ All under `/api/agent/*`, header `Authorization: Bearer $JARVIS_AGENT_TOKEN`. JS
 | GET | `/api/agent/events` | `?since=ISO` | `[{event}]` |
 | GET | `/api/agent/todos` | `?from=DATE&to=DATE` (`&someday=1` adds undated ones) | `[{todo}]` |
 | POST | `/api/agent/todos` | `{date, title, kind?, project_id?, item_id?, time?, sort?, source? 'plan'|'rollover', rolled_from?, rolled_at?}` | `{todo}` |
-| PATCH | `/api/agent/todos` | `{id, date? /* null = Someday */, sort?, time? /* null = untimed */, rollovers?, rolled_from?, rolled_at?}` (the daily roll-forward; only given fields change) | `{todo}`; 404 when there's no such todo |
+| PATCH | `/api/agent/todos` | `{id, date? /* null = Someday */, sort?, time? /* null = untimed */, rollovers?, rolled_from?, rolled_at?, done? true\|false}` (the daily roll-forward, the MCP server's ticks; only given fields change; with `done`, a linked item follows: done, or back to todo) | `{todo}`; 404 when there's no such todo |
 | GET | `/api/agent/messages` | `?status=new&limit=5` (oldest first) or `?since=ISO` | `[{message}]` |
 | POST | `/api/agent/messages` | `{text, project_id?, status? 'answered'|'new'|…, reply?, meta?, mode?, item_id?, thread_id?}` a note already answered, or (`status: 'new'`) work queued for the worker | `{message: {id}}` |
 | PATCH | `/api/agent/messages` | `{id, status?, reply?, meta?, opened?, treated?}` (meta merged; reply sets replied_at and clears opened_at) | `{message}` |

@@ -47,7 +47,11 @@ async function handle(req: NextRequest, ctx: Ctx) {
       if (b.due && !isDate(b.due)) return bad("due must be YYYY-MM-DD");
       const { project_id, id, ...patch } = b;
       const it = await D.updateItem(project_id, id, patch, "agent");
-      return it ? J({ item: it }) : bad("No such item", 404);
+      if (!it) return bad("No such item", 404);
+      // Linked todos follow, as when the owner ticks or reopens it on the site ("doing" leaves them alone).
+      if (b.status === "done" || b.status === "cancelled") await D.syncLinkedTodos(project_id, id, true);
+      else if (b.status === "todo") await D.syncLinkedTodos(project_id, id, false);
+      return J({ item: it });
     }
     case "DELETE items": {
       const p = sp.get("project"), id = sp.get("id");
@@ -91,14 +95,19 @@ async function handle(req: NextRequest, ctx: Ctx) {
     }
     case "PATCH todos": {
       // The daily roll-forward (agent/rollover.mjs): move a todo to a day (null = Someday), reorder, untime, count carries.
+      // `done` ticks or unticks it (the MCP server); a linked item follows, as on the Today page.
       if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(b.id || ""))) return bad("id (a todo uuid) required");
       if (b.date !== undefined && b.date !== null && !isDate(b.date)) return bad("date must be YYYY-MM-DD or null");
       if ((b.rolled_from && !isDate(b.rolled_from)) || (b.rolled_at && !isDate(b.rolled_at))) return bad("rolled_from and rolled_at must be YYYY-MM-DD");
       if (b.time !== undefined && b.time !== null && !/^\d{2}:\d{2}$/.test(b.time)) return bad("time must be HH:MM or null");
       if (b.sort !== undefined && !Number.isFinite(b.sort)) return bad("sort must be a number");
       if (b.rollovers !== undefined && !(Number.isInteger(b.rollovers) && b.rollovers >= 0)) return bad("rollovers must be a whole number, 0 or more");
-      const t = await D.patchTodo(String(b.id), { date: b.date, sort: b.sort, time: b.time, rollovers: b.rollovers, rolled_from: b.rolled_from, rolled_at: b.rolled_at });
-      return t ? J({ todo: t }) : bad("No such todo", 404);
+      if (b.done !== undefined && typeof b.done !== "boolean") return bad("done must be true or false");
+      const t = await D.patchTodo(String(b.id), { date: b.date, sort: b.sort, time: b.time, rollovers: b.rollovers, rolled_from: b.rolled_from, rolled_at: b.rolled_at, done: b.done });
+      if (!t) return bad("No such todo", 404);
+      // Unticking goes back to todo, never doing: doing is the go signal that queues a build on Claude's items.
+      if (b.done !== undefined && t.project_id && t.item_id) await D.updateItem(t.project_id, t.item_id, { status: b.done ? "done" : "todo" }, "agent");
+      return J({ todo: t });
     }
 
     case "GET messages": return J(await D.getMessages({ thread: sp.get("thread") || undefined, review: sp.get("review") || undefined, status: sp.get("status") || undefined, limit: +(sp.get("limit") || (sp.get("since") ? 200 : 20)), since: sp.get("since") || undefined, includeArchived: true }));

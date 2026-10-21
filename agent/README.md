@@ -8,6 +8,7 @@ API contract: `../docs/architecture.md`.
 | File | What it does |
 |---|---|
 | `jarvis.mjs` | CLI for Claude Code sessions: checklists, todos, inbox, reviews (`node jarvis.mjs help`) |
+| `mcp.mjs` | Jarvis as an MCP server for Claude Code (stdio): overdue items and todos, tick an item or a todo, this week's digest, list and push a review's proposals. Register once: `claude mcp add --scope user jarvis -- node <repo>/agent/mcp.mjs` |
 | `projects.mjs` | Your projects folder: `list`, `scaffold` (draft missing CLAUDE.md / PRD.md), `sync` (register on the site), `checklist <id>` (first checklist from the PRD) |
 | `setup.mjs` | The project setup session the worker runs for a new or loaded project (foundation docs, a PR, questions on the checklist); `check [id]`, `<id> --dry-run`, `queue <id>`, `new "<name>"`. What counts as the foundation, and when it re-runs: `foundation.mjs` |
 | `worker.mjs` | One inbox pass: picks up messages from the site, runs `claude -p` in the project, replies; once an hour also mirrors audit reports |
