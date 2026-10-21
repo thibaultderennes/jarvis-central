@@ -73,7 +73,7 @@ test("safeRelPath: only plain paths inside the project, no secrets or git intern
   assert.equal(safeRelPath("docs/BRAND.md"), "docs/BRAND.md");
   assert.equal(safeRelPath("./README.md"), "README.md");
   assert.equal(safeRelPath(".env.example"), ".env.example");
-  for (const bad of ["../x.md", "/etc/passwd", ".env", ".env.local", ".git/config", "a//b", "node_modules/x/README.md", "keys/server.pem", ""]) assert.equal(safeRelPath(bad), null, bad);
+  for (const bad of ["../x.md", "/etc/passwd", ".env", ".env.local", ".git/config", "a//b", "node_modules/x/README.md", "keys/server.pem", "", ".claude/settings.json", ".github/workflows/ci.yml", ".husky/pre-commit", ".envrc", "package.json", "web/package.json", ".mcp.json", ".vscode/tasks.json"]) assert.equal(safeRelPath(bad), null, bad);
 });
 
 test("appendSection: adds at the end, never twice, never changes what is there", () => {

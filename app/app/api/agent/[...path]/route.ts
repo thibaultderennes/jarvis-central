@@ -45,7 +45,8 @@ async function handle(req: NextRequest, ctx: Ctx) {
     case "PATCH items": {
       if (!b.project_id || !b.id) return bad("project_id and id are required");
       if (b.status && !["todo", "doing", "done", "cancelled"].includes(b.status)) return bad("status must be todo, doing, done or cancelled");
-      if (b.build_status !== undefined && b.build_status !== null && !["working", "pr_open", "merge_requested", "merged", "failed", "sent_back"].includes(b.build_status)) return bad("bad build_status");
+      if (b.build_status !== undefined && b.build_status !== null && !["working", "pr_open", "merged", "failed", "sent_back"].includes(b.build_status))
+        return bad(b.build_status === "merge_requested" ? "merge_requested only from the owner's Approve & merge on the site" : "bad build_status", b.build_status === "merge_requested" ? 403 : 400);
       if (b.due && !isDate(b.due)) return bad("due must be YYYY-MM-DD");
       const { project_id, id, ...patch } = b;
       const it = await D.updateItem(project_id, id, patch, "agent");

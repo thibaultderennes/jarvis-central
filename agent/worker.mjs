@@ -54,6 +54,8 @@ const WEBSITE_TOOLS = ["Bash(npm run dev:*)", "Bash(npm run start:*)", "Bash(npm
 const DENY = ["Bash(git push:*)", "Bash(gh pr merge:*)", "Bash(gh pr create:*)", "Bash(rm -rf:*)", "Bash(curl:*)", "Bash(vercel:*)", "Bash(railway:*)", "Bash(stripe:*)", "Bash(supabase:*)"];
 
 const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
+/** The shared .git of a worktree (where its commits are written), or null outside a repo. */
+const gitCommonDir = (dir) => { try { return git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir"); } catch { return null; } };
 const tryGit = (dir, ...args) => { try { return git(dir, ...args); } catch { return null; } };
 
 export function repoInfo(dir) {
@@ -182,7 +184,7 @@ ${mode === "code"
 ${CLI_CMD} projects
 ${CLI_CMD} items <project> [--open] [--section S]
 ${CLI_CMD} item <project> <id>
-${CLI_CMD} set <project> <id> status=todo|doing|done due=YYYY-MM-DD note="..." title="..." section=S owner=founder|claude|both critical=true|false
+${CLI_CMD} set <project> <id> status=todo|done due=YYYY-MM-DD note="..." title="..." section=S critical=true|false   (setting an item in progress or changing its owner is the owner's call: refused here)
 ${CLI_CMD} add <project> <section> "title" [--due D] [--owner O] [--detail T] [--critical]
 ${CLI_CMD} todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
 ${CLI_CMD} todos [--from D] [--to D]
@@ -289,7 +291,10 @@ async function handle(message, projects) {
       addDirs: site && pack ? [pack.pluginDir, ...(pack.designsDir ? [pack.designsDir] : [])] : plugins, pluginDirs: plugins,
       model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: site ? 120 : lugh ? 90 : mode === "code" ? 60 : 30,
       // A website takes longer than an item: twice the usual limit; a Lugh build (tests, review, docs) half as long again.
-      timeoutMs: (W.timeout_minutes || 25) * runMultiplier({ site, lugh: !!lugh }) * 60_000, log };
+      timeoutMs: (W.timeout_minutes || 25) * runMultiplier({ site, lugh: !!lugh }) * 60_000, log,
+      // Code runs edit files and run scripts: every Bash command runs sandboxed (no network but localhost, writes only
+      // in the worktree and its git dir), so an edited test or package script can't reach out or touch the Mac (H8.3).
+      sandbox: mode === "code" ? { allowWrite: [gitCommonDir(cwd)].filter(Boolean) } : null };
     res = await runClaude({ prompt, ...runOpts });
     // Skill packs are only worth loading if the run opens them: check the transcript, and give a run that skipped required
     // skills one follow-up turn (same session) to read and apply them. The PR and reply say which were used.

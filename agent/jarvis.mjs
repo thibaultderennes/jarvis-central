@@ -130,6 +130,12 @@ async function main() {
         if (k === "due") v = v === "" || v === "none" ? null : date(v);
         body[k] = v;
       }
+      // "In progress" on a Claude item is the owner's go for a build, and the owner field decides who builds: a headless
+      // run (the worker, the weekly jobs) may not give either, whatever text it read (docs/audits, H8.2).
+      if (process.env.JARVIS_HEADLESS === "1" && (body.status === "doing" || "owner" in body)) {
+        out("Not changed: only you can set an item in progress or change its owner (on the site, or in your own terminal).");
+        process.exit(2);
+      }
       const { item } = await api("PATCH", "/api/agent/items", body);
       return out(json ? JSON.stringify(item, null, 2) : "Updated " + itemLine(item));
     }
