@@ -2,6 +2,7 @@ import { createHmac, randomBytes, scryptSync } from "node:crypto";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { bearerOk, safeEq } from "./bearer";
+import { makeToken, parseToken, signingKey } from "./sessionToken";
 
 export const COOKIE = "jarvis_session";
 const MAX_AGE = 60 * 60 * 24 * 30; // 30 days
@@ -52,28 +53,27 @@ export function verifyTotp(code: string, secretB32: string | undefined): boolean
   return [-1, 0, 1].some((d) => safeEq(totpAt(secretB32, c + d), code));
 }
 
-/* ---- session cookie: v1.<exp>.<nonce>.<sig> ---- */
-function sign(payload: string) {
-  return b64u(createHmac("sha256", secret()).update(payload).digest());
+/* ---- session cookie: v2.<exp>.<nonce>.<epoch>.<sig> (lib/sessionToken.ts) ---- */
+const key = () => signingKey(secret(), process.env.JARVIS_PASSWORD_HASH, process.env.JARVIS_TOTP_SECRET);
+export function newSessionValue(epoch: number): { value: string; maxAge: number } {
+  return { value: makeToken(key(), Math.floor(Date.now() / 1000) + MAX_AGE, b64u(randomBytes(12)), epoch), maxAge: MAX_AGE };
 }
-export function newSessionValue(): { value: string; maxAge: number } {
-  const exp = Math.floor(Date.now() / 1000) + MAX_AGE;
-  const payload = `v1.${exp}.${b64u(randomBytes(12))}`;
-  return { value: `${payload}.${sign(payload)}`, maxAge: MAX_AGE };
-}
+/** Signature and expiry only: the proxy's cheap first check. */
 export function validSession(value: string | undefined): boolean {
-  if (!value) return false;
-  const parts = value.split(".");
-  if (parts.length !== 4 || parts[0] !== "v1") return false;
-  const payload = parts.slice(0, 3).join(".");
-  if (!safeEq(sign(payload), parts[3])) return false;
-  return +parts[1] > Date.now() / 1000;
+  return !!parseToken(key(), value);
+}
+/** The full check: signature, expiry, and not logged out since (the epoch on the site). */
+export async function sessionOk(value: string | undefined): Promise<boolean> {
+  const t = parseToken(key(), value);
+  if (!t) return false;
+  const { sessionEpoch } = await import("./sessionEpoch");
+  return t.epoch === (await sessionEpoch());
 }
 
 /** Use at the top of every page and Server Function. */
 export async function requireSession() {
   const c = await cookies();
-  if (!validSession(c.get(COOKIE)?.value)) redirect("/login");
+  if (!(await sessionOk(c.get(COOKIE)?.value))) redirect("/login");
 }
 
 /** Agent API: Authorization: Bearer <JARVIS_AGENT_TOKEN>. */

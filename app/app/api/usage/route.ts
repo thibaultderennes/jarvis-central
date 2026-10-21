@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { COOKIE, validSession } from "@/lib/auth";
+import { COOKIE, sessionOk } from "@/lib/auth";
 import { addClickEvents, trackingEnabled, type ClickIn } from "@/lib/usage";
 import { isAutomatedUA } from "@/lib/automation";
 
@@ -8,7 +8,7 @@ import { isAutomatedUA } from "@/lib/automation";
 const none = (status = 204) => new Response(null, { status });
 
 export async function POST(req: NextRequest) {
-  if (!validSession(req.cookies.get(COOKIE)?.value)) return none(401);
+  if (!(await sessionOk(req.cookies.get(COOKIE)?.value))) return none(401);
   const origin = req.headers.get("origin");
   const host = (() => { try { return origin ? new URL(origin).host : null; } catch { return "?"; } })();
   if (host && host !== req.headers.get("host") && host !== req.nextUrl.host) return none(403);
