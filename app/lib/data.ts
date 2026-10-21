@@ -2,7 +2,7 @@ import { q, sql } from "./db";
 import { addDays, mondayOf, today, TZ } from "./time";
 import { itemUpdate, projectUpsert } from "./sqlbuild";
 import type { BuildMode } from "./projectSettings";
-import { parseEntry, pushPlan, reviewProposals, topEntries } from "./docsHub";
+import { parseEntry, pushPlan, reviewProposals, topEntries, decideSuggestion, settingSuggestions, type Change, type Decision, type SettingAction, type Suggestion } from "./docsHub";
 import { matchRejected, outcome, topThree, type Advice, type AdviceStatus, type Outcome } from "./ledger";
 
 export type Section = { id: string; name: string; note?: string; notes?: boolean; owner_default?: string };
@@ -59,6 +59,8 @@ export type Review = {
   acked_at?: string | null;
   /** Proposed tasks pushed to the checklist: {proposal key: item code} (lib/docsHub.ts). */
   pushed?: Record<string, string>;
+  /** The Jarvis review's "Your settings": {suggestion key: decision} (lib/docsHub.ts). Undefined until the 0.7.5 migration ran. */
+  decisions?: Record<string, Decision>;
 };
 
 // Postgres `date` comes back as a Date or string depending on driver settings; normalise to YYYY-MM-DD.
@@ -69,7 +71,7 @@ const normSprint = (r: Record<string, unknown>) => ({ id: r.id, project_id: r.pr
 const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
 const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at), rollovers: Number(r.rollovers) || 0, rolled_from: d10(r.rolled_from), rolled_at: d10(r.rolled_at) }) as Todo;
 const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.created_at), updated_at: ts(r.updated_at), replied_at: ts(r.replied_at), opened_at: ts(r.opened_at), treated_at: ts(r.treated_at) }) as Message;
-const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at), acked_at: ts(r.acked_at), pushed: r.pushed && typeof r.pushed === "object" ? r.pushed : {} }) as Review;
+const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at), acked_at: ts(r.acked_at), pushed: r.pushed && typeof r.pushed === "object" ? r.pushed : {}, decisions: r.decisions && typeof r.decisions === "object" ? r.decisions : {} }) as Review;
 /** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
 export const newestFileFirst = (a: Review, b: Review) => String(b.meta?.date || "").localeCompare(String(a.meta?.date || "")) || b.created_at.localeCompare(a.created_at);
 const normProject = (r: Record<string, unknown>) => ({ ...r, updated_at: ts(r.updated_at) }) as Project;
@@ -319,7 +321,7 @@ export async function getReviews(opts: { type?: string; project?: string; limit?
   if (opts.week) { params.push(opts.week); where.push(`week_start = $${params.length}`); }
   if (opts.unacked) where.push("acked_at is null");
   params.push(Math.min(opts.limit || 50, 500));
-  const cols = opts.light ? "id, type, project_id, week_start, title, verdict, headline, '' as body_md, meta - 'tabs' as meta, created_at, acked_at, pushed" : "*";
+  const cols = opts.light ? "id, type, project_id, week_start, title, verdict, headline, '' as body_md, meta - 'tabs' as meta, created_at, acked_at, pushed, decisions" : "*";
   const rows = await q(`select ${cols} from reviews ${where.length ? "where " + where.join(" and ") : ""} order by week_start desc nulls last, created_at desc limit $${params.length}`, params);
   return rows.map(normReview);
 }
@@ -521,6 +523,40 @@ export async function decideAdvice(review_id: string, key: string, status: Advic
     if (!(await set())) return null;
   }
   return (await getAdvice({ review: review_id })).find((a) => a.key === key) || null;
+}
+/**
+ * Apply, Done, Dismiss or Undo on one "Your settings" suggestion of a Jarvis review. The suggestion (and the config
+ * changes Apply queues) is re-read from the stored review, never taken from the caller; the write only lands if the
+ * state is still the one it was decided from, so two clicks, or a click and the Mac, can't cross.
+ */
+export async function decideSetting(review_id: string, key: string, action: SettingAction): Promise<Suggestion> {
+  const r = await getReview(review_id);
+  if (!r || r.type !== "jarvis") throw new PushError("No such Jarvis review", 404);
+  const s = settingSuggestions(r).find((x) => x.key === key);
+  if (!s) throw new PushError("That suggestion isn't in this review.", 404);
+  const plan = decideSuggestion(s, action, new Date().toISOString());
+  if ("error" in plan) throw new PushError(plan.error, 409);
+  const rows = plan.decision
+    ? await sql()`update reviews set decisions = coalesce(decisions, '{}'::jsonb) || jsonb_build_object(${key}::text, ${JSON.stringify(plan.decision)}::jsonb)
+        where id = ${r.id} and coalesce(decisions->${key}::text->>'state', '') = any(${plan.from}) returning id`
+    : await sql()`update reviews set decisions = coalesce(decisions, '{}'::jsonb) - ${key}::text
+        where id = ${r.id} and coalesce(decisions->${key}::text->>'state', '') = any(${plan.from}) returning id`;
+  if (!rows[0]) throw new PushError("Someone else just decided this one: reload the page.", 409);
+  return { ...s, decision: plan.decision };
+}
+/** Suggestions the owner pressed Apply on that the Mac hasn't written yet, oldest review first. */
+export async function queuedSettings(): Promise<{ review_id: string; week_start: string | null; key: string; text: string; changes: Change[]; at: string }[]> {
+  const rows = await sql()`select * from reviews where type = 'jarvis' and jsonb_path_exists(decisions, '$.* ? (@.state == "queued")') order by week_start, created_at`;
+  return rows.map(normReview).flatMap((r) => settingSuggestions(r).filter((s) => s.decision?.state === "queued")
+    .map((s) => ({ review_id: r.id, week_start: r.week_start, key: s.key, text: s.text, changes: s.decision!.changes || [], at: s.decision!.at })));
+}
+/** The Mac's answer to a queued Apply: written (with a note, e.g. "the worker picks it up on restart") or why not. */
+export async function settleSetting(review_id: string, key: string, out: { state: "applied" | "failed"; error?: string; note?: string }): Promise<boolean> {
+  if (!/^[0-9a-f-]{36}$/.test(review_id)) return false;
+  const patch = { state: out.state, at: new Date().toISOString(), ...(out.error ? { error: out.error.slice(0, 500) } : {}), ...(out.note ? { note: out.note.slice(0, 500) } : {}) };
+  const rows = await sql()`update reviews set decisions = jsonb_set(decisions, array[${key}::text], (decisions->${key}::text) || ${JSON.stringify(patch)}::jsonb)
+    where id = ${review_id} and type = 'jarvis' and decisions->${key}::text->>'state' = 'queued' returning id`;
+  return !!rows[0];
 }
 
 /* ---------- kv / activity ---------- */

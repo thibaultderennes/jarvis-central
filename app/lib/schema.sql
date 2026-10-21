@@ -278,3 +278,6 @@ create table if not exists advice (
   primary key (review_id, key)
 );
 create index if not exists advice_project on advice (project_id, week_start desc);
+-- 0.7.5. The Jarvis review's "Your settings" suggestions: `decisions` = {suggestion key: {state, at, changes?, error?}}
+-- (Apply queues the config keys for the Mac, Done / Dismiss record the owner's call; next week's review reads it).
+alter table reviews add column if not exists decisions jsonb not null default '{}';

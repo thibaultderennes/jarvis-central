@@ -27,6 +27,8 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   push <review-id> --all                          push every proposal not on the checklist yet, each with its own defaults
   advice <project> [--review ID] [--rejected]     follow-through ledger: the last review's Top 3 and what happened (done/started/ignored/rejected)
   advice <review-id> <key> done|rejected|open [--reason T]   decide one entry; rejected advice is never proposed again
+  settings <review-id> [<key> done|dismiss|undo]   a Jarvis review's "Your settings": list them, or decide one
+                                                  (Apply only from the review page: the agent token can't change your config)
   audits <project>                                security audit reports synced from ${AUDITS_DIR}/ (newest first)
   stats [--bucket day|week|month] [--n N] [--project P] [--items]   added / finished / cancelled per bucket (14 days, 12 weeks, 12 months)
   metrics <project> [--days N]                    product numbers per snapshot (users, active_users, visits, revenue…)
@@ -300,6 +302,26 @@ async function main() {
       if (!rs.length) return out(flags.rejected ? "No rejected advice." : "No Top 3 recorded yet.");
       if (!flags.rejected) out(`${rs[0].review_title} (review ${rs[0].review_id})`);
       for (const a of rs) out(`${pad(a.outcome, 8)} ${pad(a.key, 9)} ${flags.rejected ? `${a.week_start || ""} ` : ""}${a.text}${a.reason ? `\n         ${a.reason}` : ""}`);
+      return;
+    }
+    case "settings": {
+      // A Jarvis review's "Your settings": list them, or decide one (the same as the buttons on the review).
+      const id = need(rest[0], "<review-id> (a Jarvis review: jarvis reviews --type jarvis)");
+      if (rest[1]) {
+        const key = rest[1], action = need(rest[2], "done|dismiss|undo");
+        try {
+          const { suggestion } = await api("POST", "/api/agent/settings", { review_id: id, key, action });
+          return out(json ? JSON.stringify(suggestion, null, 2) : action === "apply" ? "Queued: the worker writes it into jarvis.config.json on its next pass." : `Recorded: ${suggestion.decision ? suggestion.decision.state : "undecided"}.`);
+        } catch (e) { out(`Not recorded: ${e.message}`); process.exit(1); }
+      }
+      const ss = await api("GET", "/api/agent/settings" + qs({ review: id }));
+      if (json) return out(JSON.stringify(ss, null, 2));
+      if (!ss.length) return out("This review suggests no settings.");
+      for (const s of ss) {
+        out(`${pad(s.decision?.state || "open", 9)} ${pad(s.key, 9)} ${s.text.length > 160 ? s.text.slice(0, 160) + "…" : s.text}`);
+        for (const c of s.changes) out(`${" ".repeat(19)}${c.key} → ${JSON.stringify(c.value)}`);
+        if (s.decision?.error) out(`${" ".repeat(19)}error: ${s.decision.error}`);
+      }
       return;
     }
     case "audits": {

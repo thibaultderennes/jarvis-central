@@ -392,6 +392,21 @@ export async function pushAllReviewTasks(review_id: string): Promise<{ error?: s
   }
 }
 
+/** Apply (queue the config keys for the Mac), Done, Dismiss or Undo on one "Your settings" line of a Jarvis review. */
+export async function decideSettingSuggestion(review_id: string, key: string, action: "apply" | "done" | "dismiss" | "undo"): Promise<{ error?: string }> {
+  await requireSession();
+  if (typeof key !== "string" || key.length > 80 || !["apply", "done", "dismiss", "undo"].includes(action)) return { error: "Unknown suggestion." };
+  try {
+    await D.decideSetting(review_id, key, action);
+    await D.logActivity(`setting_${action}`, "/reviews", { key });
+    done();
+    return {};
+  } catch (e) {
+    if (e instanceof D.PushError) { done(); return { error: e.message }; }
+    throw e;
+  }
+}
+
 /* ---------- telemetry (feeds the weekly Jarvis review) ---------- */
 // Opens that no other action records (components/LogOpen.tsx). Anything else is logged by the action that does it.
 const OPEN_KINDS = new Set(["review_open", "calendar_view"]);

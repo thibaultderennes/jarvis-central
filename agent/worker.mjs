@@ -17,6 +17,7 @@ import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
 import { syncMetricsDue, remindMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
+import { applyQueuedSettings } from "./settingsapply.mjs";
 import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
 import { autoTreatDue } from "./inbox.mjs";
@@ -432,6 +433,8 @@ async function pass() {
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
     // FYI replies (refine/comment notes, plain answers) opened inbox.auto_treat_fyi_days ago: mark them treated; hourly.
     await autoTreatDue(log).catch((e) => logChanged("inbox-auto-treat", e.message, "inbox auto-treat failed", e.message));
+    // "Apply" pressed on a Jarvis review's settings suggestion: write those keys into jarvis.config.json.
+    await applyQueuedSettings(log).catch((e) => logChanged("settings-apply", e.message, "settings apply failed", e.message));
     // A project loaded for the first time, or updated with a foundation gap: queue its setup session (setup.mjs).
     await queueSetupDue(projects, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.

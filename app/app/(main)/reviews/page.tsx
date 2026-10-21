@@ -8,6 +8,9 @@ import LogOpen from "@/components/LogOpen";
 import { cap, REVIEW_WHEN } from "@/lib/instance";
 import { Glyph, HeaderVec } from "@/components/brand";
 import { RerunButton } from "@/components/ReviewActions";
+import { SettingsSuggestions } from "@/components/SettingsSuggestions";
+import { settingSuggestions } from "@/lib/docsHub";
+import "./reviews.css";
 
 const TYPE: Record<string, string> = { recap: "Week recap", coaching: "How you work with Claude", jarvis: "Jarvis itself", project: "Project review", doc: "Document", security: "Security audit", screening: "Screening" };
 const ORDER = ["recap", "coaching", "jarvis", "project"];
@@ -39,6 +42,7 @@ export default async function Reviews({ searchParams }: { searchParams: Promise<
         <h1 className="page" style={{ marginTop: 8 }}>{sel.title}</h1>
         {sel.headline && <p style={{ fontSize: 17, fontWeight: 600, maxWidth: "70ch" }}>{sel.headline}</p>}
         <Markdown>{sel.body_md}</Markdown>
+        {sel.type === "jarvis" && <SettingsSuggestions reviewId={sel.id} list={settingSuggestions(sel)} />}
         {(sel.meta?.tabs as { key: string; label: string; body_md: string }[] | undefined)?.map((t) => (
           <details key={t.key} style={{ borderTop: "1px solid var(--line-2)", padding: "var(--s-2) 0" }}>
             <summary style={{ cursor: "pointer", fontWeight: 600 }} data-track={`Review tab: ${t.key}`}>{t.label}</summary>

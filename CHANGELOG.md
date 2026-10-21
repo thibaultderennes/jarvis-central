@@ -102,6 +102,17 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   The eight stats boxes start folded to their titles under the Stats section; unfold the ones you use.
 - **Upgrade notes:** a Home layout you already saved stays as it is. To get the new default, open Customize and press
   **Reset layout**; or add the Overdue box from the library.
+- **Apply, Done and Dismiss on the Jarvis review's "Your settings".** Each suggestion is now a card under the review
+  (Reviews → Jarvis itself). Apply hands the config keys it names (e.g. `planner.hours` → `[["13:00","17:00"]]`) to
+  your Mac, which writes them into `jarvis.config.json` on the worker's next pass and reports applied or why not;
+  Done is for the ones you do by hand; Dismiss says no (Undo puts either back). The Mac only writes planner, reviews,
+  worker, project_setup, usage and calendars keys and a few metrics/audits timings, with the same type as before:
+  anything that points at a file, folder or command stays a hand edit. Next week's Jarvis review reads what you chose
+  and won't push a dismissed one again without new evidence. Older reviews get the cards too, parsed from their text.
+  The review now also returns its settings as data (`meta.settings`). CLI: `settings <review-id> [<key> apply|done|dismiss|undo]`.
+  API: `GET|POST|PATCH /api/agent/settings`. Database: `reviews.decisions` (additive).
+  Upgrade notes: deploy the site together with the agent update (an older site has no `/api/agent/settings`; the
+  worker skips it), then `agent/install.sh` so the worker restarts with `settingsapply.mjs`.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

@@ -104,13 +104,16 @@ export function normEstimate(v: unknown): number | null {
 }
 
 /** The list entries under each "Top 3 …" heading of a markdown report (continuation lines folded in). */
-export function topEntries(md: string): string[] {
+export const topEntries = (md: string): string[] => listEntries(md, /^top\s*(3|three)\b/i);
+
+/** The list entries under every heading that matches `heading` (continuation lines folded in). */
+export function listEntries(md: string, heading: RegExp): string[] {
   const out: string[] = [];
   let inTop = false, cur: string | null = null;
   const flush = () => { if (cur !== null && cur.trim()) out.push(cur.trim()); cur = null; };
   for (const line of String(md || "").split("\n")) {
     const h = line.match(/^#{1,4}\s+(.*)$/);
-    if (h) { flush(); inTop = /^top\s*(3|three)\b/i.test(clean(h[1])); continue; }
+    if (h) { flush(); inTop = heading.test(clean(h[1])); continue; }
     if (!inTop) continue;
     const li = line.match(/^\s{0,3}(?:[-*+]|\d+[.)])\s+(.*)$/);
     if (li) { flush(); cur = li[1]; }
@@ -227,4 +230,101 @@ export function pushPlan(r: HubReview, key: string, items: ItemRef[], sections: 
   const est = choice.estimate_minutes !== undefined && choice.estimate_minutes !== "" ? normEstimate(choice.estimate_minutes) : p.estimate_minutes ?? null;
   const detail = [p.detail && p.detail !== p.title ? p.detail : "", `From "${r.title}"${p.source && p.source !== "Summary" ? ` (${p.source})` : ""}.`].filter(Boolean).join("\n\n");
   return { item: { section: sec.id, title: p.title.slice(0, 300), detail: detail.slice(0, 5000), owner, estimate_minutes: est } };
+}
+
+/* ---------- the Jarvis review's "Your settings" suggestions ---------- */
+// Each one is a card: Apply (the Mac writes the config keys into jarvis.config.json, agent/settingsapply.mjs), Done
+// (handled by hand: a habit, a checklist or project change) or Dismiss. The database side is in lib/data.ts
+// (decideSetting, settleSetting, queuedSettings).
+//
+// Where suggestions come from, best first:
+//   1. meta.settings: [{text, changes: [{key, value}]}] as the review returned them (agent/weekly.mjs).
+//   2. Free text: the list under "## Your settings". A line that names a config key in backticks followed by an arrow
+//      or "to" and a value ("`planner.hours` → `[[…]]`", "`planner.max_focus_minutes_per_day` 360 → 180") can be
+//      applied; anything else can only be marked done or dismissed, never guessed into a key.
+// `decisions` on the review maps a suggestion key to what the owner decided; next week's review reads it back.
+
+export type Change = { key: string; value: unknown };
+export type DecisionState = "queued" | "applied" | "failed" | "done" | "dismissed";
+export type Decision = { state: DecisionState; at: string; changes?: Change[]; error?: string; note?: string };
+export type Suggestion = { key: string; text: string; changes: Change[]; decision: Decision | null };
+export type SettingAction = "apply" | "done" | "dismiss" | "undo";
+
+const CONFIG_KEY = /^[a-z][a-z0-9_]*(?:\.[A-Za-z0-9_-]+){1,4}$/;
+export const isConfigKey = (k: unknown): k is string => typeof k === "string" && CONFIG_KEY.test(k);
+const okValue = (v: unknown) => v !== undefined && typeof v !== "function" && JSON.stringify(v).length <= 2000;
+
+/** A value written in the text: JSON when it parses, else a bare word as a string. */
+function parseValue(s: string): unknown {
+  const t = s.trim();
+  try { return JSON.parse(t); } catch { /* not JSON */ }
+  return /^[^\s"'`]{1,80}$/.test(t) ? t : undefined;
+}
+
+/** The config changes one free-text line names: "`a.b` → `value`", "`a.b` 360 → 180", "`a.b` to 3". */
+export function parseChanges(entry: string): Change[] {
+  const byKey = new Map<string, unknown>();
+  const re = /`([^`\s]+)`[^`\n]{0,40}?(?:→|->|=>|\bto\b)\s*(?:\*\*)?\s*(?:`([^`]+)`|(-?\d+(?:\.\d+)?|true|false|null)\b)/g;
+  for (const m of String(entry || "").matchAll(re)) {
+    if (!isConfigKey(m[1])) continue;
+    const value = m[2] !== undefined ? parseValue(m[2]) : JSON.parse(m[3]);
+    if (okValue(value)) byKey.set(m[1], value);
+  }
+  return [...byKey].map(([key, value]) => ({ key, value }));
+}
+
+/** meta.settings, validated: entries without text are dropped, changes with a bad key or value are left out. */
+export function structuredSettings(meta: Record<string, unknown> | null | undefined): { text: string; changes: Change[] }[] {
+  const raw = Array.isArray(meta?.settings) ? (meta!.settings as unknown[]) : [];
+  const out: { text: string; changes: Change[] }[] = [];
+  for (const r of raw) {
+    if (!r || typeof r !== "object") continue;
+    const o = r as Record<string, unknown>;
+    const text = typeof o.text === "string" ? clean(o.text).slice(0, 2000) : "";
+    if (text.length < 4) continue;
+    const changes = (Array.isArray(o.changes) ? o.changes : []).flatMap((c) => {
+      const x = c && typeof c === "object" ? (c as Record<string, unknown>) : {};
+      return isConfigKey(x.key) && okValue(x.value) ? [{ key: x.key, value: x.value }] : [];
+    });
+    out.push({ text, changes });
+  }
+  return out;
+}
+
+const STATES: DecisionState[] = ["queued", "applied", "failed", "done", "dismissed"];
+const decisionOf = (v: unknown): Decision | null =>
+  v && typeof v === "object" && STATES.includes((v as Decision).state) ? (v as Decision) : null;
+
+/** Every "Your settings" suggestion of a review with what was decided; structured ones win over the free text. */
+export function settingSuggestions(r: { body_md?: string; meta?: Record<string, unknown> | null; decisions?: Record<string, unknown> | null }): Suggestion[] {
+  const structured = structuredSettings(r.meta);
+  const list = structured.length ? structured
+    : listEntries(r.body_md || "", /^your settings\b/i).map((e) => ({ text: clean(e), changes: parseChanges(e) }));
+  const seen = new Set<string>(), out: Suggestion[] = [];
+  for (const s of list) {
+    const key = proposalKey(s.text);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ key, text: s.text, changes: s.changes, decision: decisionOf(r.decisions?.[key]) });
+  }
+  return out;
+}
+
+/**
+ * What an action does to one suggestion: the decision to store (null = clear it), or why it can't. `from` lists the
+ * states it may start from ("" = no decision yet); the database applies it only if the state is still one of them.
+ */
+export function decideSuggestion(s: Suggestion, action: SettingAction, at: string): { error: string } | { decision: Decision | null; from: string[] } {
+  const cur = s.decision?.state || "";
+  if (action === "undo") {
+    if (["done", "dismissed", "failed"].includes(cur)) return { decision: null, from: [cur] };
+    return { error: cur === "applied" ? "Already written to your config: change it there to go back." : cur === "queued" ? "Waiting for your Mac to apply it." : "Nothing to undo." };
+  }
+  if (cur && cur !== "failed") return { error: cur === "queued" ? "Waiting for your Mac to apply it." : `Already ${cur}.` };
+  const from = ["", "failed"];
+  if (action === "apply") {
+    if (!s.changes.length) return { error: "This one names no config key: do it by hand, then mark it done." };
+    return { decision: { state: "queued", at, changes: s.changes }, from };
+  }
+  return { decision: { state: action === "done" ? "done" : "dismissed", at }, from };
 }
