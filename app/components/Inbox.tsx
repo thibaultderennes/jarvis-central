@@ -3,6 +3,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { archiveMessage, markOpened, markTreated, sendMessage } from "@/lib/actions";
 import { inboxGroup, type Message } from "@/lib/data";
+import { inboxKind } from "@/lib/inbox";
 import { Ack, enterSends, useSubmit } from "./Submit";
 import { EmptyArt } from "./brand";
 
@@ -18,6 +19,7 @@ const GROUPS: [Group, string, string][] = [["new", "New", "Replies you haven't o
 /**
  * Conversations in three groups. A reply moves from New to Pending once it has been on screen; "Mark treated"
  * moves it to Treated. Work still with Claude (new/seen/working) stays in New until it is answered.
+ * New and Pending are bundled by project and can be treated in bulk (checkboxes, "Got it", "Treat all FYI").
  */
 export default function Inbox({ messages, projects, defaultProject, workerAt }: { messages: Message[]; projects: P[]; defaultProject: string; workerAt: string | null }) {
   const router = useRouter();
@@ -39,8 +41,26 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
     byRoot.get(k)!.push(m);
   }
   const threads = [...byRoot.values()].filter((t) => !t[0].thread_id) // the root must be loaded
-    .map((turns) => ({ root: turns[0], turns, last: turns[turns.length - 1], group: inboxGroup(turns[turns.length - 1]) }))
+    .map((turns) => { const root = turns[0], last = turns[turns.length - 1]; return { root, turns, last, group: inboxGroup(last), kind: inboxKind(root, last, turns.length) }; })
     .sort((a, b) => b.last.created_at.localeCompare(a.last.created_at));
+  type T = (typeof threads)[number];
+  const treatable = (t: T) => t.group !== "treated" && t.kind !== "working";
+  // Bulk treating: row checkboxes, "Got it" on a project, "Treat all FYI". Each shows a short Undo.
+  const [sel, setSel] = useState<Set<string>>(new Set());
+  const [undo, setUndo] = useState<{ ids: string[]; label: string } | null>(null);
+  useEffect(() => { if (!undo) return; const t = setTimeout(() => setUndo(null), 8000); return () => clearTimeout(t); }, [undo]);
+  const treat = (ids: string[], label: (n: number) => string) => {
+    if (!ids.length) return;
+    start(async () => {
+      const r = await markTreated(ids, true).catch(() => null);
+      setSel(new Set());
+      setUndo(r ? (r.ids.length ? { ids: r.ids, label: label(r.ids.length) } : null) : { ids: [], label: "Couldn't mark them treated: check your connection and try again." });
+    });
+  };
+  const restore = () => { const ids = undo?.ids || []; setUndo(null); if (ids.length) start(async () => { await markTreated(ids, false).catch(() => {}); }); };
+  const toggle = (id: string) => setSel((cur) => { const n = new Set(cur); if (n.has(id)) n.delete(id); else n.add(id); return n; });
+  const fyi = threads.filter((t) => treatable(t) && t.kind === "fyi").map((t) => t.last.id);
+  const plural = (n: number) => `${n} message${n === 1 ? "" : "s"}`;
   const counts = { new: 0, pending: 0, treated: 0 };
   for (const t of threads) counts[t.group]++;
   // Replies now on screen count as opened: they move to Pending on the next render (after a short delay, so a glance isn't a read).
@@ -56,6 +76,14 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
     s.submit(() => sendMessage(v, proj || null, { mode }), { ok: "Sent", onOk: () => { setText(""); setTab("new"); } });
   };
   const shown = threads.filter((t) => t.group === tab);
+  // New and Pending come bundled by project (most recent activity first), each bundle with its own "Got it".
+  const bundles: { key: string; list: T[] }[] = [];
+  for (const t of shown) {
+    const key = tab === "treated" ? "" : t.root.project_id || "";
+    const b = bundles.find((x) => x.key === key);
+    if (b) b.list.push(t); else bundles.push({ key, list: [t] });
+  }
+  const picked = shown.filter((t) => sel.has(t.last.id)).map((t) => t.last.id);
   return (
     <section className="panel">
       <form className="composer" onSubmit={(e) => { e.preventDefault(); send("discuss"); }}>
@@ -77,31 +105,62 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
         </div>
       </form>
       <div className="chips" role="tablist" aria-label="Inbox groups" style={{ padding: "var(--s-2) var(--s-4)", borderBottom: "1px solid var(--line-2)" }}>
-        {GROUPS.map(([g, label, hint]) => <button key={g} role="tab" className="chip" aria-pressed={tab === g} aria-selected={tab === g} title={hint} onClick={() => setTab(g)}>{label} ({counts[g]})</button>)}
+        {GROUPS.map(([g, label, hint]) => <button key={g} role="tab" className="chip" aria-pressed={tab === g} aria-selected={tab === g} title={hint} onClick={() => { setTab(g); setSel(new Set()); }}>{label} ({counts[g]})</button>)}
       </div>
+      {tab !== "treated" && (picked.length > 0 || fyi.length > 0) && (
+        <div className="ibar">
+          <span>{picked.length ? `${plural(picked.length)} selected` : `${plural(fyi.length)} only for your information: receipts and reports already on the checklist or the project page.`}</span>
+          <span className="sp" />
+          {picked.length > 0 && <button type="button" className="btn ghost sm" onClick={() => setSel(new Set())}>Clear</button>}
+          {picked.length > 0 && <button type="button" className="btn sm" onClick={() => treat(picked, (n) => `Treated ${plural(n)}`)}>Mark selected treated</button>}
+          {!picked.length && <button type="button" className="btn sm" onClick={() => treat(fyi, (n) => `Treated ${plural(n)} for your information`)}>Treat all FYI ({fyi.length})</button>}
+        </div>
+      )}
       <div>
         {!messages.length && <div className="empty"><EmptyArt kind="inbox" /><b>No messages yet.</b></div>}
         {messages.length > 0 && !shown.length && <div className="empty">{tab === "new" ? "Nothing new. Replies you opened are under Pending." : tab === "pending" ? "Nothing pending: every reply you opened is treated." : "Nothing treated yet."}</div>}
-        {shown.map(({ root, turns, last, group }) => {
-          const p = root.project_id ? pmap[root.project_id] : null;
+        {bundles.map(({ key, list }) => {
+          const bp = key ? pmap[key] : null, name = bp?.name || "Everything / planning", ids = list.filter(treatable).map((t) => t.last.id);
           return (
-            <article className="msg" key={root.id} data-c={p?.color || "other"}>
-              <div className="mh">
-                {p && <span style={{ display: "flex", gap: "var(--s-2)", alignItems: "center" }}><i className="dot" />{p.name}</span>}
-                <span>{root.mode === "build" ? "build" : root.mode === "plan" ? "project plan" : root.mode === "review" ? "advisor review" : root.mode === "setup" ? "project setup" : (root.meta as { kind?: string }).kind === "refine" ? "new item" : (root.meta as { kind?: string }).kind === "comment" ? "your comment" : "discuss"}{root.review_id ? " · on a review" : ""}{root.item_id ? ` · item ${root.item_id}` : ""}</span>
-                <span>{mounted ? ago(last.created_at) : ""}</span>
-                {turns.length > 1 && <span>{turns.length} messages</span>}
-                <span className="sp" />
-                {group !== "treated" && !["new", "seen", "working"].includes(last.status) && <button className="x" onClick={() => start(() => markTreated(last.id, true))}>Mark treated</button>}
-                {group === "treated" && last.treated_at && <button className="x" onClick={() => start(() => markTreated(last.id, false))}>Back to pending</button>}
-                {!root.archived && <button className="x" onClick={() => start(() => archiveMessage(root.id))}>Hide</button>}
-              </div>
-              {turns.map((m) => <Turn key={m.id} m={m} mounted={mounted} />)}
-              <Reply rootId={root.id} projectId={root.project_id} />
-            </article>
+            <div key={key || "-"}>
+              {tab !== "treated" && (
+                <div className="ibund" data-c={bp?.color || "other"}>
+                  <i className="dot" />{name}<span className="n">{plural(list.length)}</span><span className="sp" />
+                  {ids.length > 0 && <button type="button" className="btn ghost sm" title={`Mark the ${plural(ids.length)} on ${name} treated`} onClick={() => treat(ids, (n) => `Treated ${plural(n)} on ${name}`)}>Got it</button>}
+                </div>
+              )}
+              {list.map((t) => {
+                const { root, turns, last, group, kind } = t;
+                const p = root.project_id ? pmap[root.project_id] : null;
+                return (
+                  <article className="msg" key={root.id} data-c={p?.color || "other"}>
+                    <div className="mh">
+                      {treatable(t) && <input type="checkbox" className="pick" checked={sel.has(last.id)} onChange={() => toggle(last.id)} aria-label={`Select: ${root.text.slice(0, 60)}`} />}
+                      {p && tab === "treated" && <span style={{ display: "flex", gap: "var(--s-2)", alignItems: "center" }}><i className="dot" />{p.name}</span>}
+                      <span>{root.mode === "build" ? "build" : root.mode === "plan" ? "project plan" : root.mode === "review" ? "advisor review" : root.mode === "setup" ? "project setup" : (root.meta as { kind?: string }).kind === "refine" ? "new item" : (root.meta as { kind?: string }).kind === "comment" ? "your comment" : "discuss"}{root.review_id ? " · on a review" : ""}{root.item_id ? ` · item ${root.item_id}` : ""}</span>
+                      {kind === "fyi" && group !== "treated" && <span className="pill">FYI</span>}                      <span>{mounted ? ago(last.created_at) : ""}</span>
+                      {turns.length > 1 && <span>{turns.length} messages</span>}
+                      <span className="sp" />
+                      {treatable(t) && <button className="x" onClick={() => treat([last.id], () => "Marked treated")}>Mark treated</button>}
+                      {group === "treated" && last.treated_at && <button className="x" onClick={() => start(async () => { await markTreated(last.id, false); })}>Back to pending</button>}
+                      {!root.archived && <button className="x" onClick={() => start(() => archiveMessage(root.id))}>Hide</button>}
+                    </div>
+                    {turns.map((m) => <Turn key={m.id} m={m} mounted={mounted} />)}
+                    <Reply rootId={root.id} projectId={root.project_id} />
+                  </article>
+                );
+              })}
+            </div>
           );
         })}
       </div>
+      {undo && (
+        <div className="toast" role="status">
+          <span>{undo.label}</span>
+          {undo.ids.length > 0 && <button type="button" onClick={restore}>Undo</button>}
+          <button type="button" aria-label="Dismiss" onClick={() => setUndo(null)}>✕</button>
+        </div>
+      )}
     </section>
   );
 }

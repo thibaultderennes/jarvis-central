@@ -285,6 +285,14 @@ export async function patchMessage(id: string, p: { status?: string; reply?: str
     where id = ${id} returning *`;
   return rows[0] ? normMsg(rows[0]) : null;
 }
+/** Treat (or un-treat) several messages in one update; work still with Claude is skipped. Returns the ids changed. */
+export async function setTreated(ids: string[], treated: boolean): Promise<string[]> {
+  if (!ids.length) return [];
+  const rows = treated
+    ? await sql()`update messages set treated_at = now(), updated_at = now() where id = any(${ids}::uuid[]) and treated_at is null and status not in ('new', 'seen', 'working') returning id`
+    : await sql()`update messages set treated_at = null, updated_at = now() where id = any(${ids}::uuid[]) and treated_at is not null returning id`;
+  return rows.map((r) => r.id as string);
+}
 /** A message the agent leaves or queues: already answered (a note), or new work for the worker (a build run of an item). */
 export async function insertMessage(m: { text: string; project_id?: string | null; status?: string; reply?: string; meta?: Record<string, unknown>; mode?: string; item_id?: string | null; thread_id?: string | null }): Promise<{ id: string }> {
   const status = m.status || "answered", mode = ["discuss", "build", "plan", "screen", "website", "review", "setup"].includes(m.mode || "") ? m.mode! : "discuss";

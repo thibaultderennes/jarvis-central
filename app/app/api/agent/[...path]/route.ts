@@ -9,6 +9,7 @@ import { pruneClickEvents, usageSummary } from "@/lib/usage";
 import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
 import { today } from "@/lib/time";
 import { reviewProposals } from "@/lib/docsHub";
+import { cleanIds } from "@/lib/inbox";
 
 type Ctx = { params: Promise<{ path: string[] }> };
 const J = (v: unknown, status = 200) => NextResponse.json(v, { status });
@@ -119,6 +120,13 @@ async function handle(req: NextRequest, ctx: Ctx) {
       return J({ message: await D.insertMessage({ text: String(b.text), project_id: b.project_id, status: b.status, reply: b.reply, meta: b.meta, mode: b.mode, item_id: b.item_id, thread_id: b.thread_id }) }, 201);
     }
     case "PATCH messages": {
+      // Bulk: { ids: [...], treated: true|false } treats several at once (agent CLI `jarvis treat`).
+      if (b.ids !== undefined) {
+        const ids = cleanIds(b.ids);
+        if (!ids.length) return bad("ids must be a list of message uuids");
+        if (typeof b.treated !== "boolean") return bad("treated (true or false) required with ids");
+        return J({ treated: b.treated, ids: await D.setTreated(ids, b.treated) });
+      }
       if (!b.id) return bad("id required");
       const msg = await D.patchMessage(b.id, b);
       return msg ? J({ message: msg }) : bad("No such message", 404);

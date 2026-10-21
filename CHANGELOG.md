@@ -26,6 +26,13 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   cost, failed advisors, runs that never posted). Trial runs post a separate "Routine trial · …" report so they never
   replace that week's review. Project reviews now record `meta.runner` and `meta.duration_s`; `JARVIS_AGENT_TOKEN=proxy-injected`
   lets the CLI run behind a cloud environment's network secret. Setup and the trial plan: `docs/routines.md`.
+- **Treat inbox messages in bulk.** New and Pending are bundled by project, each bundle with a "Got it" that marks
+  its replies treated; rows have checkboxes ("Mark selected treated"), and "Treat all FYI" clears the receipts and
+  reports that only repeat what is already on the checklist or the project page (new-item and comment receipts,
+  merged notes, advisor reviews, project plans, screenings). Each shows an Undo for a few seconds. Decisions
+  (needs you, failed) and replies to what you asked are never swept up as FYI. `PATCH /api/agent/messages` takes
+  `{ids, treated}` (one update), and the CLI has `jarvis treat <id…>` / `jarvis treat --kind fyi --project P` and
+  `jarvis untreat <id…>`.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date

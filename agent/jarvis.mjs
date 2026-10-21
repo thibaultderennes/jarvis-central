@@ -15,6 +15,8 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   builds [--project P]                            in-progress items Claude is building (build status, PR)
   inbox [--project P] [--all]                     messages waiting for Claude, then replies you haven't treated (pending)
   reply <message-id> "text" [--status answered|done|needs_you]
+  treat <message-id...> | treat --kind fyi|reply|decision|all [--project P]   mark replies treated in one go
+  untreat <message-id...>                         put treated replies back to pending (the undo printed by treat)
   todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
   todos [--from D] [--to D]                       default: today → +6 days
   reviews [--type project|recap|coaching|jarvis|doc|security|screening] [--project P] [--limit N] [--unacked] [--full]
@@ -51,6 +53,14 @@ function parse(argv) {
     } else pos.push(a);
   }
   return { pos, flags };
+}
+// Same as inboxKind in app/lib/inbox.ts (the site's "Treat all FYI"): keep the two in step.
+const FYI_KINDS = ["refine", "comment", "merged", "scheduled", "now"], REPORT_MODES = ["review", "plan", "screen"];
+function inboxKind(root, last, turns = 1) {
+  if (["new", "seen", "working"].includes(last.status)) return "working";
+  if (["needs_you", "error"].includes(last.status)) return "decision";
+  if (turns === 1 && (FYI_KINDS.includes(String(root.meta?.kind || "")) || REPORT_MODES.includes(root.mode || ""))) return "fyi";
+  return "reply";
 }
 const out = (x) => process.stdout.write(x + "\n");
 const pad = (s, n) => String(s ?? "").padEnd(n);
@@ -184,6 +194,27 @@ async function main() {
       else if (!flags.all) out("Nothing waiting for Claude.");
       if (pending.length) { out(`\n# Pending on the owner's side (${pending.length}: replied, opened, not yet marked treated)`); for (const m of pending) show(m); }
       return;
+    }
+    case "treat": case "untreat": {
+      // Mark replies treated in one call: by id, or every untreated one of a kind (and project). untreat reverses it.
+      const treated = cmd === "treat";
+      let ids = rest;
+      if (!ids.length) {
+        if (!flags.kind && !flags.project) { out(`Give message ids, or --kind fyi|reply|decision|all [--project P].\n\n${HELP}`); process.exit(2); }
+        const kind = flags.kind && flags.kind !== true ? flags.kind : "all";
+        if (!["fyi", "reply", "decision", "all"].includes(kind)) { out(`Bad kind ${kind}: fyi, reply, decision or all.`); process.exit(2); }
+        const ms = (await api("GET", "/api/agent/messages" + qs({ limit: 200 }))).sort((a, b) => a.created_at.localeCompare(b.created_at)); // newest 200, like the inbox
+        const roots = new Map();
+        for (const m of ms) { const k = m.thread_id || m.id; if (!roots.has(k)) roots.set(k, []); roots.get(k).push(m); }
+        ids = [...roots.values()].filter((t) => !t[0].thread_id).map((t) => ({ root: t[0], last: t[t.length - 1], n: t.length }))
+          .filter(({ root, last }) => !root.archived && !last.archived &&(treated ? !last.treated_at : last.treated_at) && (!flags.project || root.project_id === flags.project))
+          .filter(({ root, last, n }) => { const k = inboxKind(root, last, n); return k !== "working" && (kind === "all" || k === kind); })
+          .map(({ last }) => last.id);
+        if (!ids.length) return out(`Nothing to ${treated ? "treat" : "untreat"}.`);
+      }
+      const r = await api("PATCH", "/api/agent/messages", { ids, treated });
+      if (json) return out(JSON.stringify(r, null, 2));
+      return out(`${treated ? "Treated" : "Back to pending"}: ${r.ids.length} message${r.ids.length === 1 ? "" : "s"}${r.ids.length ? `\n  ${r.ids.join("\n  ")}` : ""}${treated && r.ids.length ? `\nUndo: jarvis untreat ${r.ids.join(" ")}` : ""}`);
     }
     case "reply": {
       const id = need(rest[0], "<message-id>"), text = need(rest[1], '"text"');
