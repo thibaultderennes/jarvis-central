@@ -151,7 +151,7 @@ h2.ph-t { font-family: var(--display); font-weight: 700; font-size: 14px; letter
 .verdict { font-family: var(--mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; padding: 0 var(--s-2); line-height: 19px; border-radius: 4px; white-space: nowrap; display: inline-flex; gap: var(--s-1); align-items: center; }
 .verdict::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
 .v-on-track { color: color-mix(in srgb, var(--done) 78%, var(--ink)); background: var(--done-soft); } .v-at-risk { color: var(--signal-ink); background: var(--signal-soft); }
-.v-off-track { color: var(--bad); background: var(--bad-soft); } .v-idle { color: var(--ink-3); background: var(--line-2); }
+.v-off-track, .v-failed { color: var(--bad); background: var(--bad-soft); } .v-idle { color: var(--ink-3); background: var(--line-2); }
 
 /* overview */
 .hello { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--s-4); flex-wrap: wrap; }

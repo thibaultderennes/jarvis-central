@@ -1,9 +1,25 @@
 "use client";
 import { useState } from "react";
 import Link from "next/link";
-import { ackReview, pushAllReviewTasks, pushReviewTask } from "@/lib/actions";
+import { ackReview, pushAllReviewTasks, pushReviewTask, rerunReview } from "@/lib/actions";
 import { OWNERS, type Proposal } from "@/lib/docsHub";
 import { Ack, imeGuard, useSubmit } from "./Submit";
+
+/** On a 'failed' weekly report: the Mac worker writes that report again, for the same week. */
+export function RerunButton({ id, queued }: { id: string; queued: boolean }) {
+  const s = useSubmit();
+  const [sent, setSent] = useState(queued);
+  return (
+    <span className="hub-ack">
+      <button className="btn sm" disabled={s.pending || sent}
+        onClick={() => s.submit(() => rerunReview(id), { ok: "Queued on your Mac", onOk: () => setSent(true) })}
+        title="Your Mac writes this report again for the same week. It replaces this one when it finishes.">
+        {sent ? "Running again…" : "Run again"}
+      </button>
+      <Ack s={s} busy="Queuing…" />
+    </span>
+  );
+}
 
 /** Mark a report as read (it leaves the unread count on Docs and reviews) or as unread again. */
 export function AckButton({ id, ackedOn }: { id: string; ackedOn: string | null }) {
