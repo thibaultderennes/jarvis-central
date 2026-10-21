@@ -79,6 +79,13 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   and syncs are one "machine" line in the review's bundle instead of most of its events. `review_open` and
   `calendar_view` are now logged (they were listed as "never used" because nothing wrote them). Every disclosure has a
   name: no more "(disclosure)", and button labels keep spaces between their parts.
+- **Reviews skill pack v1.** The Monday reviews (and a project's own-schedule or Run now reviews) now load pinned,
+  MIT-licensed skills, one set per report, checked in the transcript like the build packs: hardikpandya/stop-slop on
+  every report as the last pass; garrytan/gstack openclaw ceo-review for the CEO (pick one scope mode, name one thing
+  to stop); phuryn/pm-skills north-star-metric for the PO and strategy-red-team for the synthesis ("Fails if", kill
+  criterion, cheapest test). The synthesis aims for 500 words or fewer. Every review prompt now says "headless: don't
+  ask, decide and note it". Each review records word counts before and after the stop-slop pass (`meta.words`);
+  `node agent/reviewrun.mjs words` lists them next to older reviews.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
