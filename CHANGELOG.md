@@ -3,6 +3,11 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **Security: `next` 16.3.6 → 16.4.3.** The pinned version sat inside ten advisories, one of them a critical
+  unauthenticated remote-code-execution in the image optimisation API (GHSA-2464-fhr4-w9xw), on a `/_next/image`
+  that answers without a session. The bump also clears a high `source-map-js` advisory pulled in through `postcss`,
+  and `app/test/deps.test.mjs` now keeps `next` pinned at or above the patched floor. Found by the 3-day audit
+  (`docs/audits/2026-10-28-audit.md`, finding H 9.9).
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
