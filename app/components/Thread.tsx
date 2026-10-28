@@ -16,7 +16,7 @@ export default function Thread({ reviewId, projectId, tab, messages, canBuild }:
   const [text, setText] = useState("");
   const s = useSubmit(), pending = s.pending;
   const busy = messages.some((m) => ["new", "seen", "working"].includes(m.status));
-  useEffect(() => { if (!busy) return; const t = setInterval(() => router.refresh(), 10000); return () => clearInterval(t); }, [busy, router]);
+  useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 10000); return () => clearInterval(t); }, [busy, router]);
   const send = (mode: "discuss" | "build") => {
     const v = text.trim(); if (!v || s.pending) return;
     s.submit(() => sendMessage(v, projectId, { mode, review_id: reviewId, review_tab: tab || null }), { ok: "Sent", onOk: () => setText("") });

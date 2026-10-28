@@ -1,10 +1,13 @@
 #!/usr/bin/env node
 // Jarvis CLI: lets Claude Code sessions (and the worker) read and edit checklists, todos, inbox and reviews.
-import { api, qs, todayTZ, addDays, TZ } from "./lib.mjs";
+import { execFileSync } from "node:child_process";
+import path from "node:path";
+import { api, qs, todayTZ, addDays, TZ, JARVIS_ROOT } from "./lib.mjs";
 import { AUDITS_DIR, newestFirst } from "./audits.mjs";
 
 const HELP = `jarvis — Jarvis Central Dashboard from the terminal
 
+  check                                           run a worker pass now (inbox, builds, merges) instead of waiting for the next one
   projects                                        list projects
   items <project> [--open] [--section S]          checklist items
   item <project> <id>                             one item in full
@@ -442,6 +445,20 @@ async function main() {
       }
       if (sub === "rm") { const id = need(rest[1], "<id>"); await api("DELETE", "/api/agent/costs" + qs({ id })); return out(`Removed ${id}`); }
       out(HELP); process.exit(2);
+    }
+    case "check": {
+      // The worker runs every worker.interval_seconds; this starts its launchd job now. A pass already running is left alone.
+      if (process.env.JARVIS_HEADLESS === "1") { out("check is for you, not for a headless run: the worker is already running this pass."); process.exit(2); }
+      if (process.platform === "darwin") {
+        const uid = process.getuid();
+        try {
+          execFileSync("launchctl", ["kickstart", `gui/${uid}/com.jarvis.worker`], { stdio: "ignore" });
+          return out("Checking now: the worker picks up waiting messages, builds and merges. Log: ~/Library/Logs/jarvis/");
+        } catch {}
+      }
+      out("The worker job isn't loaded here: running one pass in this terminal.");
+      execFileSync(process.execPath, [path.join(JARVIS_ROOT, "agent", "worker.mjs")], { stdio: "inherit" });
+      return;
     }
     case undefined: case "help": case "-h":
       return out(HELP);

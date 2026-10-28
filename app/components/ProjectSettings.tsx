@@ -58,7 +58,7 @@ function Review({ id, reviews, every, lastReview, nextReview, reviewWhen, review
   const [r, setR] = useState(reviews), [n, setN] = useState(String(every));
   const [pending, start] = useTransition();
   const sub = useSubmit();
-  useEffect(() => { if (!reviewRunning) return; const t = setInterval(() => router.refresh(), 15000); return () => clearInterval(t); }, [reviewRunning, router]);
+  useEffect(() => { if (!reviewRunning) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 15000); return () => clearInterval(t); }, [reviewRunning, router]);
   const commit = () => {
     const v = normEvery(n);
     if (v === null) { setN(String(every)); sub.submit(async () => ({ error: "Reviews run every 1 to 90 days: type a whole number." })); return; }

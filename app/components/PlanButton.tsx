@@ -7,7 +7,7 @@ import { requestPlanning } from "@/lib/actions";
 export default function PlanButton({ projectId, running, lastPlan, hasChecklist = false }: { projectId: string; running: boolean; lastPlan: string | null; hasChecklist?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  useEffect(() => { if (!running) return; const t = setInterval(() => router.refresh(), 15000); return () => clearInterval(t); }, [running, router]);
+  useEffect(() => { if (!running) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 15000); return () => clearInterval(t); }, [running, router]);
   return (
     <button className="btn sm" disabled={running || pending} onClick={() => start(() => requestPlanning(projectId))}
       title={hasChecklist

@@ -25,8 +25,9 @@ Projects: every folder under `{{PROJECTS_ROOT}}` is a project (id = folder name,
 Owner values: `founder` = the owner (you'd say "you"), `claude`, `both`.
 
 ## At session start in a project folder
-1. `jarvis inbox --project <id>`: mention waiting messages. The background worker normally answers within a minute;
-   only pick one up if it's `new` and older than ~10 min (worker offline) — then `reply` when done.
+1. `jarvis inbox --project <id>`: mention waiting messages. The background worker answers at its next pass (every
+   `worker.interval_seconds`, an hour by default); `jarvis check` runs one now. Only pick a message up yourself if the owner
+   asks, or it's `new` and older than two passes (worker offline) — then `reply` when done.
 2. `jarvis items <id> --open` for the live checklist when planning work. Items set to `doing` with owner `claude`
    are a go signal.
 

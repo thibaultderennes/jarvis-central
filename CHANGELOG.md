@@ -4,6 +4,14 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
+- The Mac worker checks every hour by default instead of every minute (`worker.interval_seconds`, now 3600). Each check wakes the database, and checking every minute kept a free-tier Neon database awake around the clock until it ran out of compute hours. **Jarvis Check Now** (an app `agent/install.sh` puts in ~/Applications) and `jarvis check` run a check at once.
+- Each check now works through every waiting message, not just three.
+- Pages that refresh themselves while something runs (Inbox, threads, checklists, reviews) pause while their tab is hidden, so a forgotten tab doesn't keep the database awake.
+- The site reads the interval from the worker's heartbeat: "checks every hour" in the sidebar and the Inbox, and the worker counts as offline only after two missed checks.
+
+**Upgrade notes**
+- Re-run `agent/install.sh` to pick up the new interval and get Jarvis Check Now. If your `jarvis.config.json` sets `worker.interval_seconds`, that value still wins: raise it (3600 or more) on a free database plan.
+
 ## 0.7.5 — 2026-10-21
 Version chosen for the 14 Oct builds plus the first audit's fixes (`docs/audits/2026-10-21-audit.md`).
 

@@ -74,7 +74,7 @@ Ask before running it again with `--write` (it only edits between `<!-- jarvis:s
 or secrets. Useful for anyone who keeps their own changes in a fork.
 
 ## Phase 8 — Schedules
-Explain: an inbox worker every minute, the planner weekly, the reviews weekly; the Mac must be awake (a missed run
+Explain: an inbox worker every hour (Jarvis Check Now on the Mac runs it at once), the planner weekly, the reviews weekly; the Mac must be awake (a missed run
 happens at the next wake). With consent, run `agent/install.sh`. On Linux, give the cron lines from `agent/README.md`.
 
 ## Phase 9 — Security check
@@ -84,7 +84,7 @@ calendar link leaks).
 
 ## Phase 10 — Prove it works
 1. The owner signs in on the site.
-2. They send "What should I do first tomorrow?" from the Inbox; the worker answers within a minute or two.
+2. They send "What should I do first tomorrow?" from the Inbox; the worker answers at its next check; open Jarvis Check Now (Spotlight) to get the answer within a minute or two.
 3. `node agent/plan.mjs --dry-run` shows next week's plan without saving it.
 4. `node agent/weekly.mjs --dry-run --only <id>` builds one review bundle without calling Claude.
 Finish with the site URL, what runs when, and where the logs are (`~/Library/Logs/jarvis/`).

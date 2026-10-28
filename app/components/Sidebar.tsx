@@ -3,10 +3,11 @@ import Link from "next/link";
 import { Icon, Mark } from "./icons";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { everyLabel, workerAlive } from "@/lib/workerBeat";
 
 export type NavProject = { id: string; name: string; color: string; open: number; late: number; soon: number };
 type Props = {
-  pinned: NavProject[]; projects: NavProject[]; waiting: number; fresh: number; todayLeft: number; needs: number; workerAt: string | null;
+  pinned: NavProject[]; projects: NavProject[]; waiting: number; fresh: number; todayLeft: number; needs: number; workerAt: string | null; workerEvery: number;
   rail: boolean; railCookie: string; version: string; children: React.ReactNode;
 };
 
@@ -17,7 +18,7 @@ function ago(t: string) {
 const NARROW = "(max-width: 1099px)";
 
 /** The app shell: left sidebar (icon rail when collapsed or under 1100px), bottom bar + drawer on phones. */
-export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, needs, workerAt, rail: railCookieOn, railCookie, version, children }: Props) {
+export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, needs, workerAt, workerEvery, rail: railCookieOn, railCookie, version, children }: Props) {
   const path = usePathname();
   const [now, setNow] = useState(0);
   const [rail, setRail] = useState(railCookieOn);
@@ -52,7 +53,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
   };
   const iconic = (rail || narrow) && !open; // labels hidden: tooltips carry them
   const on = (href: string) => (href === "/" ? path === "/" : path === href || path.startsWith(href + "/")) ? "page" : undefined;
-  const alive = workerAt && now && now - +new Date(workerAt) < 5 * 60_000;
+  const alive = !!now && workerAlive(workerAt, workerEvery, now);
   const worker = !workerAt ? "Mac worker not connected yet" : now ? (alive ? "Mac worker online" : `Mac worker last seen ${ago(workerAt)}`) : "Mac worker";
   const inbox = waiting ? `${waiting}` : fresh ? `${fresh} new` : "";
 
@@ -82,7 +83,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
               <Icon n={open ? "close" : iconic ? "expand" : "rail"} />
             </button>
           </div>
-          <div className={`sb-worker ${!workerAt || !now ? "" : alive ? "on" : "off"}`} title={`${worker}. The Claude worker on your Mac checks for messages every minute.`}>
+          <div className={`sb-worker ${!workerAt || !now ? "" : alive ? "on" : "off"}`} title={`${worker}. The Claude worker on your Mac checks for messages ${everyLabel(workerEvery)}; Jarvis Check Now on your Mac runs a check at once.`}>
             <i aria-hidden="true" /><span className="sb-l">{worker}</span>
           </div>
           <button className="sb-jump" onClick={() => { setOpen(false); window.dispatchEvent(new Event("jarvis:palette")); }} title={iconic ? "Jump to… (⌘K)" : undefined} aria-keyshortcuts="Meta+K">
