@@ -43,7 +43,7 @@ node agent/security-check.mjs
 
 ## Schedules
 From `jarvis.config.json` — change them there, then re-run `agent/install.sh` (or re-paste the cron lines):
-- worker: every `worker.interval_seconds` (default 60); its first pass after `planner.rollover_at` (default 04:00)
+- worker: every `worker.interval_seconds` (default 3600: each pass wakes the database); `node jarvis.mjs check` or the Jarvis Check Now app (installed by `install.sh`) runs a pass at once; its first pass after `planner.rollover_at` (default 04:00)
   on a work day also runs the daily roll-forward
 - planner: `planner.run` (default Sunday 17:00)
 - reviews: `reviews.run` (default Monday 05:00)

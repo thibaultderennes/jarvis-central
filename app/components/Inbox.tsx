@@ -8,6 +8,7 @@ import { Ack, enterSends, useSubmit } from "./Submit";
 import { EmptyArt } from "./brand";
 import { isTyping } from "./keys";
 import "./inbox.css";
+import { workerAlive } from "@/lib/workerBeat";
 
 type P = { id: string; name: string; color: string };
 const ST: Record<string, [string, string]> = {
@@ -31,7 +32,7 @@ const EMPTY: Record<Lane, string> = {
  * thread and counts as opened. "Got it" (e, swipe right) treats it; "Later" (h, swipe left) hides it until tomorrow
  * morning. Treated and later conversations stay reachable under each lane.
  */
-export default function Inbox({ messages, projects, defaultProject, workerAt }: { messages: Message[]; projects: P[]; defaultProject: string; workerAt: string | null }) {
+export default function Inbox({ messages, projects, defaultProject, workerAt, workerEvery }: { messages: Message[]; projects: P[]; defaultProject: string; workerAt: string | null; workerEvery: number }) {
   const router = useRouter();
   const [text, setText] = useState(""), [proj, setProj] = useState(defaultProject);
   const [, start] = useTransition();
@@ -41,7 +42,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
   const busy = messages.some(inFlight);
   useEffect(() => setMounted(true), []);
   // While something is in flight, refresh every 10 s so replies appear without reloading.
-  useEffect(() => { if (!busy) return; const t = setInterval(() => router.refresh(), 10000); return () => clearInterval(t); }, [busy, router]);
+  useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 10000); return () => clearInterval(t); }, [busy, router]);
   // Conversations: a first message plus its replies, newest activity first. A thread's lane follows its latest turn.
   const byRoot = new Map<string, Message[]>();
   for (const m of [...messages].sort((x, y) => x.created_at.localeCompare(y.created_at))) {
@@ -130,7 +131,7 @@ export default function Inbox({ messages, projects, defaultProject, workerAt }: 
     if (el && document.activeElement !== el && !isTyping(document.activeElement)) { el.focus({ preventScroll: true }); el.scrollIntoView({ block: "nearest" }); }
   }, [focus]);
 
-  const offline = mounted && (!workerAt || Date.now() - +new Date(workerAt) > 5 * 60_000);
+  const offline = mounted && !workerAlive(workerAt, workerEvery, Date.now());
   const send = (mode: "discuss" | "build") => {
     const v = text.trim(); if (!v || s.pending) return;
     s.submit(() => sendMessage(v, proj || null, { mode }), { ok: "Sent", onOk: () => { setText(""); pickLane("claude"); } });

@@ -10,7 +10,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { CONFIG, HOME, JARVIS_ROOT, TZ, LOG_DIR } from "./lib.mjs";
+import { CONFIG, HOME, JARVIS_ROOT, TZ, LOG_DIR, WORKER_INTERVAL } from "./lib.mjs";
 
 const DAYS = ["sunday", "monday", "tuesday", "wednesday", "thursday", "friday", "saturday"]; // index = launchd/cron weekday
 const which = (bin) => { try { return execFileSync("/bin/sh", ["-c", `command -v ${bin}`], { encoding: "utf8" }).trim(); } catch { return ""; } };
@@ -25,9 +25,9 @@ function when(run, fallback) {
 }
 
 export function schedule() {
-  const interval = Math.max(30, Number(CONFIG.worker?.interval_seconds) || 60);
+  const interval = WORKER_INTERVAL;
   return {
-    worker: { interval, label: `every ${interval} s` },
+    worker: { interval, label: interval % 3600 === 0 ? `every ${interval / 3600 === 1 ? "hour" : `${interval / 3600} hours`}` : interval % 60 === 0 ? `every ${interval / 60} min` : `every ${interval} s` },
     plan: when(CONFIG.planner?.run, { weekday: "sunday", time: "17:00" }),
     weekly: when(CONFIG.reviews?.run, { weekday: "monday", time: "05:00" }),
   };
@@ -58,7 +58,9 @@ function cron() {
   const s = schedule(), node = which("node") || "node";
   const env = `cd ${JARVIS_ROOT} && JARVIS_TZ=${TZ} PATH=${[path.dirname(node), path.dirname(which("claude") || "/usr/local/bin/claude"), "/usr/bin", "/bin"].join(":")}`;
   const log = (n) => `>> ${LOG_DIR}/${n}.cron.log 2>&1`;
-  const every = s.worker.interval >= 60 ? `*/${Math.max(1, Math.round(s.worker.interval / 60))} * * * *` : "* * * * *";
+  // Cron's minute field stops at 59: an hour or more becomes an hour step.
+  const mins = Math.max(1, Math.round(s.worker.interval / 60));
+  const every = mins >= 60 ? `0 */${Math.min(24, Math.round(mins / 60))} * * *` : `*/${mins} * * * *`;
   return [
     `# Jarvis Central Dashboard — times are the machine's local time; set CRON_TZ=${TZ} above these lines if your cron supports it`,
     `${every} ${env} ${node} agent/worker.mjs ${log("worker")}`,

@@ -5,7 +5,7 @@
    Single source of truth for checklists, daily todos, messages, reviews and week plans. Reads calendars from
    secret iCal links; publishes the week plan for Google (Apps Script) and Apple (subscription feed).
 2. **Mac agent** `agent/` — Node scripts run by launchd (or cron) on the owner's machine:
-   - `worker.mjs` every minute: picks up inbox messages, runs `claude -p` in the project, replies.
+   - `worker.mjs` every `worker.interval_seconds` (an hour by default; `jarvis check` or the Jarvis Check Now app runs one at once): picks up inbox messages, runs `claude -p` in the project, replies. Its heartbeat reports `interval_s`; the site counts the worker offline after two missed passes.
    - `plan.mjs` weekly (default Sunday 17:00): plans next week around the calendar, sized from the last 2 weeks
      (`planner.adapt`, `agent/adapt.mjs`: planned vs done per project and an hours check in the plan notes; `apply` caps idle projects).
    - `rollover.mjs` daily, from the worker (first pass after `planner.rollover_at` on a work day, stamped in the cache):

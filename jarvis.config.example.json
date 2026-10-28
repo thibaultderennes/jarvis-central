@@ -39,7 +39,7 @@
   },
 
   "worker": {
-    "interval_seconds": 60,
+    "interval_seconds": 3600,
     "allow_build": true,
     "refine_new_items": true,
     "refine_inbox_notes": false,

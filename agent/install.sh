@@ -3,6 +3,7 @@
 #   com.jarvis.worker  inbox worker, every worker.interval_seconds
 #   com.jarvis.plan    weekly planner, planner.run
 #   com.jarvis.weekly  Monday reviews, reviews.run
+# and ~/Applications/Jarvis Check Now.app, which starts a worker pass at once (Spotlight, Launchpad, the Dock).
 # Linux: run `node agent/schedule.mjs cron` and paste the lines into `crontab -e` instead.
 set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -26,4 +27,11 @@ for name in worker plan weekly; do
   echo "loaded $label"
 done
 launchctl print "gui/$UID/com.jarvis.worker" | grep -E "state|last exit" || true
+# "Check now" between passes: the same as `node agent/jarvis.mjs check`.
+APP="$HOME/Applications/Jarvis Check Now.app"
+mkdir -p "$HOME/Applications"
+rm -rf "$APP"
+osacompile -o "$APP" -e 'do shell script "launchctl kickstart gui/$(id -u)/com.jarvis.worker"' \
+  -e 'display notification "Picking up messages, builds and merges now." with title "Jarvis"' >/dev/null
+echo "installed $APP (open it from Spotlight to check now)"
 echo "Logs: ~/Library/Logs/jarvis/   ·   Remove with: $HERE/uninstall.sh"

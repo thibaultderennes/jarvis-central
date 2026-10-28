@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { requireSession } from "@/lib/auth";
 import { getMessages, getProjects, getTodos, kvGet, openCounts, splitFeatured } from "@/lib/data";
 import { today } from "@/lib/time";
+import { workerEvery, type WorkerBeat } from "@/lib/workerBeat";
 import { Suspense } from "react";
 import Sidebar, { type NavProject } from "@/components/Sidebar";
 import UsageTracker from "@/components/UsageTracker";
@@ -18,7 +19,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   await requireSession();
   const t = today();
   const [projects, msgs, hb, counts, todos, jar, needs] = await Promise.all([
-    getProjects(), getMessages({ limit: 100 }), kvGet<{ at: string }>("worker.heartbeat"), openCounts(t), getTodos(t, t), cookies(), needsYou(),
+    getProjects(), getMessages({ limit: 100 }), kvGet<NonNullable<WorkerBeat>>("worker.heartbeat"), openCounts(t), getTodos(t, t), cookies(), needsYou(),
   ]);
   const { featured, others } = splitFeatured(projects);
   // Top-3 keep their colour slot; every other project shares "other", as in the charts.
@@ -28,7 +29,7 @@ export default async function MainLayout({ children }: { children: React.ReactNo
   const fresh = unreadCount(msgs);
   return (
     <Sidebar pinned={featured.map((p) => nav(p, true))} projects={others.map((p) => nav(p, false))} waiting={waiting} fresh={fresh}
-      todayLeft={todos.filter((x) => !x.done).length} needs={needs.count} workerAt={hb?.value?.at || null} rail={jar.get(RAIL_COOKIE)?.value === "1"} railCookie={RAIL_COOKIE}
+      todayLeft={todos.filter((x) => !x.done).length} needs={needs.count} workerAt={hb?.value?.at || null} workerEvery={workerEvery(hb?.value)} rail={jar.get(RAIL_COOKIE)?.value === "1"} railCookie={RAIL_COOKIE}
       version={process.env.NEXT_PUBLIC_JARVIS_VERSION || "dev"}>
       {children}
       <CommandPalette />

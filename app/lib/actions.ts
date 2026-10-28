@@ -210,7 +210,7 @@ export async function sendNote(project_id: string, id: string, note: string): Pr
   return {};
 }
 /* ---------- Claude builds in-progress items ---------- */
-/** Approve: the Mac worker merges the PR within a minute (`gh pr merge`), then marks the item done. */
+/** Approve: the Mac worker merges the PR at its next check (`gh pr merge`), then marks the item done. */
 export async function approveBuild(project_id: string, id: string) {
   await requireSession();
   const [it] = await sql()`select build_status, pr_url from items where project_id = ${project_id} and id = ${id}`;

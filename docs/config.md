@@ -33,7 +33,7 @@ re-run it and redeploy after changing those.
 | `reviews.concurrency` | `2` | Projects reviewed in parallel. |
 | `reviews.repo_scout` | `true` | The Monday Jarvis review also searches GitHub and the web (read-only) for agent skills and tools that address the week's pain points, and proposes up to 3. `false` = no web access for that review. |
 | `reviews.repo_scout_skip` | `[]` | Repos (`owner/repo`) the scout should never propose again. Installed skills are skipped automatically. |
-| `worker.interval_seconds` | `60` | How often the inbox is checked. |
+| `worker.interval_seconds` | `3600` | How often the worker checks the inbox, builds and merges (minimum 30). Each check wakes the database for about 5 minutes, so a free-tier Neon plan wants an hour or more; every minute keeps it awake and uses up the free compute hours. `jarvis check` or the Jarvis Check Now app runs a check at once. |
 | `worker.allow_build` | `true` | `false` = the worker only discusses, never edits code. |
 | `worker.refine_new_items` | `true` | Items you add on the site get steps, a section, priority, an estimate and a due date on a day with room. `false` = leave them as typed. |
 | `worker.refine_inbox_notes` | `false` | `true` = also post an Inbox note each time a new item is refined (the result is always on the item itself). Replies to your comments on an item always go to the Inbox. |

@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Jarvis inbox worker. The scheduler runs one pass every minute: pick up messages the owner left on the
+// Jarvis inbox worker. The scheduler runs one pass every worker.interval_seconds (an hour by default; `jarvis check`
+// or the Jarvis Check Now app runs one at once): pick up messages the owner left on the
 // website, run `claude -p` in the right project, reply. Code work happens only in a throwaway git
 // worktree; this script (not Claude) pushes the branch and opens the PR. Nothing is ever merged.
 //
@@ -8,7 +9,7 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { api, qs, makeLog, makeLogOnce, acquireLock, todayTZ, hostName, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
+import { api, qs, makeLog, makeLogOnce, acquireLock, todayTZ, hostName, WORKER_INTERVAL, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
@@ -415,7 +416,7 @@ async function pass() {
   const release = acquireLock("worker");
   if (!release) return log("previous pass still running, skipping");
   try {
-    const hb = await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName(), build_mode: buildModeFor(null, W.build_mode) } }).catch((e) => (log("heartbeat failed", e.message), null));
+    const hb = await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName(), interval_s: WORKER_INTERVAL, build_mode: buildModeFor(null, W.build_mode) } }).catch((e) => (log("heartbeat failed", e.message), null));
     // Agent and site from different releases disagree on the API: building or merging against it can loop
     // over every item. Pause those two passes (refine and messages stay on) until both are updated.
     const mm = (v) => String(v || "").split(".").slice(0, 2).join(".");
@@ -452,13 +453,19 @@ async function pass() {
       await mergeApproved(projects, log).catch((e) => logChanged("merge-pass", e.message, "merge pass failed", e.message));
       await queueBuilds(projects, log).catch((e) => logChanged("build-queue", e.message, "build queue failed", e.message));
     }
-    const messages = await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }));
-    if (!messages.length) return;
-    for (const m of messages) {
-      try { await handle(m, projects); }
-      catch (e) {
-        log("error", m.id, e.message);
-        await api("PATCH", "/api/agent/messages", { id: m.id, status: "error", reply: `The worker hit an error: ${e.message.slice(0, 500)}` }).catch((e2) => log("could not report error", e2.message));
+    // Passes are an hour apart by default, so work through everything waiting rather than three at a time.
+    // Each round re-reads the inbox (handled messages leave "new"); the cap stops a message that never does.
+    const done = new Set();
+    for (let round = 0; round < 10; round++) {
+      const messages = (await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }))).filter((m) => !done.has(m.id));
+      if (!messages.length) return;
+      for (const m of messages) {
+        done.add(m.id);
+        try { await handle(m, projects); }
+        catch (e) {
+          log("error", m.id, e.message);
+          await api("PATCH", "/api/agent/messages", { id: m.id, status: "error", reply: `The worker hit an error: ${e.message.slice(0, 500)}` }).catch((e2) => log("could not report error", e2.message));
+        }
       }
     }
   } finally { release(); }

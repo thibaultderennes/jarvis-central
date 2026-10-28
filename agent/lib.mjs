@@ -62,6 +62,8 @@ const _settings = loadSettings();
 export const CONFIG = _settings.cfg;
 export const CONFIG_EXISTS = _settings.configExists;
 export const CONFIG_ERROR = _settings.configError;
+/** Seconds between worker passes. Every pass wakes the database, so a free-tier Neon plan wants hours, not minutes. */
+export const WORKER_INTERVAL = Math.max(30, Number(CONFIG.worker?.interval_seconds) || 3600);
 export const TZ = process.env.JARVIS_TZ || CONFIG.timezone || "UTC";
 export const PROJECTS_ROOT = CONFIG.projects_root;
 export const OWNER = CONFIG.owner_name || "the owner";

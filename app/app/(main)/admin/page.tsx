@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { workerEvery, type WorkerBeat } from "@/lib/workerBeat";
 import { requireSession } from "@/lib/auth";
 import * as D from "@/lib/data";
 import { TZ, fmtDate } from "@/lib/time";
@@ -11,7 +12,7 @@ import { Glyph, HeaderVec } from "@/components/brand";
 export default async function AdminPage() {
   await requireSession();
   const [projects, rescan, ignoredKv, hb, prefs, subs] = await Promise.all([
-    D.getProjects(true), D.kvGet<Rescan>("projects.rescan"), D.kvGet<Ignored[]>("projects.ignored"), D.kvGet<{ at: string }>("worker.heartbeat"), D.getPrefs(), D.getCosts({ project: null }),
+    D.getProjects(true), D.kvGet<Rescan>("projects.rescan"), D.kvGet<Ignored[]>("projects.ignored"), D.kvGet<NonNullable<WorkerBeat>>("worker.heartbeat"), D.getPrefs(), D.getCosts({ project: null }),
   ]);
   const ignored = Array.isArray(ignoredKv?.value) ? ignoredKv.value : [];
   const removed = new Set(ignored.filter((x) => x.reason === "removed").map((x) => x.id));
@@ -35,7 +36,7 @@ export default async function AdminPage() {
         <div className="ph"><h2 className="ph-t" id="h-projects">Projects</h2><span className="sp" /><span className="hint">{listed.filter((p) => !p.archived).length} registered · {listed.filter((p) => p.archived).length} archived{ignored.length ? ` · ${ignored.length} removed or declined` : ""}</span></div>
         <NewProject />
         <div className="note-line">Start new project creates the folder in your projects folder on your Mac and adds it here. Claude then reads it and writes its first docs (PRD, CLAUDE.md, README and the rest of the foundation), new files only, and puts what it can&apos;t write and its questions for you on the project&apos;s checklist. Folders you approve below get the same setup, unless you switched it off (<code>project_setup</code> in jarvis.config.json).</div>
-        <RescanButton state={rescan?.value || null} workerAt={hb?.value?.at || null} />
+        <RescanButton state={rescan?.value || null} workerAt={hb?.value?.at || null} workerEvery={workerEvery(hb?.value)} />
         <div className="note-line">A refresh scans your projects folder on your Mac, through the Jarvis worker. New folders wait below for your approval; nothing joins the dashboard on its own. Existing projects are updated, and nothing is ever deleted: a folder that is gone gets archived, and Remove only takes a project off the dashboard.</div>
         <Proposals list={rescan?.value?.status === "done" ? rescan.value.proposed || [] : []} />
         {listed.length > 0 && (
