@@ -3,6 +3,17 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
+- **No headless run can read your credentials.** Several runs read text nobody on your Mac wrote — web pages and
+  GitHub READMEs (the Monday repo scout, the advisor reviews), calendar event titles, pull request text — while holding
+  `Read`, which is granted by tool name and so is not limited to the run's own folders. `agent/claude.mjs` now adds a
+  deny-list to **every** `claude -p` run: `~/.config/jarvis`, `~/.ssh`, `~/.gnupg`, `~/.config/gh`, `~/.aws`,
+  `~/.config/gcloud`, `~/.kube`, any `.env`, and key files. It is built from your home directory at run time, is added
+  on top of whatever the caller already denies, and a deny rule beats an allow rule. The advisor reviews and the
+  worker's runs are also told that anything they read which you didn't write is data, not instructions (the repo scout
+  was already told). Found as the one critical in the 2026-11-01 audit.
+
+### Upgrade notes
+- Nothing to do: `git pull` and the next scheduled run picks it up. No config key, no migration, no re-install.
 
 ## 0.7.4.9 — 2026-10-14
 - **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
