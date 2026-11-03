@@ -54,6 +54,12 @@ If JARVIS_URL is unset or the site answers 401/403, stop and say so: the environ
 
 async function start(pid) {
   const p = await project(pid);
+  // Paused on the site: no review this run. Clear an earlier run's state so `next` has nothing to answer either.
+  if (p.paused_at) {
+    fs.rmSync(stateFile(pid), { force: true });
+    console.log(`${p.name} is paused on the site (since ${String(p.paused_at).slice(0, 10)}): no review this run. Stop here; nothing to post.`);
+    return;
+  }
   const dir = opt("dir") ? path.resolve(opt("dir")) : p.dir;
   if (dir && !fs.existsSync(dir)) die(`--dir ${dir} does not exist`);
   const days = opt("days") ? Math.max(1, Math.min(90, Math.round(Number(opt("days"))) || 7)) : null;

@@ -23,6 +23,9 @@ By default a run posts a separate report, **Routine trial · <project> · week o
 reviews, so it never replaces the review your computer posts for the same week. `--as review` (in the routine's
 prompt) posts it as the project's review itself, for when you switch that project over.
 
+A project paused on the site (Pause project) makes `start` stop at once: the run posts nothing. A scheduled audit
+routine that never calls `routine.mjs` can't see the switch, so pause it on claude.ai too.
+
 ## Set it up (you, on claude.ai: about 10 minutes)
 
 > **Security:** the cloud environment attaches your agent token to every request to your site, so anything the

@@ -4,7 +4,7 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
 
 ## Unreleased
 
-- **Pause a project** from its page (Pause project / Resume project). A paused project keeps its checklist and page, but drops out of the weekly plan, Today, the overdue queue, Needs you, the sidebar's counts (it reads "paused"), the Monday and scheduled reviews, Claude's automatic builds, metrics syncs and setup runs. Messages about it are still answered, and a merge you approve still lands. Resuming doesn't move due dates. New column `projects.paused_at`, added on deploy.
+- **Pause a project** from its page (Pause project / Resume project). A paused project keeps its checklist and page, but drops out of the weekly plan, Today, the overdue queue, Needs you, the sidebar's counts (it reads "paused"), the Monday and scheduled reviews, Claude's automatic builds, metrics syncs and setup runs. Messages about it are still answered, and a merge you approve still lands. Its audits pause too: audit reports in its folder aren't synced, Screenings and "Run now" reviews are declined with a reply, and a routine review (`agent/routine.mjs start`) stops without posting. Scheduled audit routines on claude.ai can't see the switch: pause those on claude.ai. Resuming doesn't move due dates. New column `projects.paused_at`, added on deploy.
 
 - The Mac worker checks every hour by default instead of every minute (`worker.interval_seconds`, now 3600). Each check wakes the database, and checking every minute kept a free-tier Neon database awake around the clock until it ran out of compute hours. **Jarvis Check Now** (an app `agent/install.sh` puts in ~/Applications) and `jarvis check` run a check at once.
 - Each check now works through every waiting message, not just three.

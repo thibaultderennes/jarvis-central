@@ -231,6 +231,11 @@ async function handle(message, projects) {
   const shortId = message.id.replace(/-/g, "").slice(0, 8);
   const project = projects.find((p) => p.id === message.project_id) || null;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "seen" });
+  // A paused project's audits and reviews wait: Screenings and Run now are declined until it is resumed.
+  if (project?.paused_at && (message.mode === "screen" || message.mode === "review")) {
+    log("declined, project paused", message.mode, project.id);
+    return api("PATCH", "/api/agent/messages", { id: message.id, status: "answered", reply: `${project.name} is paused, so its audits and reviews are on hold. Resume it from its page, then run this again.` });
+  }
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
   if (message.mode === "screen") return screenProject(message, project, log); // Docs and reviews → Screenings → Run
   if (message.mode === "review") return runProjectReview(message, project, log); // Settings → Run now, or the project's own schedule
@@ -427,8 +432,8 @@ async function pass() {
     const active = projects.filter((p) => !p.paused_at);
     // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
     await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
-    // Security audit reports in each project folder → the project's Security tab; at most once an hour.
-    await syncAuditsDue(projects, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
+    // Security audit reports in each project folder → the project's Security tab; at most once an hour. Not for a paused project.
+    await syncAuditsDue(active, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
     // Unit-economics model files in project folders → evaluated here, results on the project's Finances tab; hourly.
     await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
     // Product metrics (users, visits, revenue…) from each project's source in the config → the project's Stats view; daily.

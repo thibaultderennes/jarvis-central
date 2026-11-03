@@ -95,7 +95,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
       <div className="hello">
         <div>
           <h1 className="page" style={{ display: "flex", gap: 12, alignItems: "center" }}><i className="dot" style={{ width: 14, height: 14 }} />{p.name}{p.paused_at && <span className="pill">Paused</span>}</h1>
-          {p.paused_at && <p className="due">Paused since {fmtDate(p.paused_at.slice(0, 10))}: out of the plan, Today, the overdue queue and the reviews. Resume it to bring it back.</p>}
+          {p.paused_at && <p className="due">Paused since {fmtDate(p.paused_at.slice(0, 10))}: out of the plan, Today, the overdue queue, the reviews and the audits. Resume it to bring it back.</p>}
           <p className="sub">{p.tagline} · {dn} of {items.filter((i) => i.status !== "cancelled").length} done{next ? ` · ${next.label} in ${daysBetween(t, next.date)} days (${fmtDate(next.date)})` : ""}</p>
         </div>
         <div className="subtabs">
