@@ -447,6 +447,14 @@ export async function featureProject(id: string, slot: number) {
   await D.logActivity("project_feature", "/", { id, slot });
   done();
 }
+/** Pause or resume a project. Its checklist stays; it leaves the plan, Today, overdue, Needs you, reviews and auto-builds. */
+export async function setProjectPaused(id: string, paused: boolean): Promise<{ error?: string }> {
+  await requireSession();
+  const rows = await sql()`update projects set paused_at = ${paused ? new Date().toISOString() : null} where id = ${id} and (paused_at is null) = ${paused} returning id`;
+  if (rows.length) await D.logActivity(paused ? "project_pause" : "project_resume", `/p/${id}`, { id });
+  done();
+  return {};
+}
 export async function setProjectSettings(id: string, s: { plan_enabled?: boolean; weekly_minutes?: number | null; reviews_enabled?: boolean; review_every_days?: number; build_mode?: BuildMode }): Promise<{ error?: string }> {
   await requireSession();
   const mins = s.weekly_minutes === undefined ? undefined : s.weekly_minutes === null || !Number.isFinite(s.weekly_minutes) ? null : Math.max(0, Math.min(80 * 60, Math.round(s.weekly_minutes)));

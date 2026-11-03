@@ -59,7 +59,7 @@ export async function needsYou(): Promise<{ rows: Need[]; count: number }> {
   const [projects, items, msgs, reviews] = await Promise.all([
     getProjects(),
     sql()`select project_id, id, section, title, status, owner, build_status, created_at, build_updated_at from items
-      where status in ('todo', 'doing') and (build_status = 'pr_open' or coalesce(owner, 'founder') = 'founder') and project_id not in (select id from projects where archived)`,
+      where status in ('todo', 'doing') and (build_status = 'pr_open' or coalesce(owner, 'founder') = 'founder') and project_id not in (select id from projects where archived or paused_at is not null)`,
     getMessages({ limit: 200 }),
     latestProjectReviews({ light: true }),
   ]);

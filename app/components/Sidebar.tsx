@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { everyLabel, workerAlive } from "@/lib/workerBeat";
 
-export type NavProject = { id: string; name: string; color: string; open: number; late: number; soon: number };
+export type NavProject = { id: string; name: string; color: string; open: number; late: number; soon: number; paused?: boolean };
 type Props = {
   pinned: NavProject[]; projects: NavProject[]; waiting: number; fresh: number; todayLeft: number; needs: number; workerAt: string | null; workerEvery: number;
   rail: boolean; railCookie: string; version: string; children: React.ReactNode;
@@ -65,9 +65,9 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
   );
   const Proj = ({ p }: { p: NavProject }) => (
     <Link href={`/p/${p.id}`} className="sb-a sb-p" aria-current={on(`/p/${p.id}`)} data-c={p.color}
-      title={iconic ? `${p.name} · ${p.late ? `${p.late} late` : p.soon ? `${p.soon} due within 7 days` : `${p.open} open`}` : p.name}>
+      title={iconic ? `${p.name} · ${p.paused ? "paused" : p.late ? `${p.late} late` : p.soon ? `${p.soon} due within 7 days` : `${p.open} open`}` : p.paused ? `${p.name} (paused)` : p.name}>
       <span className="sb-dot" aria-hidden="true"><i className="dot" />{p.late > 0 ? <b /> : p.soon > 0 && <b className="soon" />}</span><span className="sb-l">{p.name}</span>
-      {p.late > 0 ? <span className="sb-n late" aria-label={`${p.late} late`}>{p.late} late</span>
+      {p.paused ? <span className="sb-n">paused</span> : p.late > 0 ? <span className="sb-n late" aria-label={`${p.late} late`}>{p.late} late</span>
         : p.soon > 0 ? <span className="sb-n soon" aria-label={`${p.soon} due in the next 7 days`} title={`${p.soon} due in the next 7 days`}>{p.soon} within 7d</span>
         : p.open > 0 ? <span className="sb-n" aria-label={`${p.open} open`}>{p.open}</span> : null}
     </Link>

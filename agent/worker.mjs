@@ -423,6 +423,8 @@ async function pass() {
     const skew = hb && mm(hb.version) !== mm(VERSION) && VERSION !== "dev" ? (hb.version || "older than 0.6") : null;
     logChanged("version-skew", skew, skew ? `version skew: agent ${VERSION}, site ${skew}. Build and merge passes paused until both run the same release (git pull, re-run agent/install.sh, redeploy).` : "agent and site versions match again");
     const projects = await api("GET", "/api/agent/projects");
+    // Paused on the site: messages about it are still answered and approved merges still land, but nothing starts on its own.
+    const active = projects.filter((p) => !p.paused_at);
     // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
     await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
     // Security audit reports in each project folder → the project's Security tab; at most once an hour.
@@ -430,9 +432,9 @@ async function pass() {
     // Unit-economics model files in project folders → evaluated here, results on the project's Finances tab; hourly.
     await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
     // Product metrics (users, visits, revenue…) from each project's source in the config → the project's Stats view; daily.
-    await syncMetricsDue(projects, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
+    await syncMetricsDue(active, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
     // Once a week: one todo naming the live projects with no source and no numbers typed lately (metrics.remind).
-    await remindMetricsDue(projects, log).catch((e) => logChanged("metrics-reminder", e.message, "metrics reminder failed", e.message));
+    await remindMetricsDue(active, log).catch((e) => logChanged("metrics-reminder", e.message, "metrics reminder failed", e.message));
     // Milestones moved on the Timeline: write the new dates into each PRD.md so the next sync keeps them.
     await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
@@ -442,14 +444,14 @@ async function pass() {
     // "Apply" pressed on a Jarvis review's settings suggestion: write those keys into jarvis.config.json.
     await applyQueuedSettings(log).catch((e) => logChanged("settings-apply", e.message, "settings apply failed", e.message));
     // A project loaded for the first time, or updated with a foundation gap: queue its setup session (setup.mjs).
-    await queueSetupDue(projects, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
+    await queueSetupDue(active, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
     if (!skew) {
       // Once a day on a work day: yesterday's undone todos and overdue items back to the top of today (agent/rollover.mjs).
       await rolloverDue(log).then((r) => r && r.workday && log("rollover", { carried: r.carried, parked: r.parks.length, flagged: r.flags.length, waiting: r.waiting.length }, describeRollover(r).join(" | "))).catch((e) => log("rollover failed", e.message));
       // Projects reviewed every N days (Settings) rather than in the weekly run: queue the ones due; hourly. Paused on
       // skew too, since an older site stores a 'review' message as a discussion.
-      await queueDueReviews(projects, log).catch((e) => logChanged("review-queue", e.message, "review schedule check failed", e.message));
+      await queueDueReviews(active, log).catch((e) => logChanged("review-queue", e.message, "review schedule check failed", e.message));
       await mergeApproved(projects, log).catch((e) => logChanged("merge-pass", e.message, "merge pass failed", e.message));
       await queueBuilds(projects, log).catch((e) => logChanged("build-queue", e.message, "build queue failed", e.message));
     }

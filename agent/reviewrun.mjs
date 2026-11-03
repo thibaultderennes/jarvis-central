@@ -92,7 +92,7 @@ if (import.meta.url === `file://${process.argv[1]}`) {
   if (cmd === "due") {
     const projects = (await api("GET", "/api/agent/projects")).filter((p) => !p.archived);
     const due = await dueNow(projects);
-    for (const p of projects.filter((x) => x.reviews_enabled !== false)) console.log(p.id.padEnd(22), `every ${reviewEvery(p)} days`, due.some((d) => d.id === p.id) ? "· due now" : reviewEvery(p) === 7 ? "· weekly run" : "");
+    for (const p of projects.filter((x) => x.reviews_enabled !== false && !x.paused_at)) console.log(p.id.padEnd(22), `every ${reviewEvery(p)} days`, due.some((d) => d.id === p.id) ? "· due now" : reviewEvery(p) === 7 ? "· weekly run" : "");
   } else if (cmd === "words") {
     const n = Math.max(1, Math.min(200, Number(process.argv[3]) || 20));
     const rows = await api("GET", "/api/agent/reviews" + qs({ type: "project", limit: n }));

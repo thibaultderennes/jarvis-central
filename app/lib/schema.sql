@@ -281,3 +281,6 @@ create index if not exists advice_project on advice (project_id, week_start desc
 -- 0.7.5. The Jarvis review's "Your settings" suggestions: `decisions` = {suggestion key: {state, at, changes?, error?}}
 -- (Apply queues the config keys for the Mac, Done / Dismiss record the owner's call; next week's review reads it).
 alter table reviews add column if not exists decisions jsonb not null default '{}';
+-- Pause a project: set = paused since then. A paused project keeps its checklist and page but leaves the plan,
+-- Today, the overdue queue, Needs you, the sidebar's counts, the reviews and the worker's builds and metrics.
+alter table projects add column if not exists paused_at timestamptz;

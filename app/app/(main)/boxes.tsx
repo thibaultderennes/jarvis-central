@@ -133,7 +133,7 @@ async function top3(c: Ctx) {
       next: its.filter((i) => D.isOpen(i) && i.due).sort((x, y) => Number(y.status === "doing") - Number(x.status === "doing") || x.due!.localeCompare(y.due!)).slice(0, 3).map((i) => ({ id: i.id, title: i.title, due: i.due! })),
       verdict: reviews.find((r) => r.type === "project" && r.project_id === p.id)?.verdict || null,
       deadline: nx ? { ...nx, days: daysBetween(c.t, nx.date) } : null,
-      plan_enabled: p.plan_enabled !== false, weekly_minutes: p.weekly_minutes ?? null, reviews_enabled: p.reviews_enabled !== false, pace,
+      plan_enabled: p.plan_enabled !== false, weekly_minutes: p.weekly_minutes ?? null, reviews_enabled: p.reviews_enabled !== false, paused: !!p.paused_at, pace,
     };
   };
   return <ProjectsBoard featured={featured.map(card)} others={others.map(card)} today={c.t} />;

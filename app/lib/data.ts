@@ -14,6 +14,8 @@ export type Project = {
   featured_rank: number | null; plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean;
   /** Days between advisor reviews (7 = the Monday run); undefined until the 0.7.4 migration ran. */
   review_every_days?: number;
+  /** Paused since then (Pause on the project page); null = active. Undefined until the paused_at migration ran. */
+  paused_at?: string | null;
   /** How Jarvis builds this project; null = the worker's default (worker.build_mode). */
   build_mode?: BuildMode | null;
   /** Detected by agent/website.mjs on projects sync; null until the first sync after 0.8.0. */
@@ -74,7 +76,9 @@ const normMsg = (r: Record<string, unknown>) => ({ ...r, created_at: ts(r.create
 const normReview = (r: Record<string, unknown>) => ({ ...r, week_start: d10(r.week_start), created_at: ts(r.created_at), acked_at: ts(r.acked_at), pushed: r.pushed && typeof r.pushed === "object" ? r.pushed : {}, decisions: r.decisions && typeof r.decisions === "object" ? r.decisions : {} }) as Review;
 /** Reviews mirrored from files (security audits) sort by the date in the file name, then by when the site saw them. */
 export const newestFileFirst = (a: Review, b: Review) => String(b.meta?.date || "").localeCompare(String(a.meta?.date || "")) || b.created_at.localeCompare(a.created_at);
-const normProject = (r: Record<string, unknown>) => ({ ...r, updated_at: ts(r.updated_at) }) as Project;
+const normProject = (r: Record<string, unknown>) => ({ ...r, updated_at: ts(r.updated_at), paused_at: ts(r.paused_at ?? null) }) as Project;
+/** Items of these projects stay out of the cross-project views: removed or gone (archived), or paused. */
+export const QUIET_PROJECTS = "(select id from projects where archived or paused_at is not null)";
 
 /* ---------- projects ---------- */
 export async function getProjects(includeArchived = false): Promise<Project[]> {
@@ -102,10 +106,11 @@ export function splitFeatured(projects: Project[]): { featured: Project[]; other
 export const displayColor = (p: Project, featuredIds: Set<string>) => (featuredIds.has(p.id) ? p.color : "other");
 
 /* ---------- items ---------- */
-/** Items. Without `project`, items of archived (removed or gone) projects are left out unless `includeArchived`. */
+/** Items. Without `project`, items of archived (removed or gone) or paused projects are left out unless `includeArchived`;
+ * a merge you approved (build=merge_requested) still goes through on a paused project. */
 export async function getItems(opts: { project?: string; open?: boolean; refine?: string; build?: string; includeArchived?: boolean } = {}): Promise<Item[]> {
   const where: string[] = [], params: unknown[] = [];
-  if (!opts.project && !opts.includeArchived) where.push(`project_id not in (select id from projects where archived)`);
+  if (!opts.project && !opts.includeArchived) where.push(`project_id not in ${opts.build && opts.build !== "queue" ? "(select id from projects where archived)" : QUIET_PROJECTS}`);
   if (opts.refine) { params.push(opts.refine); where.push(`refine = $${params.length}`); }
   if (opts.project) { params.push(opts.project); where.push(`project_id = $${params.length}`); }
   if (opts.open) where.push(`status in ('todo', 'doing')`);
@@ -120,7 +125,7 @@ export async function getItems(opts: { project?: string; open?: boolean; refine?
 export async function openCounts(day: string): Promise<Record<string, { open: number; late: number; soon: number }>> {
   const rows = await sql()`select project_id, count(*)::int as open, count(*) filter (where due < ${day}::date)::int as late,
       count(*) filter (where due >= ${day}::date and due <= ${day}::date + 7)::int as soon
-    from items where status in ('todo', 'doing') and project_id not in (select id from projects where archived) group by 1`;
+    from items where status in ('todo', 'doing') and project_id not in (select id from projects where archived or paused_at is not null) group by 1`;
   return Object.fromEntries(rows.map((r) => [r.project_id as string, { open: r.open as number, late: r.late as number, soon: r.soon as number }]));
 }
 export function slugify(s: string, max = 4): string {
@@ -586,7 +591,7 @@ export async function doneByWeek(weeks = 8) {
 /** Open items by due week, next `weeks` weeks (overdue folded into the first week). */
 export async function openByDueWeek(weeks = 6) {
   const start = mondayOf(today()), end = addDays(start, 7 * weeks - 1);
-  const rows = await sql()`select project_id, greatest(due, ${start}::date) as d from items where status in ('todo', 'doing') and due is not null and due <= ${end} and project_id not in (select id from projects where archived)`;
+  const rows = await sql()`select project_id, greatest(due, ${start}::date) as d from items where status in ('todo', 'doing') and due is not null and due <= ${end} and project_id not in (select id from projects where archived or paused_at is not null)`;
   return { start, rows: rows.map((r) => ({ project_id: r.project_id as string, week: mondayOf(d10(r.d)!) })) };
 }
 /** Todos per day for the last `days` days: planned vs done, split life/work. */

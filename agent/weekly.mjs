@@ -430,15 +430,16 @@ async function main() {
   const { turns, sessions } = await scan({ since: W.start, until: W.end });
   const events = await get("/api/agent/events" + qs({ since: W.start.toISOString() }), []).then((e) => e.filter((x) => x.at < W.end.toISOString()));
 
-  // "Weekly review, strategy & audit" switched off on the site → no advisor run for that project.
-  const reviewsOff = projects.filter((p) => p.reviews_enabled === false).map((p) => p.id);
+  // "Weekly review, strategy & audit" switched off on the site, or the project paused → no advisor run for it.
+  const off = (p) => p.reviews_enabled === false || !!p.paused_at;
+  const reviewsOff = projects.filter(off).map((p) => p.id);
   if (reviewsOff.length) log("reviews off for", reviewsOff.join(", "));
   // A project on its own schedule (Settings: every N days other than 7) is reviewed by the worker when due, not here.
-  const ownSchedule = ONLY || REPORT ? [] : projects.filter((p) => p.reviews_enabled !== false && reviewEvery(p) !== 7).map((p) => `${p.id} (every ${reviewEvery(p)} days)`);
+  const ownSchedule = ONLY || REPORT ? [] : projects.filter((p) => !off(p) && reviewEvery(p) !== 7).map((p) => `${p.id} (every ${reviewEvery(p)} days)`);
   if (ownSchedule.length) log("on their own review schedule, skipped", ownSchedule.join(", "));
   // The Jarvis project goes first: on a long run it is not the one left to the end.
   const isJarvis = (p) => !!p.dir && path.resolve(p.dir) === path.resolve(JARVIS_ROOT);
-  const todo = REPORT ? [] : jarvisFirst(projects.filter((p) => (ONLY ? p.id === ONLY : p.reviews_enabled !== false && reviewEvery(p) === 7)), isJarvis);
+  const todo = REPORT ? [] : jarvisFirst(projects.filter((p) => (ONLY ? p.id === ONLY : !off(p) && reviewEvery(p) === 7)), isJarvis);
   let results = new Array(todo.length);
   let next = 0;
   const workers = Array.from({ length: Math.max(1, Math.min(Number(CONFIG.reviews?.concurrency) || 2, todo.length)) }, async () => {

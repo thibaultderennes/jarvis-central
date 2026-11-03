@@ -160,3 +160,13 @@ test("waitingFor: only that day, critical then most late first", () => {
   assert.equal(lateLabel(0), "due today");
   assert.equal(lateLabel(3), "3 days late");
 });
+
+test("a paused project's overdue items get no todo, and its carried todos are parked like a plan-off project's", () => {
+  const items = [item("late", { due: "2026-10-01" }), item("p1", { due: "2026-10-01", project_id: "zzz" })];
+  const todos = [todo({ date: MON, project_id: "zzz", item_id: "p1" })];
+  const projects = [{ id: "app" }, { id: "zzz", paused_at: "2026-10-04T09:00:00Z" }];
+  const paused = rollForward({ today: TUE, todos, items, projects, settings: S });
+  const off = rollForward({ today: TUE, todos, items, projects: [{ id: "app" }, { id: "zzz", plan_enabled: false }], settings: S });
+  assert.deepEqual(paused.adds.map((a) => a.item_id), ["late"]);
+  assert.deepEqual({ moves: paused.moves.map((m) => m.id), parks: paused.parks.map((p) => p.id) }, { moves: off.moves.map((m) => m.id), parks: off.parks.map((p) => p.id) });
+});

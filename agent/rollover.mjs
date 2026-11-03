@@ -55,7 +55,7 @@ export const isWorkDay = (ymd, s) => s.weekends === "always" || (s.work_days || 
 /**
  * Pure: what today's roll-forward does. No network, no clock (today is passed in).
  * todos: every todo from today - LOOKBACK_DAYS onwards plus Someday ({id, date|null, title, done, project_id, item_id,
- * sort, rollovers?, rolled_from?, rolled_at?}); items: open items; projects: [{id, plan_enabled, archived}].
+ * sort, rollovers?, rolled_from?, rolled_at?}); items: open items; projects: [{id, plan_enabled, archived, paused_at}].
  * Returns {workday, moves, adds, parks, flags, waiting, load: {before, after, cap}, carried}.
  */
 export function rollForward({ today, todos = [], items = [], projects = [], settings = {} }) {
@@ -63,7 +63,7 @@ export function rollForward({ today, todos = [], items = [], projects = [], sett
   const out = { workday: true, moves: [], adds: [], parks: [], flags: [], waiting: [], load: { before: 0, after: 0, cap: S.max_focus_minutes_per_day }, carried: 0 };
   if (!isWorkDay(today, S)) { out.workday = false; return out; }
 
-  const parked = new Set(projects.filter((p) => p.plan_enabled === false || p.archived).map((p) => p.id));
+  const parked = new Set(projects.filter((p) => p.plan_enabled === false || p.archived || p.paused_at).map((p) => p.id));
   const key = (x) => (x.project_id && x.item_id ? `${x.project_id}/${x.item_id}` : null);
   const open = new Map(items.filter((i) => i.status === "todo" || i.status === "doing").map((i) => [`${i.project_id}/${i.id}`, i]));
   const minutesOf = (k) => (k ? open.get(k)?.estimate_minutes || DEFAULT_EST : 0);
