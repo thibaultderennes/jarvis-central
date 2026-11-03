@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Jarvis CLI: lets Claude Code sessions (and the worker) read and edit checklists, todos, inbox and reviews.
 import { execFileSync } from "node:child_process";
+import fs from "node:fs";
 import path from "node:path";
 import { api, qs, todayTZ, addDays, TZ, JARVIS_ROOT } from "./lib.mjs";
 import { AUDITS_DIR, newestFirst } from "./audits.mjs";
@@ -36,6 +37,8 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   stats [--bucket day|week|month] [--n N] [--project P] [--items]   added / finished / cancelled per bucket (14 days, 12 weeks, 12 months)
   metrics <project> [--days N]                    product numbers per snapshot (users, active_users, visits, revenue…)
   metrics <project> --set k=v [--set k=v ...] [--date D]   record numbers by hand (merged into that day; k= with no value removes k)
+  analysis <project> [--json]                      the project's analysis reports (stats digests, growth reviews…), newest first
+  analysis <project> --file report.json            post one (Stats view + Docs → Analyses; same source + date updates it). docs/analysis.md
   costs [--project P|none] [--all]              recurring costs (finance); "none" = independent of any project
   cost add "name" --amount N [--period week|month|year] [--currency USD] [--project P] [--renews D] [--notes T]
   cost set <id> key=value ...                     name|amount|period|currency|project|renews|notes|active=true/false
@@ -353,6 +356,23 @@ async function main() {
         for (const i of d.items?.added || []) out(`      + [${i.project_id}/${i.id}] ${i.title}`);
         for (const i of d.items?.done || []) out(`      ✓ [${i.project_id}/${i.id}] ${i.title}${i.late ? "  (late)" : ""}`);
       }
+      return;
+    }
+    case "analysis": {
+      const project = need(rest[0], "<project>");
+      if (flags.file) {
+        let r;
+        try { r = JSON.parse(fs.readFileSync(path.resolve(String(flags.file)), "utf8")); }
+        catch (e) { out(`Can't read ${flags.file}: ${e.message}`); process.exit(2); }
+        const { title, headline = "", body_md = "", ...meta } = r || {};
+        if (!title || !meta.source) { out("The report needs at least \"title\" and \"source\" (see docs/analysis.md)."); process.exit(2); }
+        const { review } = await api("POST", "/api/agent/reviews", { type: "doc", project_id: project, title: String(title), headline: String(headline), body_md: String(body_md), meta: { ...meta, kind: "analysis" } });
+        return out(json ? JSON.stringify(review, null, 2) : `Posted ${review.meta.source} ${review.meta.date} for ${project}: ${review.meta.series.length} series, ${review.meta.tools.length} tools (${review.id})`);
+      }
+      const rs = (await api("GET", "/api/agent/reviews" + qs({ type: "doc", project, limit: 200 }))).filter((r) => r.meta?.kind === "analysis");
+      if (json) return out(JSON.stringify(rs, null, 2));
+      if (!rs.length) return out(`No analysis reports for ${project}. Post one with: jarvis analysis ${project} --file report.json (docs/analysis.md).`);
+      for (const r of rs) out(`${r.meta.date || r.created_at.slice(0, 10)}  ${pad(r.meta.source, 16)} ${r.title}${r.acked_at ? "" : "  (new)"}`);
       return;
     }
     case "metrics": {

@@ -7,6 +7,7 @@ import { getPlan, savePlan } from "@/lib/plan";
 import { VERSION } from "@/lib/instance";
 import { pruneClickEvents, usageSummary } from "@/lib/usage";
 import { cleanMetrics, getMetrics, putMetrics } from "@/lib/metrics";
+import { cleanAnalysis } from "@/lib/analysis";
 import { today } from "@/lib/time";
 import { reviewProposals, settingSuggestions } from "@/lib/docsHub";
 import { cleanIds } from "@/lib/inbox";
@@ -258,6 +259,15 @@ async function handle(req: NextRequest, ctx: Ctx) {
       if (!b.type || !b.title || typeof b.body_md !== "string") return bad("type, title and body_md are required");
       if (!["project", "recap", "coaching", "jarvis", "doc", "security", "screening"].includes(b.type)) return bad("unknown review type");
       if (b.week_start && !isDate(b.week_start)) return bad("week_start must be YYYY-MM-DD");
+      if (b.meta?.kind === "analysis") {
+        // An analysis report (lib/analysis.ts, docs/analysis.md): keep only the valid parts of meta. meta.file makes a
+        // re-post of the same source and date update the report instead of adding another.
+        if (b.type !== "doc" || !b.project_id) return bad("an analysis report is type doc with a project_id");
+        if (!(await D.getProject(b.project_id))) return bad("No such project", 404);
+        const meta = cleanAnalysis(b.meta, today());
+        if (!meta) return bad("an analysis report needs meta.source (the name of the job that wrote it)");
+        b.meta = meta; b.week_start = null;
+      }
       return J({ review: await D.upsertReview(b as never) }, 201);
     }
 

@@ -9,12 +9,13 @@
 //      else is shown as text only, never guessed into an item.
 // `pushed` on the review maps a proposal key to the item it created, so the same proposal can't be pushed twice.
 
-export type HubKind = "review" | "strategy" | "plan" | "setup" | "screening" | "security";
+export type HubKind = "review" | "strategy" | "plan" | "setup" | "analysis" | "screening" | "security";
 export const HUB_KINDS: { id: HubKind; label: string; one: string }[] = [
   { id: "review", label: "Advisor reviews", one: "Advisor review" },
   { id: "strategy", label: "Strategy", one: "Strategy doc" },
   { id: "plan", label: "Plans", one: "Plan" },
   { id: "setup", label: "Project setup", one: "Project setup" },
+  { id: "analysis", label: "Analyses", one: "Analysis" },
   { id: "screening", label: "Screenings", one: "Screening" },
   { id: "security", label: "Security audits", one: "Security audit" },
 ];
@@ -34,6 +35,7 @@ export function hubKind(r: Pick<HubReview, "type" | "title" | "meta">): HubKind 
   if (r.type !== "doc") return null;
   const k = String(r.meta?.kind || "");
   if (k === "project-setup") return "setup";
+  if (k === "analysis") return "analysis"; // a project's own analysis job (lib/analysis.ts), also on the Stats view
   if (k === "project-plan" || k === "checklist-refresh" || /^(Project plan|Checklist refresh)\b/.test(r.title)) return "plan";
   return "strategy";
 }

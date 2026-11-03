@@ -1,6 +1,7 @@
 # Project stats: product metrics and delivery
 
-The project page's **Stats** view has two parts.
+The project page's **Stats** view has two parts (and, above them, the project's analysis reports when it posts any:
+see [`analysis.md`](analysis.md)).
 
 - **Product**: users, active users, visitors, revenue, expenses and cost per user, each with its change against a
   week earlier and a sparkline, plus users and visitors over time. The numbers come from *snapshots* you record by
