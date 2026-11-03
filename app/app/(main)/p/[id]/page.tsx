@@ -18,6 +18,8 @@ import Costs from "@/components/Costs";
 import UnitEconomics from "@/components/UnitEconomics";
 import ProjectStats from "@/components/ProjectStats";
 import { getMetrics } from "@/lib/metrics";
+import AnalysisPanel from "@/components/AnalysisPanel";
+import { connectedTools, latestBySource } from "@/lib/analysis";
 import { deliveryStats, productStats } from "@/lib/projectStats";
 import Timeline, { MilestoneList } from "@/components/Timeline";
 import { timelineData } from "@/lib/timeline";
@@ -129,6 +131,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
               strategy: <>No strategy documents for {p.name} yet. Ask Claude for one from the Inbox (for example &ldquo;Run a CEO review of {p.name}: moat, 5 whys, competitors&rdquo;). They land here.</>,
               plan: <>No plan yet. Press &ldquo;{items.length ? "Refresh this project checklist" : "Plan this project"}&rdquo; in <Link href={href({ v: "settings" })}>Settings</Link>: the report lands here.</>,
               setup: <>No project setup report yet. The first setup run of {p.name} writes one here.</>,
+              analysis: <>No analysis reports yet. A project&apos;s own analysis job (a stats digest, a growth review) posts them with <code>jarvis analysis {id} --file report.json</code>; they also show on <Link href={href({ v: "stats" })}>Stats</Link>. See docs/analysis.md.</>,
               screening: <>No screening yet. Run one above: Claude checks the folder against a researched check list, writes the report here and adds what to fix to the checklist.</>,
               security: <>No audit reports yet. Markdown reports in the project folder&apos;s audits directory (<code>docs/audits</code> unless <code>audits.dir</code> says otherwise) appear here after the next sync, within an hour of landing.</>,
             }}
@@ -145,7 +148,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           </div>
         )}
 
-        {view === "stats" && <Stats project={p} today={t} />}
+        {view === "stats" && <Stats project={p} today={t} reports={reports} docsHref={(r) => href({ v: "docs", r })} />}
 
         {view === "settings" && (
           <SettingsView p={p} rank={rank} every={every} weekly={weekly} today={t}
@@ -258,14 +261,25 @@ async function ProjectTimeline({ id, shift }: { id: string; shift: number }) {
   );
 }
 
-/** Stats: Product (metrics snapshots, costs, unit economics) and Delivery (flow metrics from the checklist). */
-async function Stats({ project, today: t }: { project: D.Project; today: string }) {
+/** Stats: the project's analysis reports and connected tools (when it has any), then Product (metrics snapshots, costs,
+ * unit economics) and Delivery (flow metrics from the checklist). */
+async function Stats({ project, today: t, reports, docsHref }: { project: D.Project; today: string; reports: D.Review[]; docsHref: (id: string) => string }) {
   const [items, snaps, costs, economics, prefs, weekly] = await Promise.all([
     D.getItems({ project: project.id }), getMetrics({ project: project.id, since: addDays(t, -120) }), D.getCosts({ project: project.id }),
     D.getEconomics(project.id), D.getPrefs(), D.dailyStats(13, project.id, { bucket: "week" }),
   ]);
   const { latest, ...product } = productStats(snaps, costs, economics, prefs.finance_currency || "USD");
-  return <ProjectStats project={{ id: project.id, name: project.name }} today={t} product={{ ...product, latest: latest && { date: latest.date, source: latest.source } }} delivery={deliveryStats(project, items, weekly, t)} />;
+  // The project's own analysis jobs (lib/analysis.ts): the newest report per source, and the tools they name.
+  const analyses = latestBySource(reports);
+  const tools = connectedTools(analyses, latest && { date: latest.date, source: latest.source });
+  const stats = <ProjectStats project={{ id: project.id, name: project.name }} today={t} product={{ ...product, latest: latest && { date: latest.date, source: latest.source } }} delivery={deliveryStats(project, items, weekly, t)} />;
+  if (!analyses.length) return stats;
+  return (
+    <div className="pstats">
+      <AnalysisPanel tools={tools} reports={analyses.map(({ review, ...a }) => ({ ...a, id: review.id, title: review.title, headline: review.headline, href: docsHref(review.id), unread: !review.acked_at }))} />
+      {stats}
+    </div>
+  );
 }
 
 /**

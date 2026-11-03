@@ -62,3 +62,19 @@
 @media (max-width: 1180px) { .ps-tiles-5 .ps-tile:last-child { grid-column: span 2; } }
 .ps-empty .empty-art { display: block; color: var(--ink-3); margin: 2px 0 -2px; }
 .ps-empty .empty-art path, .ps-empty .empty-art circle { stroke: currentColor; stroke-width: 2.2; } .ps-empty .empty-art .h { opacity: .45; } .ps-empty .empty-art .dot { fill: var(--signal); stroke: none; }
+
+/* Analysis (components/AnalysisPanel.tsx): a project's own analysis reports and the tools they connect, above Product. */
+.ps-an .ph { padding: var(--s-2) var(--s-4); }
+.ps-an .ph code { font-family: var(--mono); font-size: 11px; }
+.ps-an-b { display: flex; flex-direction: column; gap: var(--s-3); padding: var(--s-3) var(--s-4) var(--s-4); }
+.ps-an-h { margin: 0; font-size: 14px; line-height: 1.5; max-width: 78ch; }
+.ps-an-n { display: flex; flex-wrap: wrap; gap: var(--s-3) var(--s-6); }
+.ps-an-n > div { display: flex; flex-direction: column; gap: var(--s-1); min-width: 0; }
+.ps-an-n b { font-family: var(--mono); font-size: 18px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.ps-an-c { padding: 0 var(--s-4) var(--s-4); }
+.ps-mk { display: inline-block; width: 12px; height: 0; border-top: 2px dashed var(--signal); vertical-align: middle; margin-right: var(--s-1); }
+.ps-tools { list-style: none; margin: 0; padding: 0; }
+.ps-tools li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--s-1) var(--s-3); padding: var(--s-2) var(--s-4); border-top: 1px solid var(--line-2); font-size: 13px; }
+.ps-tools li:first-child { border-top: 0; }
+.ps-tools .lbl { min-width: 76px; font-size: 10.5px; }
+.ps-tools .hint { margin-left: auto; font-size: 12px; color: var(--ink-3); }
