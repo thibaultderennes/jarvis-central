@@ -30,7 +30,7 @@ routine that never calls `routine.mjs` can't see the switch, so pause it on clau
 
 > **Security:** the cloud environment attaches your agent token to every request to your site, so anything the
 > session runs can use it. Give the routine only the tools it needs (no WebFetch or WebSearch), and treat its
-> environment's network secret like the token itself: rotate it with `app/scripts/setup.mjs secrets` if in doubt.
+> environment's network secret like the token itself: rotate it with `cd app && node scripts/setup.mjs secrets` if in doubt.
 1. **Environment** (claude.ai/code → environments → new): network access **Custom**, allowed domains: your site's
    host, with **Also include default list of common package managers** checked.
    - Variables: `JARVIS_URL=https://your-jarvis.vercel.app`, `JARVIS_TZ=<your timezone>`,

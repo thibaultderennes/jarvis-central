@@ -2,7 +2,7 @@
 
 Lives at the repo root, is gitignored, and is created during setup from `jarvis.config.example.json`. Missing keys
 fall back to the defaults below, so an old file keeps working after an update. The website gets the few values it
-needs (timezone, your name, schedule wording) as Vercel env vars, written by `node app/scripts/setup.mjs secrets`:
+needs (timezone, your name, schedule wording) as Vercel env vars, written by `cd app && node scripts/setup.mjs secrets`:
 re-run it and redeploy after changing those.
 
 | Key | Default | What it does |

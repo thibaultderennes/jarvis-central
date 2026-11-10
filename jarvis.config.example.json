@@ -1,5 +1,4 @@
 {
-  "$schema": "./docs/config.schema.json",
   "owner_name": "Alex",
   "projects_root": "~/Projects",
   "timezone": "America/New_York",
