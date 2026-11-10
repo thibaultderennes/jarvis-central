@@ -12,7 +12,7 @@ if [ "$(uname)" != "Darwin" ]; then
   exit 1
 fi
 if [ ! -f "$HOME/.config/jarvis/env" ]; then
-  echo "Missing ~/.config/jarvis/env (JARVIS_URL, JARVIS_AGENT_TOKEN). Run: node app/scripts/setup.mjs secrets" >&2
+  echo "Missing ~/.config/jarvis/env (JARVIS_URL, JARVIS_AGENT_TOKEN). Run: cd app && node scripts/setup.mjs secrets" >&2
   exit 1
 fi
 command -v claude >/dev/null || { echo "The claude CLI isn't on PATH. Install Claude Code and run 'claude' once to log in." >&2; exit 1; }

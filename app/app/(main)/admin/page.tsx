@@ -20,7 +20,7 @@ export default async function AdminPage() {
   const rank = Object.fromEntries(D.splitFeatured(projects.filter((p) => !p.archived)).featured.map((p, i) => [p.id, i + 1]));
   const totals = subs.reduce<Record<string, number>>((acc, c) => ({ ...acc, [c.currency]: (acc[c.currency] || 0) + D.monthly(c) }), {});
   const currency = prefs.finance_currency || "USD";
-  const configHint = "Set in jarvis.config.json on your Mac, then `node app/scripts/setup.mjs secrets` and redeploy.";
+  const configHint = "Set in jarvis.config.json on your Mac, then `cd app && node scripts/setup.mjs secrets` and redeploy.";
 
   return (
     <div className="admin">

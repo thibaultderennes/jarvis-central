@@ -29,7 +29,7 @@ Nothing goes anywhere else. Your project folders and the full transcripts stay o
 - Google's *secret address in iCal format* and iCloud *public calendar* links: anyone with them can read that
   calendar. Reset them in Google Calendar (Integrate calendar → Reset) or stop sharing in the Calendar app.
 - The Apple subscription link to your Jarvis plan (contains the calendar token): rotate with
-  `node app/scripts/setup.mjs apps-script`, then re-paste the Apps Script and re-subscribe.
+  `cd app && node scripts/setup.mjs apps-script`, then re-paste the Apps Script and re-subscribe.
 
 ## Checklist after setup, and every few months
 - [ ] `node agent/security-check.mjs` passes.
@@ -41,8 +41,8 @@ Nothing goes anywhere else. Your project folders and the full transcripts stay o
 ## If something leaks
 | Leaked | Do |
 |---|---|
-| Password or TOTP secret | `node app/scripts/setup.mjs login`: the new one signs every session out |
-| Session cookie / you want everyone signed out | **Log out** on the site (every device). For the agent token too: `node app/scripts/setup.mjs secrets`, redeploy |
+| Password or TOTP secret | `cd app && node scripts/setup.mjs login`: the new one signs every session out |
+| Session cookie / you want everyone signed out | **Log out** on the site (every device). For the agent token too: `cd app && node scripts/setup.mjs secrets`, redeploy |
 | Agent token | same as above; the Mac side picks up the new token from `~/.config/jarvis/env` |
-| Calendar token / Apple feed link | `node app/scripts/setup.mjs apps-script`, redeploy, re-paste the Apps Script, re-subscribe in Calendar |
+| Calendar token / Apple feed link | `cd app && node scripts/setup.mjs apps-script`, redeploy, re-paste the Apps Script, re-subscribe in Calendar |
 | Your Mac (lost or compromised) | From any machine with the repo and Vercel access: `setup.mjs secrets`, `login` and `apps-script`, then redeploy. The old Mac's token stops working. |

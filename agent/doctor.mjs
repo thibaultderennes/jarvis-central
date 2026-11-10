@@ -61,12 +61,12 @@ if (fs.existsSync(PROJECTS_ROOT)) {
 } else bad(`projects_root ${PROJECTS_ROOT} doesn't exist`, "set projects_root in jarvis.config.json to the folder that holds one folder per project");
 
 // secrets + API
-if (!fs.existsSync(ENV_FILE)) bad(`${ENV_FILE} missing`, "`node app/scripts/setup.mjs secrets` (SETUP.md, website phase)");
+if (!fs.existsSync(ENV_FILE)) bad(`${ENV_FILE} missing`, "`cd app && node scripts/setup.mjs secrets` (SETUP.md, website phase)");
 else {
   const mode = fs.statSync(ENV_FILE).mode & 0o777;
   mode & 0o077 ? bad(`${ENV_FILE} is readable by other users (${mode.toString(8)})`, `chmod 600 ${ENV_FILE}`) : ok(`${ENV_FILE} (600)`);
   const env = loadConfig();
-  if (!env.JARVIS_URL || !env.JARVIS_AGENT_TOKEN) bad("JARVIS_URL or JARVIS_AGENT_TOKEN missing in the env file", "`node app/scripts/setup.mjs secrets`");
+  if (!env.JARVIS_URL || !env.JARVIS_AGENT_TOKEN) bad("JARVIS_URL or JARVIS_AGENT_TOKEN missing in the env file", "`cd app && node scripts/setup.mjs secrets`");
   else {
     try {
       const ps = await api("GET", "/api/agent/projects"); ok(`API reachable at ${env.JARVIS_URL} (${ps.length} projects registered)`); if (!ps.length) warn("no projects registered yet", "`node agent/projects.mjs sync`");
@@ -75,7 +75,7 @@ else {
       if (gaps?.length) warn(`${gaps.length} live project(s) with no product numbers in the last ${gapOptions().staleDays} days, so the reviews can't cite one:\n    - ${gaps.map(gapLine).join("\n    - ")}`, "connect a source (metrics.sources.<id> in jarvis.config.json) or type them: `node agent/jarvis.mjs metrics <id> --set users=… --set visits=…`; not a product? add the id to metrics.skip");
       else if (gaps) ok("every live project has product numbers from the last week");
     }
-    catch (e) { bad(`API not reachable: ${e.message}`, e.status === 401 ? "the token doesn't match the website's JARVIS_AGENT_TOKEN: re-run `node app/scripts/setup.mjs secrets` then redeploy" : "deploy the website (SETUP.md) and check JARVIS_URL"); }
+    catch (e) { bad(`API not reachable: ${e.message}`, e.status === 401 ? "the token doesn't match the website's JARVIS_AGENT_TOKEN: re-run `cd app && node scripts/setup.mjs secrets` then redeploy" : "deploy the website (SETUP.md) and check JARVIS_URL"); }
   }
 }
 
