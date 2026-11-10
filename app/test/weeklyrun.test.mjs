@@ -2,7 +2,7 @@
 // retry after a timeout, the Jarvis-first order, and the arguments a "Run again" on a failed report gets.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { shortenBundle, jarvisFirst, rerunArgs, failedBody, REPORTS } from "../../agent/weeklyrun.mjs";
+import { shortenBundle, jarvisFirst, rerunArgs, failedBody, REPORTS, isAuthError, firstLine, missedWeeklyRun } from "../../agent/weeklyrun.mjs";
 
 test("shortenBundle: keeps every heading, caps lines per section, says what it cut", () => {
   const md = ["# P", "## Commits", ...Array.from({ length: 40 }, (_, i) => `- c${i}`), "## Sessions", "- s1", "- s2"].join("\n");
@@ -42,4 +42,35 @@ test("failedBody: first line of the error and how to retry", () => {
   assert.match(b, /time limit \(20 min\)/);
   assert.doesNotMatch(b, /stack/);
   assert.match(b, /Run again/);
+});
+
+test("isAuthError: a lapsed login, not an ordinary answer", () => {
+  assert.ok(isAuthError("Failed to authenticate: OAuth session expired"));
+  assert.ok(isAuthError("Invalid API key · Please run /login"));
+  assert.ok(isAuthError('{"type":"error","error":{"type":"authentication_error"}}'));
+  assert.ok(!isAuthError("## Verdict\nThe OAuth flow in the app looks fine."));
+  assert.ok(!isAuthError(""));
+});
+
+test("firstLine: first non-empty line, cut", () => {
+  assert.equal(firstLine("\n\n  Hello there\nmore"), "Hello there");
+  assert.equal(firstLine("x".repeat(300), 10), "xxxxxxxxxx…");
+  assert.equal(firstLine(null), "");
+});
+
+test("missedWeeklyRun: catches a Monday run that never started, within its week only", () => {
+  const sched = { day: 1, hour: 5, minute: 0 }; // Mondays 05:00
+  const mon = "2026-11-09", tue = "2026-11-10", sun = "2026-11-15";
+  // Monday before 05:30: not yet (the scheduled run gets its half hour)
+  assert.equal(missedWeeklyRun({ today: mon, nowMinutes: 5 * 60 + 10, sched, lastRun: "2026-11-02" }), null);
+  // Monday afternoon, last run a week ago: missed
+  assert.equal(missedWeeklyRun({ today: mon, nowMinutes: 14 * 60, sched, lastRun: "2026-11-02" }), mon);
+  // ran today: fine
+  assert.equal(missedWeeklyRun({ today: mon, nowMinutes: 14 * 60, sched, lastRun: mon }), null);
+  // Tuesday and Sunday of that week still catch up; a caught-up run on Tuesday counts
+  assert.equal(missedWeeklyRun({ today: tue, nowMinutes: 9 * 60, sched, lastRun: "2026-11-02" }), mon);
+  assert.equal(missedWeeklyRun({ today: sun, nowMinutes: 9 * 60, sched, lastRun: "2026-11-02" }), mon);
+  assert.equal(missedWeeklyRun({ today: sun, nowMinutes: 9 * 60, sched, lastRun: tue }), null);
+  // next Monday before the slot: last week's slot is in another week, so nothing
+  assert.equal(missedWeeklyRun({ today: "2026-11-16", nowMinutes: 4 * 60, sched, lastRun: "2026-11-02" }), null);
 });

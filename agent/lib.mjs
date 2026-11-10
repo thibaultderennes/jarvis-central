@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isAuthError, firstLine } from "./weeklyrun.mjs";
 
 export const HOME = os.homedir();
 export const AGENT_DIR = path.dirname(new URL(import.meta.url).pathname);
@@ -218,7 +219,10 @@ export function parseModelJSON(text) {
   let t = String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   try { return JSON.parse(t); } catch {}
   const a = t.indexOf("{"), b = t.lastIndexOf("}");
-  if (a < 0 || b <= a) throw new Error("no JSON object in model output");
+  if (a < 0 || b <= a) {
+    if (isAuthError(t)) throw new Error(`Claude isn't signed in on this Mac (${firstLine(t)}). Run \`claude\` once in Terminal to sign in.`);
+    throw new Error(`no JSON object in model output; it began: "${firstLine(t)}"`);
+  }
   return JSON.parse(t.slice(a, b + 1));
 }
 
