@@ -11,6 +11,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { api, qs, makeLog, makeLogOnce, acquireLock, todayTZ, hostName, WORKER_INTERVAL, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
+import { checkClaude, tellLoginExpired, catchUpWeekly } from "./preflight.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
 import { screenProject } from "./screen.mjs";
@@ -428,6 +429,8 @@ async function pass() {
     const skew = hb && mm(hb.version) !== mm(VERSION) && VERSION !== "dev" ? (hb.version || "older than 0.6") : null;
     logChanged("version-skew", skew, skew ? `version skew: agent ${VERSION}, site ${skew}. Build and merge passes paused until both run the same release (git pull, re-run agent/install.sh, redeploy).` : "agent and site versions match again");
     const projects = await api("GET", "/api/agent/projects");
+    // This week's Monday run never got going (Mac asleep or offline, site down, Claude signed out): start it now.
+    try { catchUpWeekly({ log }); } catch (e) { log("monday catch-up check failed", e.message); }
     // Paused on the site: messages about it are still answered and approved merges still land, but nothing starts on its own.
     const active = projects.filter((p) => !p.paused_at);
     // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
@@ -466,6 +469,11 @@ async function pass() {
     for (let round = 0; round < 10; round++) {
       const messages = (await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }))).filter((m) => !done.has(m.id));
       if (!messages.length) return;
+      // Once per pass, before the first message: a signed-out Claude would turn every message into an error.
+      if (round === 0) {
+        const c = await checkClaude({ log });
+        if (!c.ok && c.auth) { log("claude isn't signed in, leaving messages for the next pass", c.why); await tellLoginExpired(c.why, "worker", { log }); return; }
+      }
       for (const m of messages) {
         done.add(m.id);
         try { await handle(m, projects); }

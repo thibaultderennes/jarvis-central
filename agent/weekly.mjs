@@ -19,6 +19,7 @@ import { execFileSync, spawn } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { checkClaude, tellLoginExpired, waitForSite, markWeeklyStarted } from "./preflight.mjs";
 import { api, qs, makeLog, acquireLock, todayTZ, addDays, mondayOf, tzDayStart, parseModelJSON, cacheDir, HOME, JARVIS_ROOT, TZ, CONFIG, OWNER, MACHINE_KINDS as MACHINE } from "./lib.mjs";
 import { scan, statsForDir, statsByCwd } from "./transcripts.mjs";
 import { runClaude } from "./claude.mjs";
@@ -414,6 +415,21 @@ async function main() {
   const { startDate } = W;
   const dir = cacheDir("weekly", startDate);
   log("weekly start", W.startDate, { dry: DRY, only: ONLY, report: REPORT });
+  const full = !ONLY && !REPORT && !DAYS;
+  // Before anything costs money: the site must answer and Claude must be signed in. If not, stop plainly; for the
+  // Monday run the worker starts it again within the hour (preflight.mjs catchUpWeekly).
+  if (!DRY && !OFFLINE) {
+    if (!(await waitForSite({ log }).catch((e) => (log("website refused the agent", e.message), false)))) {
+      log("stopping: the website can't be reached", full ? "(the worker retries within the hour)" : ""); release(); process.exitCode = 1; return;
+    }
+    const c = await checkClaude({ log });
+    if (!c.ok) {
+      log(c.auth ? "stopping: Claude isn't signed in" : "stopping: Claude didn't answer the check", c.why);
+      if (c.auth) await tellLoginExpired(c.why, full ? "Monday run" : "review run", { log });
+      release(); process.exitCode = 1; return;
+    }
+    if (full) markWeeklyStarted();
+  }
   // Only the full run reports a heartbeat: a one-project review must not read as the Monday run on the Admin page.
   if (!DRY && !ONLY && !REPORT) await api("POST", "/api/agent/heartbeat", { worker: "weekly", info: { week: startDate, phase: "start" } }).catch((e) => log("heartbeat failed", e.message));
 

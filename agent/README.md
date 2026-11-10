@@ -20,6 +20,7 @@ API contract: `../docs/architecture.md`.
 | `plan.mjs` | Weekly planner: estimates open items, packs them around your calendar → todos + calendars |
 | `rollover.mjs` | Daily roll-forward: unfinished todos and overdue items back to the top of today by priority, within the day's caps; the worker runs it once a day (rule in `docs/config.md`) |
 | `weekly.mjs` | Weekly reviews: CEO / CMO / PO advisors per project + synthesis, recap, "working with AI" coaching, Jarvis usage |
+| `preflight.mjs` | Checks before the scheduled jobs spend anything: website reachable, Claude signed in (one Needs-you message if not), and the worker's catch-up for a Monday run that never started |
 | `advisors.mjs` | Persona lookup and advisor prompts |
 | `routine.mjs` | Trial: one project's advisor review run by a Claude Code routine in the cloud (`prompt`, `start`, `next`, `compare`; see `../docs/routines.md`) |
 | `transcripts.mjs` | Reads `~/.claude/projects/*/*.jsonl`: your typed messages + session stats (stays on your machine) |
