@@ -94,16 +94,16 @@ Jarvis reads this table: each row becomes a deadline on the dashboard.
 | 2026-10-12 | 0.7.0 merged and deployed |
 | 2026-10-27 | First audit report: no open critical; 3-day audit routine running |
 | 2026-11-01 | Landing page live: GitHub install, waitlist, demo |
-| 2026-11-08 | Clean-machine install test passed in 45 min or less |
-| 2026-11-15 | 1.0: someone other than the owner runs it |
+| 2026-11-20 | Clean-machine install test passed in 45 min or less |
+| 2026-11-27 | 1.0: someone other than the owner runs it |
 
 ## Success metrics
 - **North star: weekly active use by the owner.** Count the weeks in a row in which the owner both:
   - acts on the Monday review (opens it and closes or creates at least one item it names), and
   - finishes at least 50% of the todos the planner put on their days.
 
-  Target: 4 weeks in a row by 2026-11-15. The first measured week finished far below 50%, so the planner fix in Scope item 4 comes first.
-- **1.0 gate:** at least one install by someone other than the owner completes setup in 45 minutes or less, by 2026-11-15.
+  Target: 4 weeks in a row by 2026-11-27. The first measured week finished far below 50%, so the planner fix in Scope item 4 comes first.
+- **1.0 gate:** at least one install by someone other than the owner completes setup in 45 minutes or less, by 2026-11-27.
 - **Watched, not targeted:** the share of checklist items Claude builds and the owner merges; waitlist sign-ups once the landing page is live.
 
 ## Risks
