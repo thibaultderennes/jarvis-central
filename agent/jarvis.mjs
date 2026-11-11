@@ -12,7 +12,7 @@ const HELP = `jarvis — Jarvis Central Dashboard from the terminal
   projects                                        list projects
   items <project> [--open] [--section S]          checklist items
   item <project> <id>                             one item in full
-  set <project> <id> key=value ...                status(todo|doing|done|cancelled)|due|title|detail|note|section|owner|critical=true/false|blocked_by=a,b
+  set <project> <id> key=value ...                status(todo|doing|done|cancelled)|due|title|detail|note|section|owner|critical=true/false|blocked_by=a,b|keep_open=true/false (stay open after its PR merges)
   add <project> <section> "title" [--due D] [--owner founder|claude|both] [--detail T] [--critical] [--force]
   cancel <project> <id> [--reason T] [--dup ID]   cancel an item (kept under "Show completed"); --dup = the item it duplicates
   dupes [--project P] [--cancel]                  exact duplicate titles per project; --cancel keeps the oldest, cancels the rest
@@ -81,7 +81,7 @@ function itemLine(i) {
   const bits = [`[${i.id}]`, pad(i.status === "cancelled" ? "cancl" : i.status, 5), pad(i.due || "—", 10), pad(i.owner || "—", 7), i.critical ? "CRIT" : "    ", "—", i.title];
   let s = bits.join(" ");
   if (i.status === "cancelled") s += `\n      cancelled${i.duplicate_of ? ` (duplicate of ${i.duplicate_of})` : ""}${i.cancel_reason ? `: ${i.cancel_reason}` : ""}`;
-  if (i.build_status) s += `\n      build: ${i.build_status}${i.pr_url ? ` ${i.pr_url}` : ""}${i.build_note ? ` — ${i.build_note.replace(/\n/g, " ").slice(0, 200)}` : ""}`;
+  if (i.build_status || i.keep_open) s += `\n      build: ${i.build_status || "—"}${i.keep_open ? " (stays open after merge)" : ""}${i.pr_url ? ` ${i.pr_url}` : ""}${i.build_note ? ` — ${i.build_note.replace(/\n/g, " ").slice(0, 200)}` : ""}`;
   if (i.note) s += `\n      note: ${i.note.replace(/\n/g, " ")}`;
   if (i.refine_request) s += `\n      comment for Claude (pending): ${i.refine_request.replace(/\n/g, " / ")}`;
   return s;
@@ -129,9 +129,10 @@ async function main() {
         const m = kv.match(/^(\w+)=([\s\S]*)$/);
         if (!m) { out(`Bad pair "${kv}", expected key=value`); process.exit(2); }
         let [, k, v] = m;
-        if (!["status", "due", "title", "detail", "note", "section", "owner", "critical", "cancel_reason", "duplicate_of", "priority", "estimate_minutes", "blocked_by"].includes(k)) { out(`Unknown field ${k}`); process.exit(2); }
+        if (!["status", "due", "title", "detail", "note", "section", "owner", "critical", "cancel_reason", "duplicate_of", "priority", "estimate_minutes", "blocked_by", "keep_open"].includes(k)) { out(`Unknown field ${k}`); process.exit(2); }
         if (k === "priority" || k === "estimate_minutes") v = Number(v);
         if (k === "critical") v = v === "true";
+        if (k === "keep_open") { if (!["true", "false"].includes(v)) { out("keep_open must be true or false"); process.exit(2); } v = v === "true"; }
         if (k === "blocked_by") v = v.split(",").map((x) => x.trim()).filter(Boolean); // "" clears
         if (k === "due") v = v === "" || v === "none" ? null : date(v);
         body[k] = v;

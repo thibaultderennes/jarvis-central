@@ -214,7 +214,9 @@ export async function planProject(message, project, log) {
   const asList = (v) => (Array.isArray(v) ? v : []).map((x) => (typeof x === "string" ? { id: x } : x)).filter((x) => x && openIds.has(String(x.id)));
   const ticked = [], flagged = [];
   if (g.refresh) {
-    for (const d of asList(out.done).slice(0, 30)) {
+    // An item kept open after its merge waits on more than code (a check over later cycles): the folder can't show it's done.
+    const kept = new Set(g.mine.filter((i) => i.keep_open === true).map((i) => i.id));
+    for (const d of asList(out.done).filter((x) => !kept.has(String(x.id))).slice(0, 30)) {
       const note = `Marked done by "Refresh this project checklist" on ${today}: ${String(d.evidence || "verified in the folder").slice(0, 400)}`;
       await api("PATCH", "/api/agent/items", { project_id: project.id, id: d.id, status: "done", refine: "done", refine_note: note }).then(() => ticked.push(d)).catch((e) => log("tick failed", d.id, e.message));
     }
