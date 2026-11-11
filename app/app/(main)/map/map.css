@@ -195,3 +195,37 @@
 .vg-p a.t-warn { border-left-color: var(--signal); }
 .vg-p a.t-ok { border-left-color: var(--done); }
 .vg-p a.t-none .vg-v { color: var(--ink-3); font-weight: 400; }
+
+/* Map lab: isometric looks (components/IsoLab.tsx). The scene palette is illustration, like the tile packs. */
+.iso { --grass: #6fb04a; --lawn: #5a9c3f; --dry: #b9b06a; --stone: #8d949c; --earth: #b48a55; --wild: #6f8f45; --soil: #7a5234; --path: #e2cf9a; --wallc: #efe6d2; --tree: #2f7d3b;
+  --wood: #9a6a3c; --blue: #3f6fb5; --gold: #e0b23a; --red: #c8483f; --clay: #c9713f; --crate: #b98a4e; }
+.iso.look-colony { --wild: #7d8a4a; --path: #c9a876; --tree: #3e6b35; --wallc: #e3d2b0; }
+.iso-svg { display: block; width: 100%; height: auto; font-family: var(--body); }
+.iso .f-t { fill: var(--c); } .iso .f-l { fill: color-mix(in srgb, var(--s, var(--c)) 80%, #000); } .iso .f-r { fill: color-mix(in srgb, var(--s, var(--c)) 62%, #000); }
+.iso .f-t, .iso .f-l, .iso .f-r { stroke: color-mix(in srgb, var(--s, var(--c)) 50%, #000); stroke-width: .5; stroke-linejoin: round; }
+.iso .soil { --s: var(--soil); }
+.c-grass { --c: var(--grass); } .c-lawn { --c: var(--lawn); } .c-dry { --c: var(--dry); } .c-stone { --c: var(--stone); } .c-earth { --c: var(--earth); } .c-wild { --c: var(--wild); }
+.c-path { --c: var(--path); } .c-wall { --c: var(--wallc); } .c-tree { --c: var(--tree); } .c-wood { --c: var(--wood); } .c-blue { --c: var(--blue); } .c-gold { --c: var(--gold); }
+.c-red { --c: var(--red); } .c-clay { --c: var(--clay); } .c-crate { --c: var(--crate); } .c-pc { --c: var(--pc, var(--other)); } .c-bad { --c: var(--bad); } .c-warn { --c: var(--signal); }
+.iso .c-pc .f-t { fill: var(--c); } .iso .c-pc .f-r, .iso [class^="c-"] > .f-r { fill: color-mix(in srgb, var(--s, var(--c)) 62%, #000); }
+.iso .trunk { fill: #5b3d24; } .iso .door { fill: #4a3524; } .iso .pole { stroke: #3b2b1c; stroke-width: 1.5; }
+.iso .lot { fill: none; stroke: color-mix(in srgb, #000 35%, transparent); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.iso .shadow { fill: #000; opacity: .25; } .iso .smoke { fill: #fff; opacity: .7; }
+.iso .flag { fill: var(--ink-3); } .iso .flag.v-on-track { fill: var(--done); } .iso .flag.v-at-risk { fill: var(--signal); } .iso .flag.v-off-track { fill: var(--bad); }
+.iso .ib:hover .f-t, .iso .ib:focus-visible .f-t { filter: brightness(1.15); } .iso .ib:hover .lot { stroke: var(--ink); }
+.iso .mk circle { stroke: #fff; stroke-width: 1.5; } .iso .mk.t-bad circle { fill: var(--bad); } .iso .mk.t-warn circle { fill: var(--signal); }
+.iso .mk text { font-size: 12px; font-weight: 700; fill: #111; }
+.iso .bn-bg { fill: var(--surface); stroke: var(--line); } .iso .bn-c { fill: var(--pc, var(--other)); }
+.iso .bn-n { font-size: 13px; font-weight: 700; fill: var(--ink); } .iso .bn-s { font-size: 10px; fill: var(--ink-3); }
+.iso .bn.t-bad .bn-s { fill: var(--bad); font-weight: 600; } .iso .bn.t-warn .bn-s { fill: var(--signal); font-weight: 600; }
+.hud { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.look-park .hud .iso-svg { background: linear-gradient(#9fd3ee, #d8eef7); } .look-colony .hud .iso-svg { background: #d9c79b; }
+.hud-top { display: flex; flex-wrap: wrap; gap: 4px 20px; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.hud-top .bad { color: var(--bad); }
+.hud-bot { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 0 24px; padding: 12px 16px; border-top: 1px solid var(--line); }
+.hud-p h3 { margin: 0 0 4px; font-size: 12px; color: var(--ink-3); font-weight: 600; }
+.hud-p ul, .hud-p ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
+.hud-p .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--other)); margin-right: 8px; }
+.hud-p a { color: var(--ink); font-weight: 600; } .hud-p .t-bad { color: var(--bad); } .hud-p .t-warn { color: var(--signal); }
+.look-chips { display: flex; gap: 8px; flex-wrap: wrap; margin: 0 0 12px; }
+.look-chips .chip[aria-current="page"] { background: var(--ink); color: var(--surface); border-color: var(--ink); font-weight: 600; }

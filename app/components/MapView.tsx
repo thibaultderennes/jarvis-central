@@ -5,6 +5,7 @@ import { buildRegions, FOG_DAYS, nextStop, SOON_DAYS, totals, trailPoints, WINDO
 import { areaWeight, bankState, hallTier, HALL, homesState, LAND_DAYS, onTimeCount, policeState, shopState, TOWN_HALL, workshopState, type Snap } from "@/lib/villages";
 import Villages, { VillageLegend, regionLabel, type Village } from "@/components/Villages";
 import VillagesShell from "@/components/VillagesShell";
+import IsoLab, { type Look } from "@/components/IsoLab";
 import { fmtDate, isoInTZ, today } from "@/lib/time";
 import "@/app/(main)/map/map.css";
 
@@ -92,7 +93,9 @@ function RegionCard({ r, stop }: { r: Region; stop: boolean }) {
 }
 
 /** The map of projects: one village per active project (Home's Map box; /map redirects there), or the card list. */
-export default async function MapView() {
+const LOOKS: [string, string][] = [["", "Pixel cards"], ["islands", "Islands"], ["park", "Park"], ["colony", "Colony"]];
+
+export default async function MapView({ look = "" }: { look?: string } = {}) {
   const t = today();
   const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
   const [projects, items, reviews, security, screenings, costs, metrics] = await Promise.all([
@@ -166,7 +169,10 @@ export default async function MapView() {
         {sum.pct !== null && <span><b className="mono">{sum.pct}%</b> ground taken ({sum.onTime} of {sum.steps} on time)</span>}
       </p>
 
-      {regions.length
+      <nav className="look-chips chips" aria-label="Look">{LOOKS.map(([id, label]) => <Link key={id} className="chip" href={id ? `/map?look=${id}` : "/map"} aria-current={look === id ? "page" : undefined}>{label}</Link>)}</nav>
+      {regions.length && look
+        ? <IsoLab villages={plots} look={look as Look} />
+        : regions.length
         ? <VillagesShell map={map} list={list} seen={villages.map((v) => ({ id: v.id, name: v.name, onTime: v.onTimeAll }))} />
         : <div className="panel empty">No active projects yet. Approve a project folder in <Link href="/admin">Admin</Link> and it appears here.</div>}
 
