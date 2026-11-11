@@ -5,16 +5,17 @@ import type { ReactNode } from "react";
 import { partChip, partHref, plotStatus, type Village } from "@/components/Villages";
 import { hash, rng, type PartKey } from "@/lib/villages";
 import { fmtDate } from "@/lib/time";
+import Colony from "@/components/Colony";
 
 export type Look = "islands" | "park" | "colony";
-const TW = 40, TH = 20, ZH = 20, PLOT = 10, GAP = 3;
+export const TW = 40, TH = 20, ZH = 20, PLOT = 10, GAP = 3;
 type V2 = readonly [number, number];
-const P = (x: number, y: number, z = 0): V2 => [(x - y) * TW / 2, (x + y) * TH / 2 - z * ZH];
-const pts = (...a: V2[]) => a.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
-const NAME: Record<PartKey, string> = { hall: "Checklist", police: "Security", bank: "Money", shop: "Growth", homes: "Customers", workshop: "Builds" };
-const ORDER: PartKey[] = ["hall", "workshop", "police", "bank", "shop", "homes"];
+export const P = (x: number, y: number, z = 0): V2 => [(x - y) * TW / 2, (x + y) * TH / 2 - z * ZH];
+export const pts = (...a: V2[]) => a.map((p) => `${p[0].toFixed(1)},${p[1].toFixed(1)}`).join(" ");
+export const NAME: Record<PartKey, string> = { hall: "Checklist", police: "Security", bank: "Money", shop: "Growth", homes: "Customers", workshop: "Builds" };
+export const ORDER: PartKey[] = ["hall", "workshop", "police", "bank", "shop", "homes"];
 
-function Box({ x, y, w, d, h, z = 0, c }: { x: number; y: number; w: number; d: number; h: number; z?: number; c: string }) {
+export function Box({ x, y, w, d, h, z = 0, c }: { x: number; y: number; w: number; d: number; h: number; z?: number; c: string }) {
   const t = z + h;
   return (
     <g className={c}>
@@ -24,7 +25,7 @@ function Box({ x, y, w, d, h, z = 0, c }: { x: number; y: number; w: number; d: 
     </g>
   );
 }
-function Roof({ x, y, w, d, z, h, c }: { x: number; y: number; w: number; d: number; z: number; h: number; c: string }) {
+export function Roof({ x, y, w, d, z, h, c }: { x: number; y: number; w: number; d: number; z: number; h: number; c: string }) {
   const a = P(x + w / 2, y + d / 2, z + h), o = 0.15;
   return (
     <g className={c}>
@@ -33,7 +34,7 @@ function Roof({ x, y, w, d, z, h, c }: { x: number; y: number; w: number; d: num
     </g>
   );
 }
-function Tree({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
+export function Tree({ x, y, s = 1 }: { x: number; y: number; s?: number }) {
   const [sx, sy] = P(x, y);
   return (
     <g className="c-tree">
@@ -167,6 +168,7 @@ export default function IsoLab({ villages, look }: { villages: Village[]; look: 
         <Island v={v} /><Chips v={v} />
       </li>); })}</ul></div>
   );
+  if (look === "colony") return <Colony villages={villages} />;
   const sum = (f: (v: Village) => number) => villages.reduce((a, v) => a + f(v), 0);
   const next = villages.filter((v) => v.trail && !v.paused).sort((a, b) => a.trail!.daysLeft - b.trail!.daysLeft).slice(0, 4);
   return (
@@ -180,7 +182,7 @@ export default function IsoLab({ villages, look }: { villages: Village[]; look: 
         </div>
         <World villages={villages} look={look} />
         <div className="hud-bot">
-          <div className="hud-p"><h3>{look === "colony" ? "Objectives" : "Next deadlines"}</h3>
+          <div className="hud-p"><h3>Next deadlines</h3>
             {next.length ? <ol>{next.map((v) => <li key={v.id} data-c={v.color}><i className="dot" aria-hidden="true" /><a href={v.href}>{v.name}</a>: {v.trail!.deadline.label} <span className="mono">{until(v.trail!.daysLeft)}</span></li>)}</ol> : <p>No deadline ahead</p>}
           </div>
           <div className="hud-p"><h3>Needs you</h3>
