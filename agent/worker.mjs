@@ -424,6 +424,26 @@ async function mergeApproved(projects, log) {
   }
 }
 
+/**
+ * Pull requests that were merged or closed on GitHub, outside Jarvis: the item still said "pull request waiting".
+ * A merged one becomes "merged" (the item's own status is left alone: merged code isn't always a finished item);
+ * a closed one loses its build state, with a note. Read-only on GitHub; at most 20 per pass.
+ */
+async function reconcilePrs(projects, log) {
+  const rows = (await api("GET", "/api/agent/items" + qs({ build: "pr_open" }))).filter((i) => i.build_status === "pr_open" && i.pr_url).slice(0, 20);
+  for (const it of rows) {
+    const project = projects.find((p) => p.id === it.project_id);
+    const repo = project?.dir && fs.existsSync(project.dir) ? repoInfo(project.dir) : null;
+    if (!repo) continue;
+    let state;
+    try { state = JSON.parse(execFileSync("gh", ["pr", "view", it.pr_url, "--json", "state"], { cwd: repo.top, encoding: "utf8", timeout: 30_000 })).state; } catch { continue; }
+    if (state === "MERGED") await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, build_status: "merged", build_note: "" });
+    else if (state === "CLOSED") await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, build_status: null, build_note: "The pull request was closed on GitHub without merging." });
+    else continue;
+    log("pr state synced", it.project_id, it.id, state);
+  }
+}
+
 async function pass() {
   const release = acquireLock("worker");
   if (!release) return log("previous pass still running, skipping");
@@ -467,6 +487,7 @@ async function pass() {
       // skew too, since an older site stores a 'review' message as a discussion.
       await queueDueReviews(active, log).catch((e) => logChanged("review-queue", e.message, "review schedule check failed", e.message));
       await mergeApproved(projects, log).catch((e) => logChanged("merge-pass", e.message, "merge pass failed", e.message));
+      await reconcilePrs(projects, log).catch((e) => logChanged("pr-sync", e.message, "pull request sync failed", e.message));
       await queueBuilds(projects, log).catch((e) => logChanged("build-queue", e.message, "build queue failed", e.message));
     }
     // Passes are an hour apart by default, so work through everything waiting rather than three at a time.

@@ -1,0 +1,290 @@
+/* The Map: the colony (an isometric scene, see DESIGN.md Illustrations) and a card per project as its list twin. Tokens only outside the CC0 tiles; the list grid packs regions by size, densest first. */
+.mapv { display: flex; flex-direction: column; gap: 16px; padding-bottom: 40px; min-width: 0; }
+.mapv .mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.mapv .muted { color: var(--ink-3); }
+
+.map-sum { display: flex; flex-wrap: wrap; gap: 4px 16px; margin: 0; font-size: 13px; color: var(--ink-2); }
+.map-sum b { color: var(--ink); font-weight: 600; font-size: 12px; margin-right: 4px; }
+.map-sum .bad b { color: var(--bad); }
+
+/* The map: 4 columns on desktop; large regions take 2x2, medium 2x1, small 1x1. */
+.map { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-flow: row dense; grid-auto-rows: minmax(200px, auto); gap: 12px; }
+.cell { min-width: 0; display: flex; }
+.cell-l { grid-column: span 2; grid-row: span 2; }
+.cell-m { grid-column: span 2; }
+@media (max-width: 1099px) { .map { grid-template-columns: repeat(2, minmax(0, 1fr)); } .cell-l { grid-row: span 1; } .cell-m { grid-column: span 1; } }
+@media (max-width: 600px) { .map { grid-template-columns: minmax(0, 1fr); grid-auto-rows: auto; } .cell-l, .cell-m { grid-column: span 1; } }
+
+.rg { position: relative; flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--pc, var(--other)); border-radius: 8px; color: var(--ink); text-decoration: none; transition: border-color .12s, background-color .12s; }
+.rg:hover { border-color: var(--ink-3); border-top-color: var(--pc, var(--other)); }
+.rg:active { transform: translateY(1px); }
+.rg.stop, .rg.stop:hover { border-color: var(--signal); border-top-color: var(--pc, var(--other)); }
+/* Fog: a neglected region. Dashed borders and an inset fill; the text keeps full contrast, the trail fades. */
+.rg.fog { background: var(--surface-2); border-style: dashed; border-top-style: solid; }
+.rg.fog .trail { opacity: .6; }
+
+.rg-h { display: flex; align-items: center; gap: 8px; min-width: 0; flex-wrap: wrap; }
+.rg-n { font-family: var(--display); font-size: 16px; font-weight: 700; min-width: 0; overflow-wrap: anywhere; flex: 1 1 auto; }
+.rg.size-l .rg-n { font-size: 20px; }
+
+.rg-s { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; }
+.cell-s .rg-s { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.rg-s div { min-width: 0; }
+.rg-s dt { font-size: 11px; color: var(--ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-s dd { margin: 0; font-family: var(--mono); font-size: 16px; font-variant-numeric: tabular-nums; }
+.rg-s dd small { font-size: 11px; color: var(--ink-3); }
+.rg-s .bad dd { color: var(--bad); font-weight: 600; }
+@media (max-width: 400px) { .rg-s { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+
+.rg-t { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.rg-tl { display: flex; flex-direction: column; gap: 0; min-width: 0; }
+.rg-dl { font-size: 13px; overflow-wrap: anywhere; }
+.rg-dl .mono { font-size: 11px; color: var(--ink-3); }
+.rg-g { margin: 0; font-size: 12.5px; color: var(--ink-2); }
+.rg-g b { color: var(--ink); font-size: 12px; }
+.rg-up { list-style: none; margin: 4px 0 0; padding: 8px 0 0; border-top: 1px solid var(--line-2); display: flex; flex-direction: column; gap: 4px; font-size: 12.5px; color: var(--ink-2); }
+.rg-up li { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rg-up .mono { font-size: 11px; color: var(--ink-3); margin-right: 4px; }
+
+.rg-r { display: flex; gap: 8px; align-items: flex-start; margin-top: auto; padding-top: 8px; border-top: 1px solid var(--line-2); font-size: 12.5px; color: var(--ink-2); min-width: 0; }
+.rg-hl { min-width: 0; display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; overflow: hidden; }
+.rg.size-l .rg-hl { -webkit-line-clamp: 4; line-clamp: 4; }
+.rg-fog { margin: 0; font-size: 12px; color: var(--ink-3); }
+
+/* The trail: stones per item due in the window. Shape carries the state (dot, ring, cross), colour backs it up. */
+.trail { display: block; width: 100%; height: auto; overflow: visible; }
+.tr-path { fill: none; stroke: var(--line); stroke-width: 2; stroke-dasharray: 1 5; stroke-linecap: round; }
+.tr-start { fill: var(--ink-3); }
+.st circle, .k-on, .k-open { stroke-width: 1.5; }
+.st-on-time circle, .k-on { fill: var(--done); stroke: var(--surface); }
+.st-open circle, .k-open { fill: var(--surface); stroke: var(--ink-3); }
+.st-late path, .k-late { stroke: var(--bad); stroke-width: 2; stroke-linecap: round; fill: none; }
+.tr-now, .k-now { fill: var(--signal); stroke: var(--surface); stroke-width: 2; }
+.tr-flag, .k-flag { fill: var(--pc, var(--ink-2)); stroke: var(--ink-2); stroke-width: 1.5; stroke-linejoin: round; }
+.rg.fog .st-on-time circle, .rg.fog .tr-now { stroke: var(--surface-2); }
+
+.key-row { display: flex; flex-wrap: wrap; gap: 8px 16px; margin-top: 12px; font-size: 12.5px; color: var(--ink-2); }
+.key-row span { display: inline-flex; align-items: center; gap: 4px; }
+.k-flag { fill: var(--ink-3); }
+.map-how { font-size: 12.5px; color: var(--ink-2); }
+.map-how summary { cursor: pointer; font-weight: 600; color: var(--ink); }
+.map-how p { margin: 8px 0 0; max-width: 72ch; }
+
+@media (prefers-reduced-motion: reduce) { .rg { transition: none; } .rg:active { transform: none; } }
+
+/* The colony scene palette: illustration colours (DESIGN.md, Illustrations). Labels, markers and panels use the tokens. */
+.iso { --grass: #6fb04a; --lawn: #5a9c3f; --dry: #b9b06a; --stone: #8d949c; --earth: #b48a55; --wild: #6f8f45; --soil: #7a5234; --path: #e2cf9a; --wallc: #efe6d2; --tree: #2f7d3b;
+  --wood: #9a6a3c; --blue: #3f6fb5; --gold: #e0b23a; --red: #c8483f; --clay: #c9713f; --crate: #b98a4e; }
+.iso.look-colony { --wild: #7d8a4a; --path: #c9a876; --tree: #3e6b35; --wallc: #e3d2b0; }
+.iso-svg { display: block; width: 100%; height: auto; font-family: var(--body); }
+.iso .f-t { fill: var(--c); } .iso .f-l { fill: color-mix(in srgb, var(--s, var(--c)) 80%, #000); } .iso .f-r { fill: color-mix(in srgb, var(--s, var(--c)) 62%, #000); }
+.iso .f-t, .iso .f-l, .iso .f-r { stroke: color-mix(in srgb, var(--s, var(--c)) 50%, #000); stroke-width: .5; stroke-linejoin: round; }
+.iso .soil { --s: var(--soil); }
+.c-grass { --c: var(--grass); } .c-lawn { --c: var(--lawn); } .c-dry { --c: var(--dry); } .c-stone { --c: var(--stone); } .c-earth { --c: var(--earth); } .c-wild { --c: var(--wild); }
+.c-path { --c: var(--path); } .c-wall { --c: var(--wallc); } .c-tree { --c: var(--tree); } .c-wood { --c: var(--wood); } .c-blue { --c: var(--blue); } .c-gold { --c: var(--gold); }
+.c-red { --c: var(--red); } .c-clay { --c: var(--clay); } .c-crate { --c: var(--crate); } .c-pc { --c: var(--pc, var(--other)); } .c-bad { --c: var(--bad); } .c-warn { --c: var(--signal); }
+.iso .c-pc .f-t { fill: var(--c); } .iso .c-pc .f-r, .iso [class^="c-"] > .f-r { fill: color-mix(in srgb, var(--s, var(--c)) 62%, #000); }
+.iso .trunk { fill: #5b3d24; } .iso .door { fill: #4a3524; } .iso .pole { stroke: #3b2b1c; stroke-width: 1.5; }
+.iso .lot { fill: none; stroke: color-mix(in srgb, #000 35%, transparent); stroke-width: 1.5; stroke-dasharray: 4 4; }
+.iso .shadow { fill: #000; opacity: .25; } .iso .smoke { fill: #fff; opacity: .7; }
+.iso .flag { fill: var(--ink-3); } .iso .flag.v-on-track { fill: var(--done); } .iso .flag.v-at-risk { fill: var(--signal); } .iso .flag.v-off-track { fill: var(--bad); }
+.iso .ib:hover .f-t, .iso .ib:focus-visible .f-t { filter: brightness(1.15); } .iso .ib:hover .lot { stroke: var(--ink); }
+.iso .mk circle { stroke: #fff; stroke-width: 1.5; } .iso .mk.t-bad circle { fill: var(--bad); } .iso .mk.t-warn circle { fill: var(--signal); }
+.iso .mk text { font-size: 12px; font-weight: 700; fill: #111; }
+.iso .bn-bg { fill: var(--surface); stroke: var(--line); } .iso .bn-c { fill: var(--pc, var(--other)); }
+.iso .bn-n { font-size: 13px; font-weight: 700; fill: var(--ink); } .iso .bn-s { font-size: 10px; fill: var(--ink-3); }
+.iso .bn.t-bad .bn-s { fill: var(--bad); font-weight: 600; } .iso .bn.t-warn .bn-s { fill: var(--signal); font-weight: 600; }
+
+/* The colony map (components/Colony.tsx + ColonyStage.tsx). */
+.iso { --rock: #9aa0a6; --snow: #f4f7fa; --plank: #c79a62; --wheat: #e3c04a; --parcel: #d9b98a; --water: #4f9fd0; --bankc: #a98f5c; --paper: #d9c79b; --winc: #46566a; }
+.c-rock { --c: var(--rock); } .c-snow { --c: var(--snow); } .c-plank { --c: var(--plank); } .c-wheat { --c: var(--wheat); } .c-parcel { --c: var(--parcel); }
+.cs { border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: var(--surface); }
+.cs.night .iso-svg, .cs.night { --grass: #2f5a3a; --wild: #33503a; --dry: #6b6a4a; --stone: #4c5560; --earth: #6a543c; --soil: #3a2a20; --path: #7d6f58; --wallc: #8f8a82; --tree: #1f4a32; --wood: #5a4030;
+  --blue: #2c4a80; --gold: #a8842c; --red: #8a3530; --clay: #86502f; --crate: #7a5c38; --rock: #5f666e; --snow: #aab6c4; --plank: #7f6444; --wheat: #94803a; --parcel: #8d7a5e; --water: #24507a; --bankc: #5c5038; --paper: #141b2b; --winc: #ffd56a; }
+.cs-top { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 20px; padding: 8px 16px; border-bottom: 1px solid var(--line); font-size: 12px; }
+.cs-top .bad { color: var(--bad); } .cs-ctl { margin-left: auto; display: flex; gap: 4px; flex-wrap: wrap; }
+.cs-view { position: relative; height: clamp(360px, 62vh, 760px); background: var(--paper); cursor: grab; touch-action: none; user-select: none; outline-offset: -2px; }
+.cs-view:active { cursor: grabbing; }
+.cs-view .iso-svg { width: 100%; height: 100%; }
+.cs-tip { position: absolute; z-index: 3; transform: translate(12px, -32px); padding: 4px 8px; font-size: 12px; font-weight: 600; background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 4px; pointer-events: none; white-space: nowrap; }
+.colony .shade { fill: #000; opacity: .16; } .colony .yard { fill: var(--path); opacity: .55; }
+.colony .patch { fill: #000; opacity: .05; } .colony .patch.p1 { fill: #fff; opacity: .05; } .colony .patch.p2 { opacity: .08; }
+.colony .water { fill: var(--water); } .colony .bank { fill: var(--bankc); }
+.colony .ripple { stroke: #fff; stroke-width: 1.2; stroke-linecap: round; opacity: 0; animation: ripple 3.5s linear infinite; }
+.colony .win { fill: var(--winc); stroke: #0003; stroke-width: .4; } .cs.night .colony .win { filter: drop-shadow(0 0 3px #ffd56a); }
+.colony .clock { fill: #fff; stroke: #333; } .colony .sign { fill: var(--plank); stroke: #0005; stroke-width: .5; } .colony .coin { fill: var(--gold); stroke: #7a5a10; stroke-width: .6; }
+.colony .awn.a0 { fill: #fff; } .colony .awn.a1 { fill: var(--red); } .colony .awn.off { fill: var(--stone); }
+.colony .furrow { stroke: #0003; stroke-width: .8; } .colony .more { font-size: 10px; font-weight: 700; fill: var(--ink); paint-order: stroke; stroke: var(--surface); stroke-width: 3px; }
+.colony .pennant { fill: var(--pc, var(--other)); stroke: #0004; stroke-width: .5; }
+.colony .stone { fill: var(--surface); stroke: var(--ink-3); stroke-width: 1; } .colony .stone.s-on-time { fill: var(--done); stroke: none; } .colony .stone.s-late { fill: var(--bad); stroke: none; }
+.colony .flag.dl { fill: var(--signal); } .colony .dl-t, .colony .free-t { font-size: 9px; font-weight: 600; fill: #2a2118; paint-order: stroke; stroke: #fff9; stroke-width: 2.5px; } .cs.night .colony .dl-t, .cs.night .colony .free-t { fill: #fff; stroke: #0009; }
+.colony .flag { transform-box: fill-box; transform-origin: 0 50%; animation: wave 2.4s ease-in-out infinite; }
+.colony .smoke circle { fill: #fff; opacity: 0; transform-box: fill-box; animation: puff 4s ease-out infinite; } .colony .smoke.busy circle { fill: #ddd; animation-duration: 2.6s; }
+.colony .fire { transform-box: fill-box; transform-origin: 50% 100%; animation: flick .5s ease-in-out infinite alternate; } .colony .fl1 { fill: var(--bad); } .colony .fl2 { fill: #ffd24a; }
+.colony .beacon { stroke: #fff; stroke-width: 1; fill: var(--done); } .colony .beacon.b-amber { fill: var(--signal); } .colony .beacon.b-red { fill: var(--bad); animation: pulse 1.1s ease-in-out infinite; }
+.colony .walker .body { fill: var(--c); stroke: #0005; stroke-width: .4; } .colony .walker .head { fill: #f0c9a0; stroke: #0005; stroke-width: .4; }
+.colony .mist ellipse { animation: drift 14s ease-in-out infinite alternate; pointer-events: none; }
+.colony .clouds ellipse { fill: #000; opacity: .07; animation: cloud 80s linear infinite; pointer-events: none; }
+.colony .compass circle { fill: none; stroke: #5a4630; stroke-width: 1.5; opacity: .6; } .colony .compass polygon { fill: #5a4630; opacity: .7; } .colony .compass .ew { opacity: .4; } .colony .compass text { font-size: 11px; font-weight: 700; fill: #5a4630; }
+.cs.night .colony .compass circle, .cs.night .colony .compass polygon { stroke: #9fb0c8; fill: #9fb0c8; } .cs.night .colony .compass circle { fill: none; } .cs.night .colony .compass text { fill: #9fb0c8; }
+.colony .vil, .colony .ib { cursor: pointer; outline: none; }
+.colony .ib:hover .f-t, .colony .ib:focus-visible .f-t, .colony .ib.sel .f-t { filter: brightness(1.18); }
+.colony .ib.sel .f-l, .colony .ib.sel .f-r, .colony .ib:focus-visible .f-l, .colony .ib:focus-visible .f-r { stroke: var(--signal); stroke-width: 1.4; }
+.colony .sel-ring { fill: none; stroke: transparent; stroke-width: 3; stroke-dasharray: 10 6; }
+.colony .vil:hover .sel-ring { stroke: #fff8; } .colony .vil.sel .sel-ring { stroke: var(--signal); animation: march 1.2s linear infinite; }
+.colony .vil.paused { opacity: .8; } .colony .bn { pointer-events: none; }
+.cs.still .colony *, .cs.still .colony { animation-play-state: paused !important; }
+@keyframes ripple { 0% { opacity: 0; transform: translateX(-6px); } 40% { opacity: .7; } 100% { opacity: 0; transform: translateX(8px); } }
+@keyframes wave { 0%, 100% { transform: skewY(-7deg); } 50% { transform: skewY(7deg) scaleX(.92); } }
+@keyframes puff { 0% { opacity: 0; transform: translate(0, 0) scale(.5); } 20% { opacity: .75; } 100% { opacity: 0; transform: translate(10px, -34px) scale(1.7); } }
+@keyframes flick { from { transform: scale(1, 1); } to { transform: scale(.9, 1.18); } }
+@keyframes pulse { 50% { opacity: .35; } }
+@keyframes drift { from { transform: translateX(-14px); } to { transform: translateX(18px); } }
+@keyframes cloud { from { transform: translateX(-700px); } to { transform: translateX(1400px); } }
+@keyframes march { to { stroke-dashoffset: -16; } }
+@media (prefers-reduced-motion: reduce) { .colony *, .colony { animation: none !important; } .colony .walker { display: none; } }
+.cs-panel { display: grid; grid-template-columns: 132px minmax(0, 1fr) minmax(0, 1fr); gap: 16px; padding: 12px 16px; border-top: 1px solid var(--line); min-height: 188px; }
+@media (max-width: 760px) { .cs-panel { grid-template-columns: minmax(0, 1fr); } .cs-mini { display: none; } }
+.cs-mini { position: relative; height: 132px; border: 1px solid var(--line); border-radius: 8px; background: var(--surface-2); }
+.cs-mini .mm { position: absolute; width: 16px; height: 16px; margin: -8px 0 0 -8px; padding: 0; border-radius: 4px; transform: rotate(45deg); border: 2px solid var(--surface); background: var(--pc, var(--ink-3)); cursor: pointer; }
+.cs-mini .mm.t-bad { box-shadow: 0 0 0 2px var(--bad); } .cs-mini .mm.t-warn { box-shadow: 0 0 0 2px var(--signal); } .cs-mini .mm[aria-pressed="true"] { border-color: var(--ink); }
+.cs-info { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.cs-h { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-family: var(--display); font-size: 16px; }
+.cs-h .dot, .cs-list .dot { flex: none; width: 8px; height: 8px; border-radius: 50%; background: var(--pc, var(--other)); }
+.cs-d, .cs-r { margin: 0; font-size: 12px; color: var(--ink-2); }
+.cs-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--surface-2); border: 1px solid var(--line); } .cs-bar i { background: var(--done); } .cs-bar i.late { background: var(--bad); }
+.cs-s { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin: 0; } .cs-s dt { font-size: 11px; color: var(--ink-3); } .cs-s dd { margin: 0; font-family: var(--mono); font-size: 16px; } .cs-s .bad dd { color: var(--bad); font-weight: 600; }
+.cs-go { align-self: flex-start; font-size: 12px; font-weight: 600; color: var(--ink); }
+.cs-parts { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; align-content: start; }
+.cs-parts a { display: flex; flex-direction: column; padding: 4px 8px; border-left: 4px solid var(--line); color: var(--ink); text-decoration: none; min-width: 0; border-radius: 0 4px 4px 0; }
+.cs-parts a:hover, .cs-parts a.on { background: var(--surface-2); }
+.cs-parts a.t-bad { border-left-color: var(--bad); } .cs-parts a.t-bad .vg-v { color: var(--bad); } .cs-parts a.t-warn { border-left-color: var(--signal); } .cs-parts a.t-ok { border-left-color: var(--done); } .cs-parts a.t-none .vg-v { color: var(--ink-3); font-weight: 400; }
+.cs-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0; }
+.cs-list button { display: flex; align-items: center; gap: 8px; width: 100%; padding: 4px 8px; border: 0; background: none; color: var(--ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; border-radius: 4px; }
+.cs-list button:hover { background: var(--surface-2); } .cs-list .mono { color: var(--ink-3); } .cs-list span:last-child { margin-left: auto; color: var(--ink-3); white-space: nowrap; }
+.cs-list .t-bad { color: var(--bad) !important; } .cs-list .t-warn { color: var(--signal) !important; }
+
+/* Colony: building detail and events. */
+.iso { --iron: #4a4f57; } .c-iron { --c: var(--iron); } .cs.night { --iron: #2c3038; }
+.colony .shingle { stroke: #0003; stroke-width: .7; } .colony .ridge { stroke: #0006; stroke-width: 1.4; stroke-linecap: round; }
+.colony .timber { stroke: #5a3d24; stroke-width: 1.5; stroke-linecap: round; } .colony .seam, .colony .mortar, .colony .pave { stroke: #0003; stroke-width: .6; }
+.colony .scaf { stroke: var(--wheat); stroke-width: 1.2; } .colony .slit { fill: #1a1a1a; } .colony .door.vault { fill: var(--iron); }
+.colony .pedi { fill: var(--wallc); stroke: #0005; stroke-width: .6; } .colony .redsign { fill: var(--bad); stroke: #fff; stroke-width: .8; }
+.colony .goods { stroke: #0005; stroke-width: .4; } .colony .garden { fill: #4f9a3c; opacity: .9; } .colony .bush { fill: var(--tree); stroke: #0004; stroke-width: .5; }
+.colony .crow circle { fill: var(--wheat); stroke: #0006; stroke-width: .5; } .colony .jet { fill: #fff; opacity: .85; animation: pulse 1.6s ease-in-out infinite; }
+.colony .barrel rect, .colony .barrel ellipse { fill: var(--wood); stroke: #0006; stroke-width: .5; } .colony .barrel line { stroke: #0006; stroke-width: .8; }
+.colony .lamp .bulb { fill: #6b6b6b; } .colony .lamp .glow { fill: #ffd56a; opacity: 0; }
+.cs.night .colony .lamp .bulb { fill: #ffe9a8; } .cs.night .colony .lamp .glow { opacity: .28; animation: pulse 3s ease-in-out infinite; }
+.colony .halo { opacity: .25; fill: var(--done); } .colony .halo.b-amber { fill: var(--signal); } .colony .halo.b-red { fill: var(--bad); animation: pulse 1.1s ease-in-out infinite; }
+.colony .w-body { fill: var(--plank); stroke: #0006; stroke-width: .5; } .colony .w-cover { fill: #f3ead6; stroke: #0005; stroke-width: .5; } .colony .w-wheel { fill: #3b2b1c; stroke: var(--plank); stroke-width: 1; }
+.colony .w-horse { fill: #7a4f2c; stroke: #0005; stroke-width: .4; } .colony .w-leg { stroke: #5a3a20; stroke-width: 1.4; }
+.colony .scroll { animation: bob 1.8s ease-in-out infinite; } .colony .scroll rect { fill: #f6ecd0; stroke: #6b5330; stroke-width: 1; } .colony .scroll line { stroke: #6b5330; stroke-width: 1; }
+.colony .sparks circle { fill: #ffb52e; opacity: 0; animation: spark .9s ease-out infinite; } .colony .sparks .sp1 { --dx: -9px; } .colony .sparks .sp2 { --dx: 11px; } .colony .sparks .sp3 { --dx: 4px; }
+.colony .fw { pointer-events: none; } .colony .burst { opacity: 0; animation: burst 3.2s ease-out infinite; } .colony .burst line { stroke: var(--gold); stroke-width: 1.6; stroke-linecap: round; }
+.colony .burst.b1 line { stroke: var(--pc, #fff); } .colony .burst.b2 line { stroke: #fff; }
+@keyframes bob { 50% { transform: translateY(-4px); } }
+@keyframes spark { 0% { opacity: 1; transform: translate(0, 0); } 100% { opacity: 0; transform: translate(var(--dx, 6px), -14px); } }
+@keyframes burst { 0% { opacity: 0; transform: scale(.1); } 12% { opacity: 1; } 45% { opacity: .9; transform: scale(1); } 70%, 100% { opacity: 0; transform: scale(1.15); } }
+.cs-log { position: absolute; z-index: 2; top: 12px; left: 12px; width: min(320px, calc(100% - 24px)); list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; cursor: default; }
+.cs-log li { background: color-mix(in srgb, var(--surface) 92%, transparent); border: 1px solid var(--line); border-left: 4px solid var(--pc, var(--other)); border-radius: 4px; animation: slidein .35s ease-out both; }
+.cs-log li.new { border-color: var(--signal); border-left-color: var(--pc, var(--other)); }
+.cs-log button { display: flex; align-items: flex-start; gap: 8px; width: 100%; padding: 4px 8px; border: 0; background: none; color: var(--ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.cs-log button:hover { background: var(--surface-2); } .cs-log .dot { display: none; }
+.cs-lt { flex: 1; min-width: 0; } .cs-lt small { display: block; font-size: 11px; color: var(--ink-2); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-ago { flex: none; font-size: 11px; color: var(--ink-3); font-family: var(--mono); }
+.cs-log .k-late b, .cs-log .k-failed b, .cs-ev .k-late b, .cs-ev .k-failed b { color: var(--bad); }
+.cs-ev { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; font-size: 12px; color: var(--ink-2); } .cs-ev b { color: var(--ink); }
+@keyframes slidein { from { opacity: 0; transform: translateX(-16px); } }
+@media (prefers-reduced-motion: reduce) { .cs-log li { animation: none; } .colony .wagon, .colony .fw { display: none; } }
+@media (max-width: 760px) { .cs-log { display: none; } }
+
+/* Shared words on the map: the status pill and the part lines. */
+.vg-st { font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; font-family: var(--body); }
+.vg-st.t-bad { color: var(--bad); border-color: var(--bad); } .vg-st.t-warn { color: var(--signal); border-color: var(--signal); } .vg-st.t-none { color: var(--ink-3); }
+.vg-k { font-size: 11px; color: var(--ink-3); } .vg-v { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.cs .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+/* Lenses: one question at a time. The terrace takes the answer's colour, the banner says it, other buildings step back. */
+.cs-bar2 { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px 16px; padding: 8px 16px; border-bottom: 1px solid var(--line); }
+.cs-bar2 .chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.colony .bn-s { display: none; } .cs[data-lens="none"] .colony .bn-s.l-none, .cs[data-lens="deadlines"] .colony .bn-s.l-deadlines, .cs[data-lens="activity"] .colony .bn-s.l-activity,
+.cs[data-lens="money"] .colony .bn-s.l-money, .cs[data-lens="security"] .colony .bn-s.l-security, .cs[data-lens="growth"] .colony .bn-s.l-growth { display: inline; }
+.iso .bn-s.t-bad { fill: var(--bad); font-weight: 600; } .iso .bn-s.t-warn { fill: var(--signal); font-weight: 600; } .iso .bn-s.t-ok { fill: var(--done); font-weight: 600; }
+.colony .vil[data-lz="bad"] .terrace .f-t { fill: color-mix(in srgb, var(--bad) 60%, var(--c)); } .colony .vil[data-lz="warn"] .terrace .f-t { fill: color-mix(in srgb, var(--signal) 55%, var(--c)); }
+.colony .vil[data-lz="ok"] .terrace .f-t { fill: color-mix(in srgb, var(--done) 50%, var(--c)); } .colony .vil[data-lz="none"] .terrace .f-t { fill: color-mix(in srgb, var(--stone) 70%, var(--c)); }
+.cs:not([data-lens="none"]) .colony .ib { opacity: .45; }
+.cs[data-lens="deadlines"] .colony .ib[data-part="hall"], .cs[data-lens="activity"] .colony .ib[data-part="hall"], .cs[data-lens="money"] .colony .ib[data-part="bank"],
+.cs[data-lens="security"] .colony .ib[data-part="police"], .cs[data-lens="growth"] .colony .ib[data-part="shop"], .cs[data-lens="growth"] .colony .ib[data-part="homes"], .cs:not([data-lens="none"]) .colony .ib.claude { opacity: 1; }
+
+/* Time. */
+.cs-time { display: flex; align-items: center; gap: 8px; font-size: 12px; } .cs-time input[type="range"] { width: 140px; accent-color: var(--signal); }
+.cs-past { margin: 0; padding: 8px 16px; font-size: 12px; color: var(--ink-2); background: var(--surface-2); border-bottom: 1px solid var(--line); }
+.cs.past .cs-view { filter: sepia(.35); }
+.cs-trend { display: flex; align-items: center; gap: 12px; font-size: 12px; color: var(--ink-2); flex-wrap: wrap; } .cs-trend .tr-done { fill: var(--done); opacity: .55; } .cs-trend .tr-open { fill: none; stroke: var(--ink); stroke-width: 1.5; }
+
+/* Acting from the map: an item's card. */
+.cs-right { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.cs-item { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px; border: 1px solid var(--line); border-left: 4px solid var(--line); border-radius: 8px; font-size: 13px; }
+.cs-item.t-bad { border-left-color: var(--bad); } .cs-item.t-warn { border-left-color: var(--signal); } .cs-item.t-ok { border-left-color: var(--done); }
+.cs-acts { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 4px; } .cs-acts .btn { padding: 4px 12px; font-size: 12px; } .cs-acts .btn:disabled { opacity: .5; cursor: default; }
+.cs-acts input[type="date"] { font: inherit; font-size: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
+.cs-err { margin: 0; font-size: 12px; color: var(--bad); }
+.cs-crates { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; }
+.cs-crates button { display: flex; justify-content: space-between; gap: 12px; width: 100%; padding: 4px 8px; border: 0; border-left: 4px solid var(--line); background: none; color: var(--ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer; }
+.cs-crates button:hover { background: var(--surface-2); } .cs-crates button.t-bad { border-left-color: var(--bad); } .cs-crates button.t-warn { border-left-color: var(--signal); }
+.cs-crates span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cs-cl { margin: 0; font-size: 12px; color: var(--ink-2); } .cs-cl b { color: var(--ink); } .cs-cl .t-bad { color: var(--bad); } .cs-cl a { color: var(--ink); }
+.colony .crate:hover .f-t, .colony .crate:focus-visible .f-t { filter: brightness(1.3); } .colony .free { cursor: pointer; } .colony .free:hover .lot { stroke: var(--signal); }
+
+/* Claude. */
+.colony .cl-body { fill: #d9774f; stroke: #0006; stroke-width: .5; } .colony .cl-head { fill: #f3d9c2; stroke: #0006; stroke-width: .5; } .colony .cl-spark { fill: #ffb52e; stroke: #0005; stroke-width: .4; animation: pulse 1.8s ease-in-out infinite; }
+.colony .cl-tool { stroke: var(--iron); stroke-width: 2; stroke-linecap: round; transform-box: fill-box; transform-origin: 0 100%; animation: hammer .6s ease-in-out infinite alternate; }
+.colony .cl-waiting .cl-fig, .colony .cl-stopped .cl-fig { animation: bob 1.6s ease-in-out infinite; }
+.colony .bubble rect { fill: var(--surface); stroke: var(--signal); stroke-width: 1.2; } .colony .cl-stopped .bubble rect { stroke: var(--bad); } .colony .bubble text { font-size: 9px; font-weight: 700; fill: var(--ink); }
+@keyframes hammer { from { transform: rotate(-25deg); } to { transform: rotate(30deg); } }
+
+/* Landmarks and weather. */
+.colony .landmark { cursor: pointer; } .colony .blades rect { fill: var(--plank); stroke: #0006; stroke-width: .5; } .colony .blades { animation: spin 9s linear infinite; }
+.colony .lh-lamp { fill: #ffe9a8; stroke: #0005; stroke-width: .5; } .colony .lh-glow { fill: #ffd56a; opacity: .12; } .cs.night .colony .lh-glow { opacity: .4; animation: pulse 2.4s ease-in-out infinite; }
+.colony .oak { fill: var(--tree); stroke: #0004; stroke-width: .6; } .colony .oak.o1 { fill: color-mix(in srgb, var(--tree) 80%, #fff); }
+.colony .wx ellipse { fill: #c9ced6; stroke: #0003; stroke-width: .6; } .colony .wx.storm ellipse { fill: #6f7682; } .colony .wx { animation: drift 9s ease-in-out infinite alternate; }
+.colony .rain { stroke: #8fc1e8; stroke-width: 1.4; stroke-linecap: round; animation: rain .7s linear infinite; } .colony .bolt { fill: #ffd24a; opacity: 0; animation: bolt 5s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } } @keyframes rain { from { transform: translate(2px, -6px); opacity: 0; } 30% { opacity: 1; } to { transform: translate(-3px, 8px); opacity: 0; } }
+@keyframes bolt { 0%, 91%, 100% { opacity: 0; } 92%, 96% { opacity: 1; } 94% { opacity: .2; } }
+
+/* Seasons: the calendar's. Trees turn, snow settles, blossom comes back. */
+.colony .snowcap { display: none; fill: #fff; opacity: .9; }
+.cs.season-autumn { --wild: #8a8a45; --grass: #9aa24a; } .cs.season-autumn .colony .tv1 { --c: #c9742b; } .cs.season-autumn .colony .tv2 { --c: #b8452c; } .cs.season-autumn .colony .bush { fill: #b8642c; }
+.cs.season-winter { --wild: #dfe7ee; --grass: #e9eff4; --dry: #cfd6dc; --path: #c4c9cf; --tree: #2f5d49; --earth: #c9c2b8; } .cs.season-winter .colony .snowcap { display: inline; } .cs.season-winter .colony .garden { fill: #eef3f7; }
+.cs.season-spring { --wild: #7fb04f; --grass: #86c25a; } .cs.season-spring .colony .tv1 { --c: #e8a7c0; } .cs.season-spring .colony .bush { fill: #e08fb0; }
+.cs.night.season-autumn { --wild: #45482c; } .cs.night.season-winter { --wild: #6f7c8c; --grass: #77849a; --earth: #5c5a5c; --path: #5f6672; } .cs.night.season-spring { --wild: #36552f; }
+.cs.night.season-autumn .colony .tv1 { --c: #7a4a22; } .cs.night.season-autumn .colony .tv2 { --c: #6e3122; }
+@media (pointer: coarse) { .cs-view { touch-action: pan-y; } }
+.colony .bn { transform-box: fill-box; transform-origin: 50% 100%; transform: scale(var(--bz, 1)); }
+/* Level of detail: from far away the small marks go, so the whole map stays light and readable. */
+.cs-view[data-far] .colony :is(.win, .shingle, .timber, .seam, .mortar, .pave, .furrow, .walker, .goods, .bush, .barrel, .lamp, .sparks, .scaf, .garden, .slit, .crow) { display: none; }
+.cs-ctl .chip.next:not(:disabled) { border-color: var(--signal); color: var(--signal); } .cs-ctl .chip:disabled { opacity: .5; cursor: default; }
+.colony .walker { cursor: help; }
+
+/* Calm map: the loud marks go; the words and the amber and red markers stay. */
+.cs.calm .colony :is(.fire, .rain, .bolt, .fw) { display: none; } .cs.calm .colony .wx.storm ellipse { fill: #c9ced6; } .cs.calm .colony .beacon.b-red, .cs.calm .colony .halo.b-red { animation: none; }
+/* Settings, toast, pins, shipments. */
+.cs-set { position: relative; } .cs-set summary { list-style: none; cursor: pointer; } .cs-set summary::-webkit-details-marker { display: none; }
+.cs-set-p { position: absolute; z-index: 6; right: 0; top: calc(100% + 4px); width: 280px; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+.cs-set-p label { display: flex; align-items: center; gap: 8px; } .cs-set-p p { margin: 0; color: var(--ink-3); } .cs-set-p select, .cs-slots select { font: inherit; font-size: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
+.cs-toast { position: absolute; z-index: 4; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 8px 16px; font-size: 13px; font-weight: 600; background: var(--surface); color: var(--ink); border: 1px solid var(--done); border-radius: 6px; animation: toast .25s ease-out; pointer-events: none; max-width: calc(100% - 32px); }
+@keyframes toast { from { opacity: 0; transform: translate(-50%, 8px); } }
+.colony .pop-out { transform-box: fill-box; transform-origin: 50% 100%; animation: popout .28s ease-in forwards; }
+@keyframes popout { 30% { transform: translateY(-6px) scale(1.15); } 100% { transform: translateY(-26px) scale(.2); opacity: 0; } }
+.cs-more { font-size: 12px; } .cs-more summary { cursor: pointer; font-weight: 600; } .cs-more .cs-d { margin: 4px 0 8px; }
+.cs-slots { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; } .cs-slots label { display: inline-flex; align-items: center; gap: 8px; } .cs-lock { color: var(--ink-3); }
+.cs-acts label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; } .cs-acts input[type="number"] { width: 96px; font: inherit; font-size: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
+.cs-pins { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.cs-pin { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--pc, var(--other)); border-radius: 8px; }
+.cs-pin-n { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; } .cs-pin-n:hover { text-decoration: underline; } .cs-h .chip { margin-left: auto; }
+/* The courier, banners, and focus you can see. */
+.colony .co-body { fill: #3f6fb5; stroke: #0006; stroke-width: .5; } .colony .co-hat { fill: #2c4a80; } .colony .letter { animation: bob 1.5s ease-in-out infinite; } .colony .letter rect { fill: #fff; stroke: var(--signal); stroke-width: 1.2; } .colony .letter path { fill: none; stroke: var(--signal); stroke-width: 1.2; }
+.colony .courier.urgent .letter rect, .colony .courier.urgent .letter path { stroke: var(--bad); }
+.colony .pen-stripe { fill: #fff; opacity: .85; } .colony .pen-gold { fill: var(--gold); }
+.colony .vil:focus-visible .sel-ring { stroke: var(--ink); } .colony .ib:focus-visible .f-t { stroke: var(--signal); stroke-width: 1.6; }
+.cs .chip { min-height: 28px; } .cs-view:focus-visible { outline: 2px solid var(--signal); }

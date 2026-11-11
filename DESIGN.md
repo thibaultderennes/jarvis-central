@@ -53,6 +53,14 @@ No other fonts. No serif, no italic display accents, no emoji in headings or lab
   round dots and pills.
 - Panels are bordered (`1px --line`), not shadowed.
 
+## Illustrations
+- The Map is the one illustration exception to "tokens only". Its colony is an isometric scene drawn as plain SVG
+  (`app/components/Colony.tsx`, no image assets), with its own scene palette declared once in
+  `app/app/(main)/map/map.css` (`.iso`, with night and season variants): grass, earth, stone, wood, water, roofs.
+- Everything that carries meaning on top of the scene still uses the tokens: status colours (`--bad`, `--signal`,
+  `--done`), the project colour (`--pc`), labels, markers, the panels and focus.
+- Motion in the scene stops with "Pause" and with the system's reduced-motion setting.
+
 ## Icons and marks
 - Icons come from `components/icons.tsx` (the Lane set): stroke icons drawn for this product, one weight. No icon
   library.

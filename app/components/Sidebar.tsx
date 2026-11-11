@@ -57,9 +57,9 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
   const worker = !workerAt ? "Mac worker not connected yet" : now ? (alive ? "Mac worker online" : `Mac worker last seen ${ago(workerAt)}`) : "Mac worker";
   const inbox = waiting ? `${waiting}` : fresh ? `${fresh} new` : "";
 
-  const Item = ({ href, icon, label, count, tone }: { href: string; icon: string; label: string; count?: string | number; tone?: "late" | "hot" }) => (
-    <Link href={href} className="sb-a" aria-current={on(href)} title={iconic ? (count ? `${label} · ${count}` : label) : undefined}>
-      <Icon n={icon} /><span className="sb-l">{label}</span>
+  const Item = ({ href, icon, label, count, tone, sub, beta }: { href: string; icon: string; label: string; count?: string | number; tone?: "late" | "hot"; sub?: boolean; beta?: boolean }) => (
+    <Link href={href} className={`sb-a${sub ? " sb-sub" : ""}`} aria-current={on(href)} title={iconic ? `${label}${beta ? " (beta)" : ""}${count ? ` · ${count}` : ""}` : undefined}>
+      <Icon n={icon} /><span className="sb-l">{label}{beta && <span className="pill sb-beta">Beta</span>}</span>
       {!!count && <span className={`sb-n${tone ? ` ${tone}` : ""}`}>{count}</span>}
     </Link>
   );
@@ -92,6 +92,7 @@ export default function Sidebar({ pinned, projects, waiting, fresh, todayLeft, n
           <nav className="sb-nav" aria-label="Sections">
             <div className="sb-h">You</div>
             <Item href="/" icon="home" label="Home" count={needs || undefined} />
+            <Item href="/map" icon="map" label="Map" sub beta />
             <Item href="/today" icon="today" label="Today" count={todayLeft || undefined} />
             <Item href="/week" icon="week" label="Week" />
             <Item href="/inbox" icon="inbox" label="Inbox" count={inbox} tone={waiting || fresh ? "hot" : undefined} />
