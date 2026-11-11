@@ -129,8 +129,11 @@ export default async function MapView() {
       police: policeState(checksBy.get(r.id) || []), bank: bankState(costsBy.get(r.id) || [], snaps),
       shop: shopState(snaps, t), homes: homesState(snaps),
       workshop: workshopState(itemsBy.get(r.id) || [], !!projectById.get(r.id)?.site?.code),
+      paused: !!projectById.get(r.id)?.paused_at,
     };
   });
+  // What needs you first: overdue, then due this week; paused projects last. Ties keep the order above.
+  const plots = villages.map((v, i) => ({ v, i })).sort((a, b) => Number(!!a.v.paused) - Number(!!b.v.paused) || b.v.overdue - a.v.overdue || b.v.dueSoon - a.v.dueSoon || a.i - b.i).map((x) => x.v);
 
   const list = (
     <div className="mapv-list">
@@ -148,8 +151,8 @@ export default async function MapView() {
   );
   const map = (
     <div className="mapv-map">
-      <Villages villages={villages} stop={stop} today={t} maxWeight={maxW} />
-      <VillageLegend />
+      <Villages villages={plots} stop={stop} today={t} maxWeight={maxW} />
+      <details className="map-how"><summary>What the pictures mean</summary><VillageLegend /></details>
     </div>
   );
 

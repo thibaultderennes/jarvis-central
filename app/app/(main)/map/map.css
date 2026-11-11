@@ -83,8 +83,6 @@
 .vw { container-type: inline-size; position: relative; --night: color-mix(in srgb, var(--doing) 70%, var(--ground)); }
 .vw-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
 .vw-l { position: relative; margin: 0 auto; }
-.vw-narrow { display: none; flex-direction: column; gap: 12px; }
-@container (max-width: 599px) { .vw-wide { display: none; } .vw-narrow { display: flex; } }
 .vw-svg { display: block; width: 100%; height: auto; overflow: visible; border-radius: 8px; font-family: var(--body); }
 .vw-svg image, .vk-i image { image-rendering: pixelated; }
 .vw-svg .px { isolation: isolate; }
@@ -101,8 +99,8 @@
 .win { fill: var(--signal); opacity: .9; }
 
 /* Fog: what was built stays, greyed, under a bank of mist. */
-.vt.fogged { filter: grayscale(1) contrast(.9); }
-.fogbank { fill: var(--surface-2); opacity: .6; }
+.vt.fogged { filter: grayscale(.6); }
+.fogbank { fill: var(--surface-2); opacity: .25; }
 
 /* Links: the ground and the label board open the project; each building opens its part. */
 .vl a { cursor: pointer; }
@@ -171,3 +169,29 @@
 .vk-credit { margin: 0; font-size: 11px; color: var(--ink-3); }
 
 @media (prefers-reduced-motion: reduce) { .pop { animation: none; } }
+
+/* The plots: one card per project. Words first, the village as the picture. */
+.vg { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 340px), 1fr)); gap: 16px; }
+.vg-c { max-width: 560px; }
+.vg-c { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 16px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--pc, var(--other)); border-radius: 8px; }
+.vg-c.paused { border-style: dashed; border-top-style: solid; }
+.vg-h { display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
+.vg-n { display: inline-flex; align-items: center; gap: 8px; min-width: 0; font-family: var(--display); font-size: 20px; font-weight: 700; color: var(--ink); text-decoration: none; overflow-wrap: anywhere; }
+.vg-n:hover { text-decoration: underline; }
+.vg-n .dot { flex: none; width: 12px; height: 12px; border-radius: 50%; background: var(--pc, var(--other)); }
+.vg-st { font-size: 12px; font-weight: 600; padding: 4px 8px; border-radius: 4px; border: 1px solid var(--line); white-space: nowrap; }
+.vg-st.t-bad { color: var(--bad); border-color: var(--bad); }
+.vg-st.t-warn { color: var(--signal); border-color: var(--signal); }
+.vg-st.t-none { color: var(--ink-3); }
+.vg-d { margin: 0; font-size: 12px; color: var(--ink-2); min-height: 16px; }
+.vg-s { border-radius: 8px; overflow: hidden; }
+.vg-s .vw-l { max-width: none !important; }
+.vg-p { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4px 12px; }
+.vg-p a { display: flex; flex-direction: column; gap: 0; padding: 4px 8px; border-left: 4px solid var(--line); color: var(--ink); text-decoration: none; min-width: 0; }
+.vg-p a:hover { background: var(--surface-2); }
+.vg-k { font-size: 11px; color: var(--ink-3); }
+.vg-v { font-size: 12px; font-weight: 600; overflow-wrap: anywhere; }
+.vg-p a.t-bad { border-left-color: var(--bad); } .vg-p a.t-bad .vg-v { color: var(--bad); }
+.vg-p a.t-warn { border-left-color: var(--signal); }
+.vg-p a.t-ok { border-left-color: var(--done); }
+.vg-p a.t-none .vg-v { color: var(--ink-3); font-weight: 400; }

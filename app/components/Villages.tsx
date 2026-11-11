@@ -13,6 +13,7 @@ import { fmtDate } from "@/lib/time";
 
 export type Village = Region & {
   land: { weight: number; onTime: number; late: number; undated: number }; onTimeAll: number; top: boolean;
+  paused?: boolean;
   hall: { tier: HallTier; since: number; next: number | null };
   police: PoliceState; bank: BankState; shop: ShopState; homes: HomesState; workshop: WorkshopState;
 };
@@ -365,12 +366,57 @@ function WorldSvg({ villages, stop, today, mode, cols, maxWeight, index = 0 }: {
   );
 }
 
+// ---- One plot per project: the words first (status, next deadline, each building's number), the village as the picture. ----
+
+type Tone = "bad" | "warn" | "ok" | "none";
+const PART_NAME: Record<PartKey, string> = { hall: "Checklist", police: "Security", bank: "Money", shop: "Growth", homes: "Customers", workshop: "Builds" };
+const PART_ORDER: PartKey[] = ["hall", "workshop", "police", "bank", "shop", "homes"];
+
+/** What one building says in a few words, and how loud it should be. */
+export function partChip(v: Village, key: PartKey): { text: string; tone: Tone } {
+  switch (key) {
+    case "hall": return v.overdue ? { text: `${v.open} open, ${v.overdue} overdue`, tone: "bad" } : v.dueSoon ? { text: `${v.open} open, ${v.dueSoon} due in ${SOON_DAYS} days`, tone: "warn" } : { text: `${v.open} open`, tone: "ok" };
+    case "police": return !v.police.built ? { text: "No audit yet", tone: "none" } : { text: LEVEL[v.police.level].replace(/^./, (c) => c.toUpperCase()), tone: v.police.level === "red" ? "bad" : v.police.level === "amber" ? "warn" : "ok" };
+    case "bank": return !v.bank.built ? { text: "Nothing recorded", tone: "none" } : { text: v.bank.costs.length ? `${v.bank.costs.map((c) => `${fmtN(c.monthly)} ${c.currency}`).join(" + ")} a month` : "No recurring costs", tone: v.bank.costSign ? "warn" : "ok" };
+    case "shop": return !v.shop.built ? { text: "No numbers yet", tone: "none" } : { text: `${METRIC[v.shop.metric] || v.shop.metric} ${fmtN(v.shop.first.value)} to ${fmtN(v.shop.last.value)}`, tone: v.shop.trend === "down" ? "warn" : "ok" };
+    case "homes": return !v.homes.built ? { text: "No users recorded", tone: "none" } : { text: `${fmtN(v.homes.count)} ${METRIC[v.homes.metric].toLowerCase()}`, tone: "ok" };
+    case "workshop": return !v.workshop.built ? { text: "No code repository", tone: "none" } : v.workshop.failed.length ? { text: `${n(v.workshop.failed.length, "build")} stopped`, tone: "bad" } : v.workshop.waiting ? { text: `${n(v.workshop.waiting, "pull request")} waiting for you`, tone: "warn" } : { text: v.workshop.running ? `${n(v.workshop.running, "build")} running` : "Nothing building", tone: "ok" };
+  }
+}
+
+/** The one thing to know about a project right now. */
+export function plotStatus(v: Village): { text: string; tone: Tone } {
+  if (v.paused) return { text: "Paused", tone: "none" };
+  if (v.overdue) return { text: `${v.overdue} overdue`, tone: "bad" };
+  if (v.dueSoon) return { text: `${v.dueSoon} due in ${SOON_DAYS} days`, tone: "warn" };
+  if (v.fog) return { text: v.quietDays === null ? "Nothing finished yet" : `Quiet for ${n(v.quietDays, "day")}`, tone: "none" };
+  return { text: "Nothing due this week", tone: "ok" };
+}
+
+function Plot({ v, i, stop, today, maxWeight }: { v: Village; i: number; stop: string | null; today: string; maxWeight: number }) {
+  const st = plotStatus(v), t = v.trail;
+  return (
+    <li className={`vg-c${v.paused ? " paused" : ""}`} data-c={v.color}>
+      <div className="vg-h">
+        <a className="vg-n" href={v.href}><i className="dot" aria-hidden="true" />{v.name}</a>
+        <span className={`vg-st t-${st.tone}`}>{st.text}</span>
+      </div>
+      <p className="vg-d">{v.paused ? "Deadlines on hold while paused" : t ? <><b>{t.deadline.label}</b> <span className="mono">{fmtDate(t.deadline.date)} · {until(t.daysLeft)}</span>{t.total ? <> · {t.onTime} of {t.total} done on time</> : null}</> : "No deadline ahead"}</p>
+      <div className="vg-s"><WorldSvg villages={[v]} stop={stop} today={today} mode={`n${i}`} cols={1} maxWeight={maxWeight} index={i} /></div>
+      <ul className="vg-p" aria-label={`${v.name}: the parts of the project`}>
+        {PART_ORDER.map((k) => { const c = partChip(v, k); return (
+          <li key={k}><a href={partHref(v, k)} className={`t-${c.tone}`}><span className="vg-k">{PART_NAME[k]}</span><span className="vg-v">{c.text}</span></a></li>
+        ); })}
+      </ul>
+    </li>
+  );
+}
+
 export default function Villages({ villages, stop, today, maxWeight }: { villages: Village[]; stop: string | null; today: string; maxWeight: number }) {
   return (
     <div className="vw">
       <VillageDefs keys={new Set(TILE_KEYS)} />
-      <WorldSvg villages={villages} stop={stop} today={today} mode="wide" cols={colsFor(villages.length)} maxWeight={maxWeight} />
-      <div className="vw-narrow">{villages.map((v, i) => <WorldSvg key={v.id} villages={[v]} stop={stop} today={today} mode={`n${i}`} cols={1} maxWeight={maxWeight} index={i} />)}</div>
+      <ul className="vg" aria-label="Projects">{villages.map((v, i) => <Plot key={v.id} v={v} i={i} stop={stop} today={today} maxWeight={maxWeight} />)}</ul>
     </div>
   );
 }
