@@ -74,6 +74,7 @@ export default function ColonyStage({ villages, view, cols, rows, season, today,
     const r = s.getBoundingClientRect(); if (!r.width) return;
     const c = cam.current, h = c.w * r.height / r.width;
     s.setAttribute("viewBox", `${c.cx - c.w / 2} ${c.cy - h / 2} ${c.w} ${h}`);
+    const far = c.w / view.w > 0.72, el = wrap.current; if (el && el.hasAttribute("data-far") !== far) el.toggleAttribute("data-far", far);
     s.style.setProperty("--bz", String(Math.min(1, Math.max(0.42, c.w / view.w))));
   }, [view.w]);
   const fitW = useCallback(() => { const r = svg()?.getBoundingClientRect(); return r && r.width ? Math.max(view.w, view.h * r.width / r.height) : view.w; }, [view]);
@@ -117,6 +118,9 @@ export default function ColonyStage({ villages, view, cols, rows, season, today,
     el.addEventListener("wheel", on, { passive: false }); return () => el.removeEventListener("wheel", on);
   }, [zoom]);
 
+  // "Next": jump to the next settlement that needs you, like a strategy game's idle-worker button.
+  const needy = villages.filter((v) => v.status.tone === "bad" || v.status.tone === "warn");
+  const nextNeed = () => { if (!needy.length) return; const i = needy.findIndex((v) => v.id === sel); select(needy[(i + 1) % needy.length].id); };
   const hit = (t: EventTarget | null) => { const el = t as Element | null; return { vil: el?.closest?.("[data-vil]")?.getAttribute("data-vil") || null, part: el?.closest?.("[data-part]")?.getAttribute("data-part") || null, item: el?.closest?.("[data-item]")?.getAttribute("data-item") || null, free: !!el?.closest?.("[data-free]") }; };
   const pick = (h: ReturnType<typeof hit>) => { if (h.free) { router.push("/admin"); return; } select(h.vil, h.item ? "hall" : h.part, h.vil !== sel); if (h.item) { setItem(h.item); setDue(""); } };
   const onDown = (e: React.PointerEvent) => { if (e.button !== 0) return; drag.current = { x: e.clientX, y: e.clientY, moved: false }; };
@@ -140,6 +144,7 @@ export default function ColonyStage({ villages, view, cols, rows, season, today,
     if (e.key === "-") return zoom(1.25);
     const pan: Record<string, [number, number]> = { ArrowLeft: [-step, 0], ArrowRight: [step, 0], ArrowUp: [0, -step], ArrowDown: [0, step] };
     if (pan[e.key]) { e.preventDefault(); cam.current = { ...cam.current, cx: cam.current.cx + pan[e.key][0], cy: cam.current.cy + pan[e.key][1] }; apply(); return; }
+    if (e.key === "n" || e.key === "N") return nextNeed();
     const n = Number(e.key); if (n >= 1 && n <= villages.length) select(villages[n - 1].id);
   };
 
@@ -156,6 +161,7 @@ export default function ColonyStage({ villages, view, cols, rows, season, today,
         <span><b className="mono">{sum((v) => v.stats.dueSoon)}</b> due in 7 days</span>
         <span><b className="mono">{sum((v) => v.stats.done28)}</b> done, 28 days</span>
         <span className="cs-ctl">
+          <button type="button" className="chip next" disabled={!needy.length} onClick={nextNeed} title="Jump to the next settlement that needs you (N)">Next that needs you{needy.length ? ` · ${needy.length}` : ""}</button>
           <button type="button" className="chip" aria-pressed={log} onClick={() => setLog(!log)}>Chronicle</button>
           <button type="button" className="chip" aria-pressed={night} onClick={() => setNight(!night)}>Night</button>
           <button type="button" className="chip" aria-pressed={still} onClick={() => setStill(!still)}>Pause</button>

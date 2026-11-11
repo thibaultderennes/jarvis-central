@@ -39,9 +39,9 @@ function Fire({ x, y, z }: { x: number; y: number; z: number }) {
   const [sx, sy] = P(x, y, z);
   return <g className="fire"><polygon className="fl1" points={`${sx - 6},${sy} ${sx - 2},${sy - 16} ${sx + 1},${sy - 8} ${sx + 4},${sy - 20} ${sx + 7},${sy}`} /><polygon className="fl2" points={`${sx - 3},${sy} ${sx},${sy - 9} ${sx + 4},${sy}`} /></g>;
 }
-function Walker({ from, to, dur, delay, c }: { from: readonly [number, number]; to: readonly [number, number]; dur: number; delay: number; c: string }) {
+function Walker({ from, to, dur, delay, c, thought }: { from: readonly [number, number]; to: readonly [number, number]; dur: number; delay: number; c: string; thought: string }) {
   return (
-    <g className="walker">
+    <g className="walker" data-tip={`“${thought}”`}>
       <animateMotion dur={`${dur}s`} begin={`${-delay}s`} repeatCount="indefinite" path={`M${from[0]} ${from[1]} L${to[0]} ${to[1]} L${from[0]} ${from[1]}`} />
       <ellipse className="shade" cx={0} cy={0} rx={3} ry={1.4} /><rect className={`body ${c}`} x={-1.8} y={-9} width={3.6} height={7} rx={1} /><circle className="head" cx={0} cy={-11} r={2.2} />
     </g>
@@ -253,7 +253,17 @@ function settlement(v: Village, today: string): { ground: ReactNode; els: El[] }
   const gate = P(5, 10.4), door = P(5, 5.4), ws = P(2.6, 3.3), mk = P(7.9, 8.5);
   const walkers = v.paused ? 0 : Math.min(4, Math.ceil(v.done28 / 4));
   const routes: [readonly [number, number], readonly [number, number]][] = [[gate, door], [door, ws], [door, mk], [gate, mk]];
-  for (let i = 0; i < walkers; i++) els.push({ depth: 99, el: <Walker key={k(`w${i}`)} from={routes[i][0]} to={routes[i][1]} dur={9 + i * 3} delay={i * 2.5} c={i % 2 ? "c-pc" : "c-clay"} /> });
+  // What the villagers say when you point at them: the reasons behind the picture, from the project's own data.
+  const first = (v.openItems || [])[0], thoughts = [
+    v.overdue ? `${v.overdue} thing${v.overdue === 1 ? " is" : "s are"} past the date we promised` : null,
+    first?.due ? `Next up: ${first.title}, due ${fmtDate(first.due)}` : first ? `Next up: ${first.title}` : null,
+    v.claude?.waiting.length ? "Claude left a pull request at the gate for you" : null,
+    v.claude?.failed.length ? "Claude's build stopped. Someone should look" : null,
+    v.review?.headline ? `The last review said: ${v.review.headline}` : null,
+    `${v.done28} thing${v.done28 === 1 ? "" : "s"} finished in the last 28 days`,
+    !v.shop.built ? "Nobody has counted the visitors at the market yet" : null,
+  ].filter((x): x is string => !!x);
+  for (let i = 0; i < walkers; i++) els.push({ depth: 99, el: <Walker key={k(`w${i}`)} thought={thoughts[i % thoughts.length]} from={routes[i][0]} to={routes[i][1]} dur={9 + i * 3} delay={i * 2.5} c={i % 2 ? "c-pc" : "c-clay"} /> });
   // The palisade: back walls first, front walls and the gate last.
   els.push({ depth: -9, el: <g key={k("pal-b")}><Box x={0} y={-0.2} w={PLOT} d={0.2} h={0.8} c="c-wood" /><Box x={-0.2} y={0} w={0.2} d={PLOT} h={0.8} c="c-wood" /><Box x={-0.35} y={-0.35} w={0.6} d={0.6} h={1.3} c="c-wood" /></g> });
   els.push({ depth: 98, el: <g key={k("pal-f")}>
@@ -331,7 +341,7 @@ export default function Colony({ villages, today, now, season, past, full, weeks
     groups.push({ depth: ox + oy + PLOT, el: (
       <g key={v.id} className={`vil${v.paused ? " paused" : ""}${v.fog && !v.paused ? " quiet" : ""}`} data-vil={v.id} data-c={v.color} data-cx={c[0]} data-cy={c[1] - lift} {...Object.fromEntries(LENSES.map((l) => [`data-lz-${l}`, lz[l].tone]))} transform={`translate(${o[0]} ${o[1] - lift})`}>
         {s.ground}{s.els.sort((a, b) => a.depth - b.depth).map((e) => e.el)}
-        {v.fog && !v.paused && <g className="mist">{[0, 1, 2].map((j) => <ellipse key={j} cx={P(3 + j * 2.2, 4 + j)[0]} cy={P(3 + j * 2.2, 4 + j, 0.8)[1]} rx={70} ry={16} style={{ animationDelay: `${-j * 4}s` }} />)}</g>}
+        {v.fog && !v.paused && <g className="mist" data-tip={v.quietDays === null ? "Mist: nothing finished here yet" : `Mist: nothing finished here for ${v.quietDays} days`}>{[0, 1, 2].map((j) => <ellipse key={j} cx={P(3 + j * 2.2, 4 + j)[0]} cy={P(3 + j * 2.2, 4 + j, 0.8)[1]} rx={95} ry={22} fill="url(#mist-g)" style={{ animationDelay: `${-j * 4}s` }} />)}</g>}
         {weather(v)}{banner(v, lz)}
       </g>
     ) }); });
@@ -356,6 +366,7 @@ export default function Colony({ villages, today, now, season, past, full, weeks
     <div className="iso look-colony">
       <ColonyStage villages={stage} view={view} cols={cols} rows={rows} season={season} today={today} now={now} past={past} full={full} weeks={weeks}>
         <svg className="iso-svg colony" viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} role="group" aria-label="Colony map: one settlement per project">
+          <defs><radialGradient id="mist-g"><stop offset="0" stopColor="#fff" stopOpacity=".75" /><stop offset=".6" stopColor="#fff" stopOpacity=".35" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient></defs>
           <Box x={0} y={0} w={X} d={Y} h={1.6} z={-1.6} c="c-wild soil" />
           {Array.from({ length: 46 }, (_, i) => { const x = r() * (X - 2), y = r() * (Y - 2), w = 0.8 + r() * 1.6; return <polygon key={`pt${i}`} className={`patch p${i % 3}`} points={quad(P(x, y), P(x + w, y), P(x + w, y + w), P(x, y + w))} />; })}
           {Array.from({ length: rows + 1 }, (_, c) => <Box key={`py${c}`} x={0} y={c * step + GAP / 2 - 0.45} w={X} d={0.9} h={0.01} c="c-path" />)}

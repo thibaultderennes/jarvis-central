@@ -123,7 +123,7 @@
 .colony .fire { transform-box: fill-box; transform-origin: 50% 100%; animation: flick .5s ease-in-out infinite alternate; } .colony .fl1 { fill: var(--bad); } .colony .fl2 { fill: #ffd24a; }
 .colony .beacon { stroke: #fff; stroke-width: 1; fill: var(--done); } .colony .beacon.b-amber { fill: var(--signal); } .colony .beacon.b-red { fill: var(--bad); animation: pulse 1.1s ease-in-out infinite; }
 .colony .walker .body { fill: var(--c); stroke: #0005; stroke-width: .4; } .colony .walker .head { fill: #f0c9a0; stroke: #0005; stroke-width: .4; }
-.colony .mist ellipse { fill: #fff; opacity: .32; animation: drift 14s ease-in-out infinite alternate; pointer-events: none; }
+.colony .mist ellipse { animation: drift 14s ease-in-out infinite alternate; pointer-events: none; }
 .colony .clouds ellipse { fill: #000; opacity: .07; animation: cloud 80s linear infinite; pointer-events: none; }
 .colony .compass circle { fill: none; stroke: #5a4630; stroke-width: 1.5; opacity: .6; } .colony .compass polygon { fill: #5a4630; opacity: .7; } .colony .compass .ew { opacity: .4; } .colony .compass text { font-size: 11px; font-weight: 700; fill: #5a4630; }
 .cs.night .colony .compass circle, .cs.night .colony .compass polygon { stroke: #9fb0c8; fill: #9fb0c8; } .cs.night .colony .compass circle { fill: none; } .cs.night .colony .compass text { fill: #9fb0c8; }
@@ -261,3 +261,7 @@
 .cs.night.season-autumn .colony .tv1 { --c: #7a4a22; } .cs.night.season-autumn .colony .tv2 { --c: #6e3122; }
 @media (pointer: coarse) { .cs-view { touch-action: pan-y; } }
 .colony .bn { transform-box: fill-box; transform-origin: 50% 100%; transform: scale(var(--bz, 1)); }
+/* Level of detail: from far away the small marks go, so the whole map stays light and readable. */
+.cs-view[data-far] .colony :is(.win, .shingle, .timber, .seam, .mortar, .pave, .furrow, .walker, .goods, .bush, .barrel, .lamp, .sparks, .scaf, .garden, .slit, .crow) { display: none; }
+.cs-ctl .chip.next:not(:disabled) { border-color: var(--signal); color: var(--signal); } .cs-ctl .chip:disabled { opacity: .5; cursor: default; }
+.colony .walker { cursor: help; }
