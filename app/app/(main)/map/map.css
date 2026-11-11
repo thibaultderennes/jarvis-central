@@ -288,3 +288,19 @@
 .colony .pen-stripe { fill: #fff; opacity: .85; } .colony .pen-gold { fill: var(--gold); }
 .colony .vil:focus-visible .sel-ring { stroke: var(--ink); } .colony .ib:focus-visible .f-t { stroke: var(--signal); stroke-width: 1.6; }
 .cs .chip { min-height: 28px; } .cs-view:focus-visible { outline: 2px solid var(--signal); }
+
+/* Layout: the map with an inspector beside it on wide screens (under it when narrow), so selecting never needs a scroll. */
+.cs-body { --vh: clamp(420px, calc(100dvh - 264px), 900px); display: grid; grid-template-columns: minmax(0, 1fr) 360px; }
+.cs-body .cs-view { height: auto; aspect-ratio: 5 / 4; max-height: var(--vh); min-height: 360px; }
+/* The inspector takes the map's height and scrolls inside it. */
+.cs-body .cs-panel { display: flex; flex-direction: column; gap: 20px; padding: 16px; border-top: 0; border-left: 1px solid var(--line); height: 0; min-height: 100%; overflow-y: auto; overscroll-behavior: contain; }
+@media (max-width: 1180px) {
+  .cs-body { grid-template-columns: minmax(0, 1fr); --vh: clamp(360px, 58vh, 720px); }
+  .cs-body .cs-view { aspect-ratio: auto; height: var(--vh); }
+  .cs-body .cs-panel { height: auto; min-height: 0; overflow: visible; border-left: 0; border-top: 1px solid var(--line); display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); }
+}
+.cs-back { align-self: flex-start; padding: 0; border: 0; background: none; font: inherit; font-size: 12px; color: var(--ink-3); cursor: pointer; } .cs-back:hover { color: var(--ink); }
+.cs-view .cs-mini { position: absolute; z-index: 2; top: 12px; right: 12px; width: 104px; height: 104px; background: color-mix(in srgb, var(--surface) 88%, transparent); cursor: default; }
+.cs-zoom { position: absolute; z-index: 2; right: 12px; bottom: 12px; display: flex; gap: 4px; cursor: default; } .cs-zoom .chip { background: var(--surface); min-width: 28px; }
+@media (max-width: 760px) { .cs-view .cs-mini { display: none; } }
+.cs-panel .cs-log { position: static; width: auto; display: flex; } .cs-panel .cs-log li { animation: none; background: none; }
