@@ -3,20 +3,7 @@
 All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` for what counts as what.
 
 ## Unreleased
-- **The Map: a pixel village world** (a new Map box on Home, after the overview; old `/map` links land on it). One village per project in one world of forest, a river with
-  bridges and roads between villages; its fenced ground grows with work done on time (late counts half, undated a
-  quarter, last 180 days). **Each building stands for one part of the project and opens it:** the town hall is the
-  checklist (it grows into a town hall with a clock as items get done on time; its flag is the latest review; crates,
-  lamps and fire mark open, due-soon and overdue items), the police station is security (audits and screenings: calm,
-  amber or red light), the bank is finances (coins for revenue, a red sign when costs aren't covered), the shop is
-  growth (lit when visits, signups or active users rise), houses are customers (one more per tenfold users) and the
-  workshop is Claude's builds (smoke while one runs, a parcel per pull request waiting for you). Anything not recorded
-  yet is an empty lot with a sign. Fog after 14 quiet days, a storm or cloud from the review, a road with stones to
-  each next deadline, and you standing at the nearest one. Dark mode shows the same world at night. Map / List switch,
-  "+N since your last visit", hover cards, every building a keyboard link. Tiles: Kenney's CC0 Tiny Town, Tiny Battle
-  and Tiny Dungeon packs (`app/public/map/`, licences included).
-
-
+- **The Map: your projects as a colony.** A new Map page (and a Map box you can add to Home) draws every project as a walled settlement on one isometric map you can drag, zoom and click. Each building is one part of the project and opens it: the town hall is the checklist (it grows with items done on time), the workshop is Claude's builds, the watchtower security, the vault money, the market growth, the homes customers. Open items are crates on the square: click one to mark it done, move its date or give it to Claude. Lenses recolour every settlement by one question (deadlines, activity, money, security, growth). A chronicle lists what happened in the last 7 days, wagons arrive for items you just finished, and Claude stands at the workshop while a build runs or at the gate when a pull request waits. A time slider replays the last 8 weeks, rebuilt from item dates. Weather follows the latest review, the season follows the calendar, and night falls in the evening. "Pause" and the system's reduced-motion setting stop all motion; the same projects are listed as cards under the map. No new tables.
 - The weekly "record this week's product numbers" reminder is added once: if last week's is still open, no second one is stacked on top.
 - **Today's "late tasks waiting" list stays current.** The morning roll-forward saves it once, so an item you closed, cancelled or paused later that day stayed listed until the next morning. Today now drops those against the live checklist and shows each item once, even when several of its todos waited (split and weekend blocks). A paused project's todos also leave Today and the Week board, not only its items. A one-time fix on deploy ticks the todos left undone by items the agent closed before 0.7.5, when the agent API didn't tick linked todos yet: they counted as missed in "planned vs done".
 - **The Monday run checks before it spends anything, and catches up if it never started.** It first waits for the website (retrying for about 15 minutes after the Mac wakes, when the network or a cold database isn't ready yet), then makes one tiny Claude call. If Claude isn't signed in, it stops, posts one **Needs you** message ("run `claude` once in Terminal to sign in", at most every 12 hours) and charges nothing. The worker does the same check before it answers inbox messages, so a signed-out Mac no longer turns every message into an error. If the Monday run never got past these checks (Mac asleep or offline, site down, signed out), the next worker pass that week starts it again. A model answer with no JSON now shows its first line instead of "no JSON object in model output".

@@ -28,7 +28,7 @@ export const BOXES: Record<string, { tab: Tab; section: string; title: string; w
   top3: { tab: "home", section: "overview", title: "Your top 3", what: "Your three main projects with pace against their next milestone", at: [0, 9, 12, 6] },
   sprints: { tab: "home", section: "overview", title: "Sprints this week", what: "Sprints running or starting this week, across projects", at: [0, 15, 6, 3] },
   inbox: { tab: "home", section: "overview", title: "Inbox", what: "The latest messages with Claude and where they stand", at: [6, 15, 6, 3] },
-  map: { tab: "home", section: "map", title: "Map", what: "Your projects as villages in one pixel world: ground cleared by work done on time, a building for each part of the project, fire for overdue, fog where nothing moved, the road to each deadline", at: [0, 18, 12, 8] },
+  map: { tab: "home", section: "map", title: "Map", what: "Your projects as settlements on one map: click one to see what it needs, act on open items, switch lenses", at: [0, 18, 12, 8] },
   timeline: { tab: "home", section: "timeline", title: "Timeline", what: "Milestones, due dates, sprints and planned blocks, 10 weeks", at: [0, 26, 12, 8] },
   milestones: { tab: "home", section: "timeline", title: "Upcoming milestones", what: "The next dated milestones from each PRD", at: [0, 34, 7, 4] },
   calendar: { tab: "home", section: "timeline", title: "This week", what: "Calendar events and planned focus, 7 days", at: [7, 34, 5, 4] },

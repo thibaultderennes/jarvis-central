@@ -1,5 +1,4 @@
-// The Villages (Home's Map box): one village per project in a shared pixel world, its next deadline a signpost at the
-// end of a dirt road. Pure functions (no imports) so `npm test` can load them. All randomness is seeded from the project
+// The Villages (the Map): one settlement per project on a shared colony map (components/Colony.tsx). Pure functions (no imports) so `npm test` can load them. All randomness is seeded from the project
 // id, so the server and the next render draw the same world, the same buildings in the same places.
 //
 // Honest by construction:
@@ -228,6 +227,8 @@ export function workshopState(items: BuildRow[], hasRepo: boolean): WorkshopStat
   return { built: true, running, waiting: prs.length, failed, prUrl: prs.length === 1 ? prs[0].pr_url || null : null };
 }
 
+export type PartKey = "hall" | "police" | "bank" | "shop" | "workshop" | "homes";
+
 // ---- Events: what happened lately in a project (the colony map's chronicle, wagons and fireworks). ----
 
 export type MapEvent = { id: string; at: string; kind: "done" | "late" | "review" | "audit" | "pr" | "failed" | "building"; text: string; part: PartKey };
@@ -260,284 +261,41 @@ export function agoWords(at: string, now: string): string {
   return d === 1 ? "yesterday" : `${d} days ago`;
 }
 
-// ---- The world: a tile grid. Each village sits in its own cell (no two cells overlap), forest fills the rest. ----
+// ---- History: the colony as it stood on an earlier day, rebuilt from item dates (no snapshots stored). ----
 
-/** The core every village is built on, in tiles (police, hall, bank / shop, square, workshop / houses, road, houses). */
-export const CORE_W = 8, CORE_H = 7;
-/** One village's cell: a road row on top, the label row, the plot (fence included) and the deadline road below. */
-export const CELL_W = 15, CELL_H = 15;
-/** Plot sizes (fence included) by how much ground is cleared beyond the core, smallest first. */
-export const PLOTS: { ex: number; ey: number; w: number; h: number }[] = [[0, 0], [1, 0], [0, 1], [1, 1]]
-  .map(([ex, ey]) => ({ ex, ey, w: CORE_W + 2 + 2 * ex, h: CORE_H + 2 + 2 * ey }))
-  .sort((a, b) => a.w * a.h - b.w * b.h);
-
-/** The fenced plot for `weight`: its area tracks the weight (scaled to the heaviest village), nearest available size. */
-export function plotFor(weight: number, maxWeight: number) {
-  const lo = PLOTS[0].w * PLOTS[0].h, hi = PLOTS[PLOTS.length - 1].w * PLOTS[PLOTS.length - 1].h;
-  const f = maxWeight > 0 && weight > 0 ? clamp(weight / maxWeight, 0, 1) : 0;
-  const target = lo + (hi - lo) * f;
-  return PLOTS.reduce((best, p) => (Math.abs(p.w * p.h - target) < Math.abs(best.w * best.h - target) ? p : best), PLOTS[0]);
-}
-
-/** Columns of villages on a wide map. */
-export function colsFor(n: number): number {
-  return n <= 2 ? Math.max(1, n) : n <= 4 ? 2 : 3;
-}
-
+export type DatedItem = { status: string; created_on: string; done_on: string | null; closed_on?: string | null };
 /**
- * Cell origins (in cells) for `n` villages on a grid of `cols`, the last row centred (in half cells). The first
- * `central` villages (the top 3) take the cells nearest the middle; the rest fill the others in reading order.
+ * The items as they stood at the end of `date`: later ones are gone, ones finished or cancelled after it are open again.
+ * Due dates are today's (moves aren't replayed), so "overdue then" is an estimate.
  */
-export function cellOrder(n: number, cols: number, central = 3): Pt[] {
-  const cells: Pt[] = [];
-  for (let row = 0; cells.length < n; row++) {
-    // A short last row spreads over whole cells (never straddling the river gap): 2 of 3 take the outer ones.
-    const k = Math.min(cols, n - cells.length);
-    for (let c = 0; c < k; c++) cells.push({ x: k === cols ? c : Math.round(((c + 0.5) * cols) / k - 0.5), y: row });
-  }
-  if (!n) return [];
-  const cx = cells.reduce((s, p) => s + p.x, 0) / n, cy = cells.reduce((s, p) => s + p.y, 0) / n;
-  const near = cells.map((p, i) => ({ i, d: Math.hypot(p.x - cx, (p.y - cy) * 1.1) })).sort((a, b) => a.d - b.d || a.i - b.i).map((x) => x.i);
-  const middle = near.slice(0, Math.min(n, central)).sort((a, b) => a - b), taken = new Set(middle);
-  return [...middle, ...cells.map((_, i) => i).filter((i) => !taken.has(i))].map((i) => cells[i]);
-}
-
-export type VillageInput = { id: string; weight: number; tier: HallTier; houses: number; built: { police: boolean; bank: boolean; shop: boolean; workshop: boolean }; deadline: boolean };
-export type PartKey = "hall" | "police" | "bank" | "shop" | "workshop" | "homes";
-export type Part = { key: PartKey; rect: Rect; tiles: Tile[]; built: boolean; slots?: Rect[] };
-export type VillagePlan = {
-  id: string; cell: Rect; plot: Rect; ring: Rect; core: Pt; size: { ex: number; ey: number };
-  parts: Part[]; ground: Tile[];
-  /** Square tiles for open-item sites (MAX_SITES) and lamp posts (MAX_LAMPS), in order. */
-  sites: Pt[]; lamps: Pt[];
-  /** The deadline road, as tile centres from the gate to the signpost (empty without a deadline). */
-  road: Pt[]; sign: Pt | null; right: boolean;
-  /** Where the label board hangs (centre of its baseline, in tiles). */
-  label: Pt;
-};
-
-const T = (x: number, y: number, t: string): Tile => ({ x, y, t });
-/** The tile rows of each building, top row first. */
-export const SHAPES = {
-  hall: {
-    small: [["tt48", "tt63", "tt50"], ["tt88", "tt89", "tt91"]],
-    hall: [["tt48", "tt51", "tt50"], ["tt60", "tt63", "tt62"], ["tt88", "tt89", "tt91"]],
-    town: [["tt48", "tt51", "tt49", "tt50"], ["tt60", "tt61", "tt63", "tt62"], ["tt88", "tt89", "tt90", "tt91"]],
-  },
-  police: [["tt48", "tt50"], ["tt88", "tt89"]],
-  bank: [["tt52", "tt54"], ["tt103", "tt79"]],
-  shop: [["tt52", "tt54"], ["tt84", "tt85"]],
-  workshop: { busy: [["tt52", "tt55"], ["tt73", "tt74"]], quiet: [["tt52", "tt55"], ["tt73", "tt86"]] },
-  house: [["tt67"], ["tt86"]],
-  lot: [["tt12", "tt14"], ["tt36", "tt38"]],
-  lotTall: [["tt39"], ["tt42"]],
-} as const;
-
-function shape(rows: readonly (readonly string[])[], x: number, y: number): Tile[] {
-  return rows.flatMap((r, j) => r.map((t, i) => T(x + i, y + j, t)));
-}
-
-/** One village laid out in its cell (`cx`, `cy` in tiles). Everything is seeded by the project id. */
-export function planVillage(v: VillageInput, cx: number, cy: number, maxWeight: number, opts: { busy?: boolean } = {}): VillagePlan {
-  const seed = hash(v.id), rand = rng(seed);
-  const size = plotFor(v.weight, maxWeight);
-  const px = cx + Math.floor((CELL_W - size.w) / 2) + (size.w < CELL_W - 3 && rand() < 0.5 ? 1 : 0) * (rand() < 0.5 ? -1 : 1);
-  const py = cy + 2 + Math.floor((11 - size.h) / 2);
-  const plot = { x: px, y: py, w: size.w, h: size.h };
-  const core = { x: px + 1 + size.ex, y: py + 1 + size.ey };
-  const ground: Tile[] = [];
-  const parts: Part[] = [];
-  const at = (x: number, y: number) => ({ x: core.x + x, y: core.y + y });
-
-  // The town hall: centred at the top of the core; a 3-wide hall leans left or right by seed.
-  const hallRows = SHAPES.hall[v.tier];
-  const hw = hallRows[0].length, hh = hallRows.length;
-  const hx = hw === 4 ? 2 : seed % 2 ? 2 : 3, hy = 3 - hh;
-  parts.push({ key: "hall", rect: { ...at(hx, hy), w: hw, h: hh }, tiles: shape(hallRows, at(hx, hy).x, at(hx, hy).y), built: true });
-  const two = (key: PartKey, x: number, y: number, rows: readonly (readonly string[])[], built: boolean) => {
-    const p = at(x, y);
-    parts.push({ key, rect: { ...p, w: 2, h: 2 }, tiles: shape(built ? rows : SHAPES.lot, p.x, p.y), built });
-  };
-  two("police", 0, 1, SHAPES.police, v.built.police);
-  two("bank", 6, 1, SHAPES.bank, v.built.bank);
-  two("shop", 0, 3, SHAPES.shop, v.built.shop);
-  two("workshop", 6, 3, opts.busy ? SHAPES.workshop.busy : SHAPES.workshop.quiet, v.built.workshop);
-
-  // Houses: one-wide cottages along the street, nearest the road first; no user count yet = two lots for sale.
-  const order = [2, 5, 1, 6, 0, 7];
-  const n = v.houses > 0 ? Math.min(MAX_HOUSES, v.houses) : 0;
-  const slots = (n ? order.slice(0, n) : [2, 5]).map((x) => ({ ...at(x, 5), w: 1, h: 2 }));
-  const homeTiles = slots.flatMap((s) => shape(n ? SHAPES.house : SHAPES.lotTall, s.x, s.y));
-  const xs = slots.map((s) => s.x), x0 = Math.min(...xs), x1 = Math.max(...xs);
-  parts.push({ key: "homes", rect: { x: x0, y: at(0, 5).y, w: x1 - x0 + 1, h: 2 }, tiles: homeTiles, built: n > 0, slots });
-
-  // The square, the street and the gates.
-  for (let x = 2; x <= 5; x++) for (let y = 3; y <= 4; y++) ground.push(T(at(x, y).x, at(x, y).y, "tt43"));
-  const right = rand() < 0.5;
-  const gx = right ? at(4, 0).x : at(3, 0).x;
-  for (let y = core.y + 5; y < py + size.h - 1; y++) { ground.push(T(at(3, 0).x, y, "tt40")); ground.push(T(at(4, 0).x, y, "tt40")); }
-  for (let y = py + 1; y <= core.y; y++) ground.push(T(px + 1, y, "tt40"));
-
-  // The fence, with a two-wide gate at the bottom (the street) and a one-wide gate at the top left (the high road).
-  const gate = new Set([`${at(3, 0).x},${py + size.h - 1}`, `${at(4, 0).x},${py + size.h - 1}`, `${px + 1},${py}`]);
-  for (let x = px; x < px + size.w; x++) for (const y of [py, py + size.h - 1]) {
-    if (gate.has(`${x},${y}`)) { ground.push(T(x, y, "tt40")); continue; }
-    const top = y === py, l = x === px, r = x === px + size.w - 1;
-    ground.push(T(x, y, top ? (l ? "tt44" : r ? "tt46" : "tt45") : l ? "tt68" : r ? "tt70" : "tt69"));
-  }
-  for (let y = py + 1; y < py + size.h - 1; y++) { ground.push(T(px, y, "tt56")); ground.push(T(px + size.w - 1, y, "tt58")); }
-
-  // The square: open-item sites at its corners first, lamp posts between.
-  const sites = [at(2, 4), at(5, 4), at(2, 3), at(5, 3), at(4, 4)];
-  const lamps = [at(3, 3), at(4, 3), at(3, 4)];
-
-  // Spare cleared ground (a bigger plot): a well, flowers, a tree or two; never on a path.
-  const used = new Set([...parts.flatMap((p) => p.tiles), ...ground].map((t) => `${t.x},${t.y}`));
-  const spare: Pt[] = [];
-  for (let y = py + 1; y < py + size.h - 1; y++) for (let x = px + 1; x < px + size.w - 1; x++) {
-    const inCore = x >= core.x && x < core.x + CORE_W && y >= core.y && y < core.y + CORE_H;
-    if (!inCore && !used.has(`${x},${y}`)) spare.push({ x, y });
-  }
-  const decor = ["tt104", "tt16", "tt2", "tt28", "tt1", "tt2", "tt107", "tt1", "tt29", "tt2"];
-  let k = 0;
-  for (const p of spare) { if (rand() < 0.42) ground.push(T(p.x, p.y, decor[k++ % decor.length])); }
-  // Inside the core, the two empty corners by the hall take a flower or a bush.
-  for (const [x, y] of [[0, 0], [7, 0], [1, 0], [6, 0]]) {
-    const p = at(x, y);
-    if (!used.has(`${p.x},${p.y}`)) ground.push(T(p.x, p.y, (x + seed) % 3 ? "tt2" : "tt5"));
-  }
-
-  // The deadline road: out of the bottom gate, down to the road row, then along it to the signpost past the corner.
-  const road: Pt[] = [];
-  let sign: Pt | null = null;
-  if (v.deadline) {
-    const yRoad = py + size.h + 1, end = right ? px + size.w : px - 1;
-    road.push({ x: gx, y: py + size.h }, { x: gx, y: yRoad });
-    for (let x = gx; right ? x <= end : x >= end; x += right ? 1 : -1) if (x !== gx) road.push({ x, y: yRoad });
-    sign = { x: end, y: yRoad };
-  }
-  return {
-    id: v.id, cell: { x: cx, y: cy, w: CELL_W, h: CELL_H }, plot, ring: { x: px - 1, y: py - 1, w: size.w + 2, h: size.h + 2 },
-    core, size: { ex: size.ex, ey: size.ey }, parts, ground, sites, lamps, road, sign, right,
-    label: { x: px + size.w / 2, y: py },
-  };
-}
-
-export type World = { w: number; h: number; villages: VillagePlan[]; tiles: Tile[]; forest: Rect[]; roads: Pt[]; river: Pt[]; bridges: Pt[] };
-
-/** Forest tile for a cell from which of its four neighbours are forest too (3 × 3 cluster pieces, a lone tree otherwise). */
-export function forestTile(n: boolean, s: boolean, w: boolean, e: boolean): string {
-  if ((!n && !s) || (!w && !e)) return "tt28";
-  if (!n) return !w ? "tt6" : !e ? "tt8" : "tt7";
-  if (!s) return !w ? "tt30" : !e ? "tt32" : "tt31";
-  if (!w) return "tt18";
-  if (!e) return "tt20";
-  return "tt19";
-}
-
-/** Water tile for a river cell from its four neighbours (Tiny Battle's lake pieces). */
-export function waterTile(n: boolean, s: boolean, w: boolean, e: boolean): string {
-  const row = !n ? 0 : !s ? 2 : 1, col = !w ? 0 : !e ? 2 : 1;
-  return `tb${[[18, 19, 20], [36, 37, 38], [54, 55, 56]][row][col]}`;
-}
-
-/**
- * The whole world: villages in cells (top 3 central), a high road along the top of each row of cells with a spur to
- * every village's top gate, a two-wide river in its own gap between two columns (bridges where the roads cross), and
- * forest everywhere else. `river: false` (a narrow patch) leaves the river out.
- */
-export function buildWorld(vs: VillageInput[], o: { cols: number; central?: number; river?: boolean; seed?: number; busy?: Set<string>; maxWeight?: number; border?: number }): World {
-  const cols = Math.max(1, Math.floor(o.cols)), withRiver = o.river !== false && vs.length > 0;
-  const order = cellOrder(vs.length, cols, o.central ?? 3);
-  const rows = order.length ? Math.max(...order.map((p) => p.y)) + 1 : 0;
-  const riverAfter = cols >= 2 ? Math.floor((cols - 1) / 2) : 0, GAP = withRiver ? 4 : 0;
-  const B = o.border ?? 1; // forest border
-  const cx = (c: number) => B + c * CELL_W + (withRiver && c > riverAfter ? GAP : 0);
-  const w = B * 2 + cols * CELL_W + GAP, h = B * 2 + rows * CELL_H;
-  const maxW = o.maxWeight ?? Math.max(0, ...vs.map((v) => v.weight));
-  const villages = vs.map((v, i) => planVillage(v, cx(order[i].x), B + order[i].y * CELL_H, maxW, { busy: o.busy?.has(v.id) }));
-
-  const key = (x: number, y: number) => `${x},${y}`;
-  const clear = new Set<string>();
-  for (const v of villages) for (let y = v.ring.y; y < v.ring.y + v.ring.h; y++) for (let x = v.ring.x; x < v.ring.x + v.ring.w; x++) clear.add(key(x, y));
-
-  // High roads: one per row of cells, across the world, with a spur down to each village's top gate.
-  const roads: Pt[] = [];
-  const roadSet = new Set<string>();
-  const addRoad = (x: number, y: number) => { if (!roadSet.has(key(x, y))) { roadSet.add(key(x, y)); roads.push({ x, y }); } };
-  for (let r = 0; r < rows; r++) for (let x = B; x < w - B; x++) addRoad(x, B + r * CELL_H);
-  for (const v of villages) for (let y = v.cell.y + 1; y < v.plot.y; y++) addRoad(v.plot.x + 1, y);
-
-  // The river: two wide, in its gap, swinging one tile left or right every few rows (seeded), straight at bridges.
-  const river: Pt[] = [], bridges: Pt[] = [];
-  const water = new Set<string>();
-  if (withRiver) {
-    const rand = rng((o.seed ?? 7) ^ 0x2545f491);
-    const gx = cols >= 2 ? cx(riverAfter) + CELL_W : cx(0) + CELL_W; // first column of the gap
-    let off = 1, hold = 0;
-    for (let y = 0; y < h; y++) {
-      const nearRoad = roadSet.has(key(gx + 1, y)) || roadSet.has(key(gx + 1, y + 1)) || roadSet.has(key(gx + 1, y - 1));
-      if (!nearRoad && hold <= 0 && rand() < 0.35) { off = off === 1 ? (rand() < 0.5 ? 0 : 2) : 1; hold = 3; }
-      hold--;
-      for (const x of [gx + off, gx + off + 1]) { water.add(key(x, y)); river.push({ x, y }); if (roadSet.has(key(x, y))) bridges.push({ x, y, ...(x === gx + off ? {} : { end: true }) } as Pt); }
-    }
-  }
-
-  const tiles: Tile[] = [];
-  for (const p of river) {
-    const has = (x: number, y: number) => y < 0 || y >= h || water.has(key(x, y));
-    tiles.push(T(p.x, p.y, waterTile(has(p.x, p.y - 1), has(p.x, p.y + 1), has(p.x - 1, p.y), has(p.x + 1, p.y))));
-  }
-  for (const p of roads) if (!water.has(key(p.x, p.y))) tiles.push(T(p.x, p.y, "tt40"));
-  for (const b of bridges) tiles.push(T(b.x, b.y, (b as Pt & { end?: boolean }).end ? "td80" : "td79"));
-  for (const v of villages) for (const p of v.road) roadSet.add(key(p.x, p.y));
-  for (const v of villages) if (v.sign) roadSet.add(key(v.sign.x, v.sign.y));
-
-  // Forest: every tile not cleared, road or water. Inner tiles merge into runs (one pattern-filled shape); edge tiles
-  // are drawn one by one from the cluster pieces.
-  const isForest = (x: number, y: number) => x >= 0 && y >= 0 && x < w && y < h && !clear.has(key(x, y)) && !roadSet.has(key(x, y)) && !water.has(key(x, y));
-  const forest: Rect[] = [];
-  const rand = rng((o.seed ?? 7) ^ 0x51ed270b);
-  for (let y = 0; y < h; y++) {
-    let run = -1;
-    for (let x = 0; x <= w; x++) {
-      const f = x < w && isForest(x, y);
-      // The world's own edge counts as forest, so the border reads as woods going on.
-      const nb = (xx: number, yy: number) => xx < 0 || yy < 0 || xx >= w || yy >= h || isForest(xx, yy);
-      const inner = f && nb(x, y - 1) && nb(x, y + 1) && nb(x - 1, y) && nb(x + 1, y);
-      if (inner && run < 0) run = x;
-      if (!inner && run >= 0) { forest.push({ x: run, y, w: x - run, h: 1 }); run = -1; }
-      if (f && !inner) tiles.push(T(x, y, forestTile(nb(x, y - 1), nb(x, y + 1), nb(x - 1, y), nb(x + 1, y))));
-    }
-  }
-  // A few lone trees and flowers on the cleared ring around each fence.
-  for (const v of villages) {
-    for (let x = v.ring.x; x < v.ring.x + v.ring.w; x++) for (const y of [v.ring.y, v.ring.y + v.ring.h - 1]) {
-      if (roadSet.has(key(x, y))) continue;
-      const r = rand();
-      if (r < 0.12) tiles.push(T(x, y, "tt2")); else if (r < 0.2) tiles.push(T(x, y, "tt1"));
-    }
-  }
-  return { w, h, villages, tiles, forest, roads, river, bridges };
-}
-
-/** `n + 2` points spread along a polyline of tile centres (both ends included): the stones on the deadline road. */
-export function alongRoad(path: Pt[], n: number): Pt[] {
-  if (path.length < 2) return path.slice(0, 1);
-  const seg = path.slice(1).map((p, i) => Math.hypot(p.x - path[i].x, p.y - path[i].y));
-  const total = seg.reduce((a, b) => a + b, 0), m = n + 2;
-  return Array.from({ length: m }, (_, i) => {
-    let d = (total * i) / (m - 1), k = 0;
-    while (k < seg.length - 1 && d > seg[k]) { d -= seg[k]; k++; }
-    const t = seg[k] ? d / seg[k] : 0, a = path[k], b = path[k + 1];
-    return { x: r2(a.x + (b.x - a.x) * t), y: r2(a.y + (b.y - a.y) * t) };
+export function itemsAsOf<T extends DatedItem>(items: T[], date: string): T[] {
+  return items.filter((i) => i.created_on <= date).map((i) => {
+    if (i.status === "done") return i.done_on && i.done_on <= date ? i : { ...i, status: "todo", done_on: null };
+    if (i.status === "cancelled") return i.closed_on && i.closed_on <= date ? i : { ...i, status: "todo" };
+    return i;
   });
 }
 
-/** Every tile the map can draw (the page defines one symbol per key; a test checks the world never uses another). */
-export const TILE_KEYS: readonly string[] = [
-  ...[0, 1, 2, 5, 6, 7, 8, 12, 14, 16, 18, 19, 20, 28, 29, 30, 31, 32, 36, 38, 39, 40, 42, 43, 44, 45, 46, 48, 49, 50, 51, 52, 54, 55, 56, 57, 58,
-    60, 61, 62, 63, 67, 68, 69, 70, 73, 74, 79, 83, 84, 85, 86, 88, 89, 90, 91, 103, 104, 107].map((i) => `tt${i}`),
-  ...[18, 19, 20, 36, 37, 38, 54, 55, 56].map((i) => `tb${i}`),
-  ...[79, 80, 85].map((i) => `td${i}`),
-];
+/** Open items at the end of each of the last `weeks` weeks (oldest first, the last point is `today`), and items finished in each. */
+export function weekSeries(items: DatedItem[], today: string, weeks = 8): { date: string; open: number; done: number }[] {
+  return Array.from({ length: weeks }, (_, k) => {
+    const date = shift(today, -7 * (weeks - 1 - k)), from = shift(date, -7);
+    return {
+      date,
+      open: itemsAsOf(items, date).filter((i) => i.status === "todo" || i.status === "doing").length,
+      done: items.filter((i) => i.status === "done" && i.done_on && i.done_on > from && i.done_on <= date).length,
+    };
+  });
+}
+
+export type Season = "winter" | "spring" | "summer" | "autumn";
+/** The season of a date; `south` flips it for the southern hemisphere. */
+export function seasonOf(date: string, south = false): Season {
+  const m = (+date.slice(5, 7) + (south ? 6 : 0) - 1) % 12 + 1;
+  return m === 12 || m <= 2 ? "winter" : m <= 5 ? "spring" : m <= 8 ? "summer" : "autumn";
+}
+
+export const LANDMARKS = ["windmill", "lighthouse", "obelisk", "oak"] as const;
+export type Landmark = (typeof LANDMARKS)[number];
+/** Each project keeps one landmark for life, picked from its id. */
+export const landmarkFor = (id: string): Landmark => LANDMARKS[hash(id) % LANDMARKS.length];

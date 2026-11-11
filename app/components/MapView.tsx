@@ -2,10 +2,9 @@ import Link from "next/link";
 import { displayColor, getCosts, getItems, getProjects, getReviews, splitFeatured } from "@/lib/data";
 import { getMetrics } from "@/lib/metrics";
 import { buildRegions, FOG_DAYS, nextStop, SOON_DAYS, totals, trailPoints, WINDOW_DAYS, type Region, type Trail } from "@/lib/map";
-import { agoWords, eventsFor, areaWeight, bankState, hallTier, HALL, homesState, LAND_DAYS, onTimeCount, policeState, shopState, TOWN_HALL, workshopState, type Snap } from "@/lib/villages";
-import Villages, { VillageLegend, regionLabel, type Village } from "@/components/Villages";
-import VillagesShell from "@/components/VillagesShell";
-import IsoLab, { type Look } from "@/components/IsoLab";
+import { agoWords, eventsFor, areaWeight, bankState, hallTier, HALL, homesState, itemsAsOf, LAND_DAYS, onTimeCount, policeState, seasonOf, shopState, TOWN_HALL, weekSeries, workshopState, type Snap } from "@/lib/villages";
+import { regionLabel, type OpenItem, type Village } from "@/components/Villages";
+import Colony from "@/components/Colony";
 import { fmtDate, isoInTZ, today } from "@/lib/time";
 import "@/app/(main)/map/map.css";
 
@@ -92,19 +91,32 @@ function RegionCard({ r, stop }: { r: Region; stop: boolean }) {
   );
 }
 
-/** The map of projects: one village per active project (Home's Map box; /map redirects there), or the card list. */
-const LOOKS: [string, string][] = [["", "Pixel cards"], ["islands", "Islands"], ["park", "Park"], ["colony", "Colony"]];
+/** How far back the time slider goes. */
+export const HISTORY_WEEKS = 8;
 
-export default async function MapView({ look = "" }: { look?: string } = {}) {
-  const t = today(), nowIso = new Date().toISOString();
-  const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
-  const [projects, items, reviews, security, screenings, costs, metrics] = await Promise.all([
+/**
+ * The map of projects: every active project a settlement on the colony map, with the card list as its non-map twin.
+ * `at` (YYYY-MM-DD) shows the colony as it stood that day, rebuilt from item dates; `full` is the /map page (the Home
+ * box is the same map without the time slider).
+ */
+export default async function MapView({ at = null, full = false }: { at?: string | null; full?: boolean } = {}) {
+  const now = today(), t = at && at < now ? at : now, past = t !== now;
+  const nowIso = past ? `${t}T23:59:59.999Z` : new Date().toISOString();
+  const since = new Date(Date.parse(nowIso) - 90 * 86_400_000).toISOString().slice(0, 10);
+  const [projects, allItems, allReviews, allSecurity, allScreenings, costs, allMetrics] = await Promise.all([
     getProjects(), getItems(), getReviews({ type: "project", limit: 500 }),
     getReviews({ type: "security", limit: 500, light: true }), getReviews({ type: "screening", limit: 500, light: true }),
     getCosts(), getMetrics({ since, limit: 2000 }),
   ]);
+  const day = (iso: string | null) => (iso ? isoInTZ(new Date(iso)) : null);
+  const before = <T extends { created_at: string }>(xs: T[]) => (past ? xs.filter((x) => x.created_at <= nowIso) : xs);
+  const reviews = before(allReviews), security = before(allSecurity), screenings = before(allScreenings);
+  const metrics = past ? allMetrics.filter((m) => m.date <= t) : allMetrics;
+  // Each item with its dates as days; in the past, as it stood then (build status isn't replayed).
+  const dated = allItems.map((i) => ({ ...i, created_on: day(i.created_at) || "", done_on: day(i.done_at), closed_on: i.status === "cancelled" ? day(i.updated_at) : null }));
+  const items = past ? itemsAsOf(dated, t).map((i) => ({ ...i, done_at: i.done_on ? i.done_at : null, build_status: null, pr_url: null })) : dated;
   const top = new Set(splitFeatured(projects).featured.map((p) => p.id));
-  const rows = items.map((i) => ({ project_id: i.project_id, id: i.id, title: i.title, status: i.status, due: i.due, done_on: i.done_at ? isoInTZ(new Date(i.done_at)) : null }));
+  const rows = items.map((i) => ({ project_id: i.project_id, id: i.id, title: i.title, status: i.status, due: i.due, done_on: i.done_on }));
   const regions = buildRegions(
     projects.map((p) => ({ id: p.id, name: p.name, color: displayColor(p, top), deadlines: p.deadlines || [] })),
     rows, reviews, t,
@@ -119,22 +131,33 @@ export default async function MapView({ look = "" }: { look?: string } = {}) {
     for (const x of xs) if (x.project_id) m.set(x.project_id, [...(m.get(x.project_id) || []), x]);
     return m;
   };
-  const byProject = group(rows), itemsBy = group(items), checksBy = group([...security, ...screenings]), costsBy = group(costs);
+  const byProject = group(rows), itemsBy = group(items), datedBy = group(dated), checksBy = group([...security, ...screenings]), costsBy = group(costs);
   const snapsBy = new Map<string, Snap[]>();
   for (const s of metrics) snapsBy.set(s.project_id, [...(snapsBy.get(s.project_id) || []), s]);
   const lands = regions.map((r) => areaWeight(byProject.get(r.id) || [], t));
-  const maxW = Math.max(0, ...lands.map((l) => l.weight));
   const projectById = new Map(projects.map((p) => [p.id, p]));
+  const soon = new Date(Date.parse(`${t}T00:00:00Z`) + SOON_DAYS * 86_400_000).toISOString().slice(0, 10);
   const villages: Village[] = regions.map((r, i) => {
-    const onTimeAll = onTimeCount(byProject.get(r.id) || []), snaps = snapsBy.get(r.id) || [];
+    const onTimeAll = onTimeCount(byProject.get(r.id) || []), snaps = snapsBy.get(r.id) || [], its = itemsBy.get(r.id) || [], p = projectById.get(r.id);
+    const open = its.filter((x) => x.status === "todo" || x.status === "doing");
+    const openItems: OpenItem[] = open
+      .map((x) => ({ id: x.id, title: x.title, due: x.due, owner: x.owner, tone: (x.due && x.due < t ? "bad" : x.due && x.due <= soon ? "warn" : "ok") as OpenItem["tone"] }))
+      .sort((a, b) => (a.due || "9").localeCompare(b.due || "9")).slice(0, 10);
     return {
       ...r, land: lands[i], onTimeAll, top: top.has(r.id), hall: hallTier(onTimeAll),
       police: policeState(checksBy.get(r.id) || []), bank: bankState(costsBy.get(r.id) || [], snaps),
       shop: shopState(snaps, t), homes: homesState(snaps),
-      workshop: workshopState(itemsBy.get(r.id) || [], !!projectById.get(r.id)?.site?.code),
-      paused: !!projectById.get(r.id)?.paused_at,
+      workshop: workshopState(its, !!p?.site?.code),
+      paused: !!p?.paused_at, openItems,
+      claude: {
+        working: open.filter((x) => x.build_status === "working").map((x) => x.title),
+        waiting: open.filter((x) => x.build_status === "pr_open" || x.build_status === "merge_requested").map((x) => ({ title: x.title, url: x.pr_url })),
+        failed: open.filter((x) => x.build_status === "failed").map((x) => x.title),
+      },
+      series: weekSeries(datedBy.get(r.id) || [], t, HISTORY_WEEKS),
+      milestones: (p?.deadlines || []).filter((d) => d.date < t).length,
       events: eventsFor(
-        (itemsBy.get(r.id) || []).map((i) => ({ id: i.id, title: i.title, status: i.status, due: i.due, done_at: i.done_at, done_on: i.done_at ? isoInTZ(new Date(i.done_at)) : null, build_status: i.build_status, build_updated_at: i.build_updated_at })),
+        its.map((x) => ({ id: x.id, title: x.title, status: x.status, due: x.due, done_at: x.done_at, done_on: x.done_on, build_status: x.build_status, build_updated_at: past ? null : x.build_updated_at })),
         [...reviews, ...security, ...screenings].filter((x) => x.project_id === r.id), nowIso,
       ).map((e) => ({ ...e, ago: agoWords(e.at, nowIso) })),
     };
@@ -142,49 +165,23 @@ export default async function MapView({ look = "" }: { look?: string } = {}) {
   // What needs you first: overdue, then due this week; paused projects last. Ties keep the order above.
   const plots = villages.map((v, i) => ({ v, i })).sort((a, b) => Number(!!a.v.paused) - Number(!!b.v.paused) || b.v.overdue - a.v.overdue || b.v.dueSoon - a.v.dueSoon || a.i - b.i).map((x) => x.v);
 
-  const list = (
-    <div className="mapv-list">
-      <div className="map" role="list" aria-label="Projects">
-        {regions.map((r) => <div role="listitem" key={r.id} className={`cell cell-${r.size}`}><RegionCard r={r} stop={r.id === stop} /></div>)}
-      </div>
-      <div className="key-row" aria-hidden="true">
-        <span><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="5" className="k-on" /></svg>Done on time</span>
-        <span><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4.25" className="k-open" /></svg>Open</span>
-        <span><svg width="14" height="14" viewBox="0 0 14 14"><path d="M3 3l8 8M11 3l-8 8" className="k-late" /></svg>Late</span>
-        <span><svg width="14" height="14" viewBox="0 0 14 14"><circle cx="7" cy="7" r="4" className="k-now" /></svg>Today</span>
-        <span><svg width="14" height="14" viewBox="0 0 14 14"><path d="M4 12V2l8 3.5L4 9" className="k-flag" /></svg>Deadline</span>
-      </div>
-    </div>
-  );
-  const map = (
-    <div className="mapv-map">
-      <Villages villages={plots} stop={stop} today={t} maxWeight={maxW} />
-      <details className="map-how"><summary>What the pictures mean</summary><VillageLegend /></details>
-    </div>
-  );
-
+  if (!regions.length) return <div className="panel empty">No active projects yet. Approve a project folder in <Link href="/admin">Admin</Link> and it appears here.</div>;
   return (
     <div className="mapv">
-      <p className="map-sum">
-        <span><b className="mono">{sum.regions}</b> {sum.regions === 1 ? "village" : "villages"}</span>
-        <span><b className="mono">{sum.open}</b> open</span>
-        <span className={sum.overdue ? "bad" : undefined}><b className="mono">{sum.overdue}</b> overdue</span>
-        <span><b className="mono">{sum.fog}</b> in fog</span>
-        {sum.pct !== null && <span><b className="mono">{sum.pct}%</b> ground taken ({sum.onTime} of {sum.steps} on time)</span>}
-      </p>
-
-      <nav className="look-chips chips" aria-label="Look">{LOOKS.map(([id, label]) => <Link key={id} className="chip" href={id ? `/map?look=${id}` : "/map"} aria-current={look === id ? "page" : undefined}>{label}</Link>)}</nav>
-      {regions.length && look
-        ? <IsoLab villages={plots} look={look as Look} today={t} />
-        : regions.length
-        ? <VillagesShell map={map} list={list} seen={villages.map((v) => ({ id: v.id, name: v.name, onTime: v.onTimeAll }))} />
-        : <div className="panel empty">No active projects yet. Approve a project folder in <Link href="/admin">Admin</Link> and it appears here.</div>}
-
+      <Colony villages={plots} today={t} now={now} season={seasonOf(t)} past={past} full={full} weeks={HISTORY_WEEKS} />
       <details className="map-how">
-        <summary>How ground is taken</summary>
-        <p>Each project is a village. Its fenced ground is what you finished in the last {LAND_DAYS} days: an item done on or before its due date adds a full share, one done late half, one with no due date a quarter, so ticking off undated work barely clears land. The plot&apos;s area follows that weight, scaled to your busiest village. Overdue work never takes ground away: it sets the town hall on fire instead.</p>
-        <p>Every building stands for one part of the project and opens it. The town hall is the checklist: it grows with every item you ever finished on time (a hall at {HALL}, a town hall with a clock at {TOWN_HALL}), crates on the square are open items, lamp posts the ones due in {SOON_DAYS} days, and its flag is the latest review. The police station shows the latest security audit and screenings, the bank your recurring costs against revenue, the shop whether visitors, signups or active users grew, the houses how many users you have (one house from 1, two from 10, three from 100), and the workshop Claude&apos;s builds and the pull requests waiting for you. A building with nothing recorded is an empty lot with a sign: nothing to judge yet. Fog settles after {FOG_DAYS} days with nothing finished; weather follows the latest review, a storm when it&apos;s off track, a cloud when at risk.</p>
-        <p>The road to the signpost holds the items due between the previous deadline (or the last {WINDOW_DAYS} days when there is none) and the next one. An item takes ground only when you finish it on or before its due date. Finishing it late, or letting it pass its date, keeps it on the road as a lost step, so that milestone can no longer reach 100%. Items without a due date and cancelled items don&apos;t count. The cart marks today; you stand at the nearest deadline, the next stop.</p>
+        <summary>The same as a list ({sum.regions} {sum.regions === 1 ? "project" : "projects"}, {sum.open} open, {sum.overdue} overdue)</summary>
+        <div className="mapv-list">
+          <div className="map" role="list" aria-label="Projects">
+            {regions.map((r) => <div role="listitem" key={r.id} className={`cell cell-${r.size}`}><RegionCard r={r} stop={r.id === stop} /></div>)}
+          </div>
+        </div>
+      </details>
+      <details className="map-how">
+        <summary>How to read the map</summary>
+        <p>Every project is a walled settlement. Each building is one part of the project and nothing is decoration only: the <b>town hall</b> is the checklist and grows a tower, then a clock tower, with items you finished on time (at {HALL} and {TOWN_HALL}); the <b>workshop</b> is Claude&apos;s builds; the <b>watchtower</b> is security, its beacon calm, amber or red; the <b>vault</b> is money; the <b>market</b> is growth; the <b>homes</b> are customers. A part with nothing recorded is an empty lot with a sign, never a ruin.</p>
+        <p><b>Crates</b> on the square are open items, the most pressing first: red is overdue, amber is due within {SOON_DAYS} days. Click one to finish it, move its date or hand it to Claude. <b>Fields</b> are items done on time in the last 28 days and <b>villagers</b> walk when work is moving. A <b>wagon</b> is something you finished in the last two days. <b>Mist</b> means nothing was finished for {FOG_DAYS} days; stone ground and a shut gate mean the project is paused. The <b>landmark</b> behind the hall is the project&apos;s own, and it rises with every deadline behind you. The stones on the road lead to the next deadline (the last {WINDOW_DAYS} days when there was none before): green done on time, red late, hollow still open.</p>
+        <p>Weather follows the latest review: a storm when it is off track, a cloud when at risk. The season is the calendar&apos;s, and night falls in the evening. The <b>lenses</b> recolour every settlement by one question. Cleared ground in the last {LAND_DAYS} days still counts on-time work fully, late work half and undated work a quarter. The time slider rebuilds an earlier week from item dates; due dates are today&apos;s, so past overdue counts are an estimate.</p>
       </details>
     </div>
   );
