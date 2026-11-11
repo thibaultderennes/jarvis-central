@@ -221,7 +221,8 @@ export function workshopState(items: BuildRow[], hasRepo: boolean): WorkshopStat
   const live = items.filter((i) => i.status !== "cancelled");
   if (!hasRepo && !live.some((i) => i.build_status)) return { built: false };
   const running = live.filter((i) => i.build_status === "working").length;
-  const prs = live.filter((i) => i.build_status === "pr_open" || i.build_status === "merge_requested");
+  // Only on items still open: a finished item can keep its old "pr_open" status long after the pull request merged.
+  const prs = live.filter((i) => (i.status === "todo" || i.status === "doing") && (i.build_status === "pr_open" || i.build_status === "merge_requested"));
   const failed = live.filter((i) => i.build_status === "failed" && (i.status === "todo" || i.status === "doing"))
     .map((i) => ({ id: i.id, title: i.title, note: String(i.build_note || "").trim() }));
   return { built: true, running, waiting: prs.length, failed, prUrl: prs.length === 1 ? prs[0].pr_url || null : null };
