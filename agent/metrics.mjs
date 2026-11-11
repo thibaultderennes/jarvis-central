@@ -169,13 +169,17 @@ export async function currentGaps(projects = null) {
   return metricsGaps({ projects: ps, sources: SOURCES, snapshots, today, ...o });
 }
 
+const REMINDER_PREFIX = "Record this week's product numbers";
+/** True when an earlier reminder is still open (carried forward by the daily roll-over): no second one then. */
+export const reminderOpen = (todos) => (todos || []).some((t) => !t.done && String(t.title || "").startsWith(REMINDER_PREFIX));
+
 /** The weekly reminder: one todo for every live project with no source and nothing typed lately (a broken source is
  * the worker log's and doctor's job, not a todo). Null when there is nothing to type. */
 export function reminderTodo(gaps, today) {
   const typed = gaps.filter((g) => g.why === "no-source");
   if (!typed.length) return null;
   return {
-    title: `Record this week's product numbers: ${typed.map((g) => g.name).join(", ")} (jarvis metrics <id> --set users=… --set visits=…)`.slice(0, 300),
+    title: `${REMINDER_PREFIX}: ${typed.map((g) => g.name).join(", ")} (jarvis metrics <id> --set users=… --set visits=…)`.slice(0, 300),
     date: today, kind: "work", ...(typed.length === 1 ? { project_id: typed[0].id } : {}),
   };
 }
@@ -186,7 +190,12 @@ export async function remindMetricsDue(projects, log) {
   const week = mondayOf(todayTZ()), stamp = path.join(cacheDir(), "metrics.last-reminder");
   try { if (fs.readFileSync(stamp, "utf8").trim() >= week) return null; } catch {}
   const gaps = await currentGaps(projects);
-  const todo = reminderTodo(gaps, todayTZ());
+  let todo = reminderTodo(gaps, todayTZ());
+  if (todo) {
+    const t = todayTZ();
+    const open = await api("GET", "/api/agent/todos" + qs({ from: addDays(t, -30), to: addDays(t, 7), someday: 1 })).catch(() => []);
+    if (reminderOpen(open)) { log("metrics reminder already open, not adding another"); todo = null; }
+  }
   if (todo) { await api("POST", "/api/agent/todos", todo); log("metrics reminder added", todo.title); }
   try { fs.writeFileSync(stamp, week); } catch {}
   return { gaps: gaps.length, todo: !!todo };
