@@ -284,3 +284,9 @@ alter table reviews add column if not exists decisions jsonb not null default '{
 -- Pause a project: set = paused since then. A paused project keeps its checklist and page but leaves the plan,
 -- Today, the overdue queue, Needs you, the sidebar's counts, the reviews and the worker's builds and metrics.
 alter table projects add column if not exists paused_at timestamptz;
+-- Todos whose linked item was closed by the agent before 0.7.5 stayed undone (the agent API didn't tick them yet):
+-- they counted as missed in "planned vs done" and kept old work in the roll-forward's lookback. Tick them once.
+update todos set done = true, done_at = coalesce(done_at, now()) where not done and item_id is not null
+  and exists (select 1 from items i where i.project_id = todos.project_id and i.id = todos.item_id and i.status in ('done', 'cancelled'))
+  and not exists (select 1 from kv where key = 'migrate.todos_follow_closed_items');
+insert into kv (key, value) values ('migrate.todos_follow_closed_items', to_jsonb(now())) on conflict (key) do nothing;
