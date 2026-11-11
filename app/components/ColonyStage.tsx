@@ -69,7 +69,7 @@ export default function ColonyStage({ villages, view, cols, rows, season, season
   useEffect(() => { setSet(load(SET_KEY, DEFAULTS)); setPins(load<string[]>(PIN_KEY, [])); }, []);
   useEffect(() => { if (!toast) return; const t = setTimeout(() => setToast(null), 4000); return () => clearTimeout(t); }, [toast]);
   const [night, setNight] = useState(false), [still, setStill] = useState(false), [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
-  const [log, setLog] = useState(true), [fresh, setFresh] = useState<Set<string>>(new Set());
+  const [fresh, setFresh] = useState<Set<string>>(new Set());
   const router = useRouter(), path = usePathname(), seen = useRef<Set<string> | null>(null);
   const [lens, setLens] = useState("none"), [item, setItem] = useState<string | null>(null), [busy, start] = useTransition(), [err, setErr] = useState<string | null>(null);
   const [due, setDue] = useState(""), [playing, setPlaying] = useState(false);
@@ -97,12 +97,14 @@ export default function ColonyStage({ villages, view, cols, rows, season, season
     const c = cam.current, h = c.w * r.height / r.width;
     s.setAttribute("viewBox", `${c.cx - c.w / 2} ${c.cy - h / 2} ${c.w} ${h}`);
     const far = c.w / view.w > 0.72, el = wrap.current; if (el && el.hasAttribute("data-far") !== far) el.toggleAttribute("data-far", far);
-    s.style.setProperty("--bz", String(Math.min(1, Math.max(0.42, c.w / view.w))));
+    s.style.setProperty("--bz", String(Math.min(1.5, Math.max(0.45, c.w / r.width))));
   }, [view.w]);
   const fitW = useCallback(() => { const r = svg()?.getBoundingClientRect(); return r && r.width ? Math.max(view.w, view.h * r.width / r.height) : view.w; }, [view]);
   const fly = useCallback((to: Cam) => {
     cancelAnimationFrame(raf.current);
     const from = { ...cam.current }, t0 = performance.now(), ms = window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 320;
+    // A hidden tab gets no animation frames: land at once so the view is right when it comes back.
+    if (!ms || document.hidden) { cam.current = to; apply(); return; }
     const tick = (now: number) => {
       const k = ms ? Math.min(1, (now - t0) / ms) : 1, e = 1 - (1 - k) ** 3;
       cam.current = { cx: from.cx + (to.cx - from.cx) * e, cy: from.cy + (to.cy - from.cy) * e, w: from.w + (to.w - from.w) * e };
@@ -110,7 +112,14 @@ export default function ColonyStage({ villages, view, cols, rows, season, season
     };
     raf.current = requestAnimationFrame(tick);
   }, [apply]);
-  const fit = useCallback(() => fly({ cx: view.x + view.w / 2, cy: view.y + view.h / 2, w: fitW() }), [fly, fitW, view]);
+  // Home view: frame the settlements, not the empty land around them.
+  const fit = useCallback(() => {
+    const r = svg()?.getBoundingClientRect(), gs = [...(wrap.current?.querySelectorAll<SVGGElement>("[data-vil]") || [])];
+    if (!r || !r.width || !gs.length) return fly({ cx: view.x + view.w / 2, cy: view.y + view.h / 2, w: fitW() });
+    const xs = gs.map((g) => Number(g.dataset.cx)), ys = gs.map((g) => Number(g.dataset.cy));
+    const x0 = Math.min(...xs) - 225, x1 = Math.max(...xs) + 225, y0 = Math.min(...ys) - 180, y1 = Math.max(...ys) + 130;
+    fly({ cx: (x0 + x1) / 2, cy: (y0 + y1) / 2, w: Math.min(fitW(), Math.max(x1 - x0, (y1 - y0) * r.width / r.height)) });
+  }, [fly, fitW, view]);
   const zoom = useCallback((f: number, px = 0.5, py = 0.5) => {
     const s = svg(); if (!s) return;
     const r = s.getBoundingClientRect(), c = cam.current, h = c.w * r.height / r.width, max = fitW() * 1.05;
@@ -199,15 +208,10 @@ export default function ColonyStage({ villages, view, cols, rows, season, season
         <span><b className="mono">{sum((v) => v.stats.done28)}</b> done, 28 days</span>
         <span className="cs-ctl">
           <button type="button" className="chip next" disabled={!needy.length} onClick={nextNeed} title="Jump to the next settlement that needs you (N)">Next that needs you{needy.length ? ` · ${needy.length}` : ""}</button>
-          <button type="button" className="chip" aria-pressed={log} onClick={() => setLog(!log)}>Chronicle</button>
-          <button type="button" className="chip" aria-pressed={night} onClick={() => change({ light: night ? "day" : "night" })}>Night</button>
-          <button type="button" className="chip" aria-pressed={still} onClick={() => setStill(!still)}>Pause</button>
-          <button type="button" className="chip" aria-label="Zoom out" onClick={() => zoom(1.3)}>−</button>
-          <button type="button" className="chip" aria-label="Zoom in" onClick={() => zoom(0.75)}>+</button>
-          <button type="button" className="chip" onClick={() => { select(null); fit(); }}>Whole map</button>
           <details className="cs-set">
             <summary className="chip">Settings</summary>
             <div className="cs-set-p">
+              <label><input type="checkbox" checked={still} onChange={(e) => setStill(e.target.checked)} /> Pause all motion</label>
               <label><input type="checkbox" checked={set.calm} onChange={(e) => change({ calm: e.target.checked })} /> Calm map: no fire, no storms</label>
               <label><input type="checkbox" checked={set.sound} onChange={(e) => change({ sound: e.target.checked })} /> A soft chime when you finish something</label>
               <label><input type="checkbox" checked={set.south} onChange={(e) => change({ south: e.target.checked })} /> Southern hemisphere seasons</label>
@@ -227,25 +231,25 @@ export default function ColonyStage({ villages, view, cols, rows, season, season
         </div>}
       </div>
       {past && <p className="cs-past">The colony as it stood on {today}, rebuilt from item dates. Due dates are today&apos;s, builds aren&apos;t replayed, and nothing can be changed here.</p>}
+      <div className="cs-body">
       <div ref={wrap} className="cs-view" tabIndex={0} aria-label="Colony map. Drag to move, pinch or use + and − to zoom, click a settlement to select it." onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => setTip(null)} onKeyDown={onKey}
         onDoubleClick={(e) => { const h = hit(e.target); const g = h.vil ? wrap.current?.querySelector<SVGGElement>(`[data-vil="${CSS.escape(h.vil)}"]`) : null; if (g) fly({ cx: Number(g.dataset.cx), cy: Number(g.dataset.cy) + 10, w: view.w * 0.3 }); }}>
         {children}
-        {log && !sel && feed.length > 0 && (
-          <ol className="cs-log" aria-label="Chronicle: what happened lately" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
-            {feed.map((e, i) => <li key={e.v.id + e.id} data-c={e.v.color} className={`k-${e.kind}${fresh.has(`${e.v.id}|${e.id}`) ? " new" : ""}`} style={{ animationDelay: `${i * 90}ms` }}>
-              <button type="button" onClick={() => select(e.v.id, e.part)}><i className="dot" aria-hidden="true" /><span className="cs-lt"><b>{e.v.name}</b> · {KIND[e.kind] || e.kind}<small>{e.text}</small></span><span className="cs-ago">{e.ago}</span></button>
-            </li>)}
-          </ol>
-        )}
+        <div className="cs-mini" aria-label="Settlements" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          {villages.map((v, i) => <button key={v.id} type="button" className={`mm t-${v.status.tone}`} data-c={v.color} style={mm(v.col, v.row)} aria-pressed={sel === v.id} title={`${i + 1}. ${v.name}: ${v.status.text}`} aria-label={`${v.name}: ${v.status.text}`} onClick={() => select(v.id)} />)}
+        </div>
+        <div className="cs-zoom" role="group" aria-label="Zoom" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()} onDoubleClick={(e) => e.stopPropagation()}>
+          <button type="button" className="chip" aria-label="Zoom out" title="Zoom out (−)" onClick={() => zoom(1.3)}>−</button>
+          <button type="button" className="chip" aria-label="Zoom in" title="Zoom in (+)" onClick={() => zoom(0.75)}>+</button>
+          <button type="button" className="chip" title="Back to the whole colony (Esc)" onClick={() => { select(null); fit(); }}>Whole map</button>
+        </div>
         {toast && <div className="cs-toast" role="status">{toast}</div>}
         {tip && <div className="cs-tip" style={{ left: tip.x, top: tip.y }}>{tip.text}</div>}
       </div>
-      <div className="cs-panel" aria-live="polite">
-        <div className="cs-mini" aria-label="Settlements">
-          {villages.map((v, i) => <button key={v.id} type="button" className={`mm t-${v.status.tone}`} data-c={v.color} style={mm(v.col, v.row)} aria-pressed={sel === v.id} title={`${i + 1}. ${v.name}: ${v.status.text}`} aria-label={`${v.name}: ${v.status.text}`} onClick={() => select(v.id)} />)}
-        </div>
+      <aside className="cs-panel" aria-label={cur ? cur.name : "Your colony"}>
         {cur ? <>
           <div className="cs-info" data-c={cur.color}>
+            <button type="button" className="cs-back" onClick={() => { select(null); fit(); }}>← All settlements</button>
             <div className="cs-h"><i className="dot" aria-hidden="true" /><b>{cur.name}</b><span className={`vg-st t-${cur.status.tone}`}>{cur.status.text}</span><button type="button" className="chip" aria-pressed={pins.includes(cur.id)} onClick={() => togglePin(cur.id)}>{pins.includes(cur.id) ? "Pinned" : "Pin to compare"}</button></div>
             {cur.mail && <p className="cs-cl"><b>Inbox</b> <a href="/inbox">{cur.mail.count} message{cur.mail.count === 1 ? "" : "s"} waiting for you</a>{cur.mail.needs ? <span className="t-bad"> · {cur.mail.needs} need{cur.mail.needs === 1 ? "s" : ""} a decision</span> : null}</p>}
             <p className="cs-d">{cur.deadline}</p>
@@ -294,15 +298,24 @@ export default function ColonyStage({ villages, view, cols, rows, season, season
           </div>
         </> : <>
           <div className="cs-info">
-            <div className="cs-h"><b>Your colony</b></div>
-            <p className="cs-d">Click a settlement to select it, or press its number. Drag to move, pinch to zoom, double-click to go close.</p>
-            <ol className="cs-list">{villages.map((v, i) => <li key={v.id} data-c={v.color}><button type="button" onClick={() => select(v.id)}><span className="mono">{i + 1}</span><i className="dot" aria-hidden="true" /><b>{v.name}</b>{lens === "none" ? <span className={`t-${v.status.tone}`}>{v.status.text}</span> : <span className={`t-${v.lens[lens].tone}`}>{v.lens[lens].text}</span>}</button></li>)}</ol>
-          </div>
-          <div className="cs-info">
             <div className="cs-h"><b>Needs you</b></div>
             {needs.length ? <ul className="cs-list">{needs.map(({ v, p }) => <li key={v.id + p.key} data-c={v.color}><button type="button" onClick={() => select(v.id, p.key)}><i className="dot" aria-hidden="true" /><b>{v.name} · {p.name}</b><span className={`t-${p.tone}`}>{p.text}</span></button></li>)}</ul> : <p className="cs-d">Nothing is asking for you.</p>}
           </div>
+          <div className="cs-info">
+            <div className="cs-h"><b>Settlements</b></div>
+            <ol className="cs-list">{villages.map((v, i) => <li key={v.id} data-c={v.color}><button type="button" onClick={() => select(v.id)}><span className="mono">{i + 1}</span><i className="dot" aria-hidden="true" /><b>{v.name}</b>{lens === "none" ? <span className={`t-${v.status.tone}`}>{v.status.text}</span> : <span className={`t-${v.lens[lens].tone}`}>{v.lens[lens].text}</span>}</button></li>)}</ol>
+            <p className="cs-d">Click a settlement or press its number. Drag to move, pinch to zoom, double-click to go close.</p>
+          </div>
+          {feed.length > 0 && <div className="cs-info">
+            <div className="cs-h"><b>Lately</b></div>
+            <ol className="cs-log" aria-label="What happened in the last 7 days">
+              {feed.map((e) => <li key={e.v.id + e.id} data-c={e.v.color} className={`k-${e.kind}${fresh.has(`${e.v.id}|${e.id}`) ? " new" : ""}`}>
+                <button type="button" onClick={() => select(e.v.id, e.part)}><span className="cs-lt"><b>{e.v.name}</b> · {KIND[e.kind] || e.kind}<small>{e.text}</small></span><span className="cs-ago">{e.ago}</span></button>
+              </li>)}
+            </ol>
+          </div>}
         </>}
+      </aside>
       </div>
       {pins.length > 0 && <div className="cs-pins" aria-label="Pinned settlements, side by side">
         {pins.map((id) => villages.find((v) => v.id === id)).filter((v): v is StageVillage => !!v).map((v) => (

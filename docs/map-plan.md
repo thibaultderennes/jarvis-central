@@ -55,6 +55,14 @@ into the same data as the checklists. It is never the only way: the card list un
 - Visual regression: a stored screenshot per season and light, compared in CI.
 - Ambient sound, off by default.
 
+## Review rounds
+| Round | Found | Changed |
+|---|---|---|
+| 1 | The panel sat under the map, so a selection landed below the fold. A third of the stage was empty land. Banner text was about 7px at the whole-map view. The chronicle covered the map's left side. Two toolbar rows held 13 controls. | Inspector beside the map; home view framed on the settlements; banners at a constant size on screen; zoom and minimap on the map; chronicle moved into the panel as "Lately"; Night, Pause and Chronicle buttons folded into Settings or removed |
+
+Open after round 1: banners can still sit on top of a neighbour's buildings; the day background is bright against a dark
+theme; the narrow layout and touch were not looked at this round; on phones the panel is still under the map (item 6).
+
 ## The review loop
 Every round of map work ends with the same pass, and its findings go into "Next":
 1. Look at the whole map, then one settlement close up, in day and night, on a wide and a narrow screen.
