@@ -77,3 +77,11 @@ test("projectUpsert: the detected site is stored as JSON", () => {
   assert.match(q.text, /^insert into projects \(id, site\)/);
   assert.equal(q.params[1], JSON.stringify(site));
 });
+
+test("itemUpdate: keep_open is writable and only written when it changes", () => {
+  const q = itemUpdate({ ...cur, keep_open: false }, { keep_open: true });
+  placeholdersMatch(q);
+  assert.deepEqual(q.cols, ["keep_open"]);
+  assert.deepEqual(q.params, ["demo", "a1", true]);
+  assert.equal(itemUpdate({ ...cur, keep_open: true }, { keep_open: true }), null);
+});

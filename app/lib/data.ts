@@ -33,6 +33,7 @@ export type Item = {
   blocked_by: string[]; // codes of items in the same project this one waits on (open ones show a "blocked" badge)
   sprint_id: string | null; // the sprint (same project) it is planned in
   build_status: BuildStatus | null; build_note: string; pr_url: string | null; build_updated_at: string | null;
+  keep_open: boolean; // merging its approved PR leaves it open (more to do after the merge) instead of marking it done
 };
 /** A dated batch of one project's items. `start`/`end` are inclusive YYYY-MM-DD. */
 export type Sprint = { id: string; project_id: string; name: string; start: string; end: string; created_at: string };
@@ -68,7 +69,7 @@ export type Review = {
 // Postgres `date` comes back as a Date or string depending on driver settings; normalise to YYYY-MM-DD.
 const d10 = (v: unknown): string | null => (v == null ? null : v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
 const ts = (v: unknown): string | null => (v == null ? null : v instanceof Date ? v.toISOString() : String(v));
-const normItem = (r: Record<string, unknown>) => ({ ...r, blocked_by: Array.isArray(r.blocked_by) ? r.blocked_by : [], due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at), note_sent_at: ts(r.note_sent_at), build_updated_at: ts(r.build_updated_at) }) as Item;
+const normItem = (r: Record<string, unknown>) => ({ ...r, blocked_by: Array.isArray(r.blocked_by) ? r.blocked_by : [], due: d10(r.due), created_at: ts(r.created_at), updated_at: ts(r.updated_at), done_at: ts(r.done_at), note_sent_at: ts(r.note_sent_at), build_updated_at: ts(r.build_updated_at), keep_open: r.keep_open === true }) as Item;
 const normSprint = (r: Record<string, unknown>) => ({ id: r.id, project_id: r.project_id, name: r.name, start: d10(r.start_date), end: d10(r.end_date), created_at: ts(r.created_at) }) as Sprint;
 const normCost = (r: Record<string, unknown>) => ({ ...r, amount: Number(r.amount), next_renewal: d10(r.next_renewal), created_at: ts(r.created_at), updated_at: ts(r.updated_at) }) as Cost;
 const normTodo = (r: Record<string, unknown>) => ({ ...r, date: d10(r.date), done_at: ts(r.done_at), created_at: ts(r.created_at), rollovers: Number(r.rollovers) || 0, rolled_from: d10(r.rolled_from), rolled_at: d10(r.rolled_at) }) as Todo;
@@ -168,7 +169,7 @@ export async function addItem(i: { project_id: string; section: string; title: s
   await sql()`insert into item_events (project_id, item_id, field, old, new, actor) values (${i.project_id}, ${id}, 'created', null, ${i.section}, ${actor})`;
   return normItem(rows[0]);
 }
-const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical", "build_status", "pr_url", "blocked_by"]);
+const LOGGED = new Set(["status", "due", "section", "owner", "title", "priority", "estimate_minutes", "critical", "build_status", "pr_url", "blocked_by", "keep_open"]);
 export async function updateItem(project_id: string, id: string, patch: Partial<Item>, actor = "founder"): Promise<Item | null> {
   const [cur] = (await sql()`select * from items where project_id = ${project_id} and id = ${id}`).map(normItem);
   if (!cur) return null;

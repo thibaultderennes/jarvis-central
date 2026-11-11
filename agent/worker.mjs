@@ -393,7 +393,11 @@ async function queueBuilds(projects, log) {
   log("build queued", next.project_id, next.id, message?.id);
 }
 
-/** Approved PRs: merge them (squash, branch deleted), mark the item done, leave a note in the inbox. Only the owner's click gets here. */
+/**
+ * Approved PRs: merge them (squash, branch deleted), mark the item done, leave a note in the inbox. Only the owner's click
+ * gets here. An item with keep_open (work goes on after the merge: a check over the next cycles, a rollout to watch) records
+ * the merge and stays open; the owner or Claude closes it when that work is done.
+ */
 async function mergeApproved(projects, log) {
   const rows = await api("GET", "/api/agent/items" + qs({ build: "merge_requested" }));
   // Only items the owner really asked to merge, with a PR: anything else is untouched (no failure note either).
@@ -406,8 +410,10 @@ async function mergeApproved(projects, log) {
       if (!repo) throw new Error("no git repository with a remote for this project on this Mac");
       execFileSync("gh", ["pr", "merge", it.pr_url, "--squash", "--delete-branch"], { cwd: repo.top, encoding: "utf8", timeout: 120_000 });
       tryGit(repo.top, "fetch", "origin", repo.base);
-      await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, status: "done", build_status: "merged", build_note: "" });
-      await api("POST", "/api/agent/messages", { project_id: it.project_id, text: `Merged: ${it.title}`, reply: `${it.pr_url} was merged into ${repo.base} on your approval and the item [${it.id}] is done. Pull ${repo.base} in your working copy to get it.`, meta: { kind: "merged" }, item_id: it.id });
+      const keep = it.keep_open === true;
+      await api("PATCH", "/api/agent/items", { project_id: it.project_id, id: it.id, ...(keep ? {} : { status: "done" }), build_status: "merged", build_note: "" });
+      const state = keep ? `the item [${it.id}] stays open: it is marked to keep going after the merge, so close it when the rest is done` : `the item [${it.id}] is done`;
+      await api("POST", "/api/agent/messages", { project_id: it.project_id, text: `Merged: ${it.title}`, reply: `${it.pr_url} was merged into ${repo.base} on your approval and ${state}. Pull ${repo.base} in your working copy to get it.`, meta: { kind: "merged" }, item_id: it.id });
       log("merged", it.project_id, it.id, it.pr_url);
       logChanged(`merge:${it.id}`, "merged", "merge state cleared", it.id);
     } catch (e) {
