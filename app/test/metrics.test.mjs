@@ -1,7 +1,7 @@
 // Product metrics (agent/metrics.mjs): picking numbers from a source, and finding live projects with no numbers.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { pick, sourceList, expectsNumbers, metricsGaps, reminderTodo, gapLine, gapOptions } from "../../agent/metrics.mjs";
+import { pick, sourceList, expectsNumbers, metricsGaps, reminderTodo, reminderOpen, gapLine, gapOptions } from "../../agent/metrics.mjs";
 
 const TODAY = "2026-10-14";
 const proj = (id, o = {}) => ({ id, name: id.toUpperCase(), archived: false, state: null, site_url: null, site: null, ...o });
@@ -66,4 +66,11 @@ test("gapLine and gapOptions", () => {
   assert.match(gapLine({ id: "a", name: "A", why: "stale", last: "2026-09-01" }), /hasn't posted since 2026-09-01/);
   assert.deepEqual(gapOptions({}), { staleDays: 7, expect: [], skip: [] });
   assert.deepEqual(gapOptions({ stale_days: 14, expect: ["x"], skip: "nope" }), { staleDays: 14, expect: ["x"], skip: [] });
+});
+
+test("reminderOpen: an undone earlier reminder blocks a second one", () => {
+  const title = reminderTodo([{ id: "a", name: "A", why: "no-source" }], TODAY).title;
+  assert.equal(reminderOpen([{ title, done: false }]), true);
+  assert.equal(reminderOpen([{ title, done: true }, { title: "Other", done: false }]), false);
+  assert.equal(reminderOpen(null), false);
 });
