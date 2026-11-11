@@ -223,3 +223,22 @@ test("forest and water pieces follow their neighbours", () => {
   assert.equal(waterTile(true, false, true, false), "tb56");
   assert.equal(hash("app"), hash("app"));
 });
+
+test("eventsFor: finished items, builds and reviews of the last days, newest first", async () => {
+  const { eventsFor, agoWords } = await import("../lib/villages.ts");
+  const now = "2026-10-10T12:00:00.000Z";
+  const items = [
+    { id: "a", title: "On time", status: "done", due: "2026-10-10", done_at: "2026-10-10T09:00:00.000Z", done_on: "2026-10-10" },
+    { id: "b", title: "Late", status: "done", due: "2026-10-01", done_at: "2026-10-09T09:00:00.000Z", done_on: "2026-10-09" },
+    { id: "c", title: "Old", status: "done", due: null, done_at: "2026-09-01T09:00:00.000Z", done_on: "2026-09-01" },
+    { id: "d", title: "PR", status: "doing", due: null, done_at: null, done_on: null, build_status: "pr_open", build_updated_at: "2026-10-10T11:00:00.000Z" },
+  ];
+  const reviews = [{ id: "r1", type: "project", title: "Review", headline: "Headline", created_at: "2026-10-08T05:00:00.000Z" }, { id: "r2", type: "security", title: "Audit", created_at: "2026-10-07T05:00:00.000Z" }];
+  const ev = eventsFor(items, reviews, now);
+  assert.deepEqual(ev.map((e) => [e.id, e.kind, e.part]), [["b:d", "pr", "workshop"], ["d:a", "done", "hall"], ["d:b", "late", "hall"], ["r:r1", "review", "hall"], ["r:r2", "audit", "police"]]);
+  assert.equal(ev[3].text, "Headline");
+  assert.equal(agoWords("2026-10-10T11:48:00.000Z", now), "12 min ago");
+  assert.equal(agoWords("2026-10-10T09:00:00.000Z", now), "3 h ago");
+  assert.equal(agoWords("2026-10-09T09:00:00.000Z", now), "yesterday");
+  assert.equal(agoWords("2026-10-06T09:00:00.000Z", now), "4 days ago");
+});

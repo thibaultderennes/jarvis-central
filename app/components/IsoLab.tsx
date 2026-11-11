@@ -159,7 +159,7 @@ function Chips({ v }: { v: Village }) {
 }
 const until = (d: number) => (d === 0 ? "today" : d === 1 ? "tomorrow" : `in ${d} days`);
 
-export default function IsoLab({ villages, look }: { villages: Village[]; look: Look }) {
+export default function IsoLab({ villages, look, today }: { villages: Village[]; look: Look; today: string }) {
   if (look === "islands") return (
     <div className="iso look-islands"><ul className="vg">{villages.map((v) => { const st = plotStatus(v), t = v.trail; return (
       <li key={v.id} className={`vg-c${v.paused ? " paused" : ""}`} data-c={v.color}>
@@ -168,7 +168,7 @@ export default function IsoLab({ villages, look }: { villages: Village[]; look: 
         <Island v={v} /><Chips v={v} />
       </li>); })}</ul></div>
   );
-  if (look === "colony") return <Colony villages={villages} />;
+  if (look === "colony") return <Colony villages={villages} today={today} />;
   const sum = (f: (v: Village) => number) => villages.reduce((a, v) => a + f(v), 0);
   const next = villages.filter((v) => v.trail && !v.paused).sort((a, b) => a.trail!.daysLeft - b.trail!.daysLeft).slice(0, 4);
   return (

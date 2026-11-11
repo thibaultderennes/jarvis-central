@@ -1,13 +1,17 @@
 "use client";
 // The colony map's client side: the camera (drag to pan, pinch or ctrl+wheel and the buttons to zoom), selection with a
 // command panel, a minimap, hover labels, day/night and pause. The scene itself is server-drawn SVG passed as children.
-import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useRouter } from "next/navigation";
+
+const KIND: Record<string, string> = { done: "Done on time", late: "Done late", review: "New review", audit: "New audit", pr: "Pull request waiting", failed: "Build stopped", building: "Build started" };
 
 type Tone = "bad" | "warn" | "ok" | "none";
 export type StageVillage = {
   id: string; name: string; color: string; href: string; status: { text: string; tone: Tone }; col: number; row: number;
   deadline: string; progress: { onTime: number; late: number; total: number } | null; headline: string | null; verdict: string | null;
   stats: { open: number; overdue: number; dueSoon: number; done28: number };
+  events: { id: string; kind: string; text: string; ago: string; part: string; at: string }[];
   parts: { key: string; name: string; text: string; tone: Tone; href: string }[];
 };
 type View = { x: number; y: number; w: number; h: number };
@@ -18,6 +22,16 @@ export default function ColonyStage({ villages, view, cols, rows, children }: { 
   const drag = useRef<{ x: number; y: number; moved: boolean } | null>(null);
   const [sel, setSel] = useState<string | null>(null), [part, setPart] = useState<string | null>(null);
   const [night, setNight] = useState(false), [still, setStill] = useState(false), [tip, setTip] = useState<{ x: number; y: number; text: string } | null>(null);
+  const [log, setLog] = useState(true), [fresh, setFresh] = useState<Set<string>>(new Set());
+  const router = useRouter(), seen = useRef<Set<string> | null>(null);
+  const feed = useMemo(() => villages.flatMap((v) => v.events.map((e) => ({ ...e, v }))).sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, 6), [villages]);
+  // The map stays live: it asks the server again every minute while the tab is visible, and new events light up.
+  useEffect(() => { const t = setInterval(() => { if (document.visibilityState === "visible" && !drag.current) router.refresh(); }, 60_000); return () => clearInterval(t); }, [router]);
+  useEffect(() => {
+    const ids = villages.flatMap((v) => v.events.map((e) => `${v.id}|${e.id}`));
+    if (seen.current) { const now = ids.filter((i) => !seen.current!.has(i)); if (now.length) setFresh(new Set(now)); }
+    seen.current = new Set(ids);
+  }, [villages]);
   const svg = () => wrap.current?.querySelector<SVGSVGElement>("svg.colony") || null;
 
   const apply = useCallback(() => {
@@ -104,6 +118,7 @@ export default function ColonyStage({ villages, view, cols, rows, children }: { 
         <span><b className="mono">{sum((v) => v.stats.dueSoon)}</b> due in 7 days</span>
         <span><b className="mono">{sum((v) => v.stats.done28)}</b> done, 28 days</span>
         <span className="cs-ctl">
+          <button type="button" className="chip" aria-pressed={log} onClick={() => setLog(!log)}>Chronicle</button>
           <button type="button" className="chip" aria-pressed={night} onClick={() => setNight(!night)}>Night</button>
           <button type="button" className="chip" aria-pressed={still} onClick={() => setStill(!still)}>Pause</button>
           <button type="button" className="chip" aria-label="Zoom out" onClick={() => zoom(1.3)}>−</button>
@@ -114,6 +129,13 @@ export default function ColonyStage({ villages, view, cols, rows, children }: { 
       <div ref={wrap} className="cs-view" tabIndex={0} aria-label="Colony map. Drag to move, pinch or use + and − to zoom, click a settlement to select it." onPointerDown={onDown} onPointerMove={onMove} onPointerUp={onUp} onPointerLeave={() => setTip(null)} onKeyDown={onKey}
         onDoubleClick={(e) => { const h = hit(e.target); const g = h.vil ? wrap.current?.querySelector<SVGGElement>(`[data-vil="${CSS.escape(h.vil)}"]`) : null; if (g) fly({ cx: Number(g.dataset.cx), cy: Number(g.dataset.cy) + 10, w: view.w * 0.3 }); }}>
         {children}
+        {log && feed.length > 0 && (
+          <ol className="cs-log" aria-label="Chronicle: what happened lately" onPointerDown={(e) => e.stopPropagation()} onPointerUp={(e) => e.stopPropagation()}>
+            {feed.map((e, i) => <li key={e.v.id + e.id} data-c={e.v.color} className={`k-${e.kind}${fresh.has(`${e.v.id}|${e.id}`) ? " new" : ""}`} style={{ animationDelay: `${i * 90}ms` }}>
+              <button type="button" onClick={() => select(e.v.id, e.part)}><i className="dot" aria-hidden="true" /><span className="cs-lt"><b>{e.v.name}</b> · {KIND[e.kind] || e.kind}<small>{e.text}</small></span><span className="cs-ago">{e.ago}</span></button>
+            </li>)}
+          </ol>
+        )}
         {tip && <div className="cs-tip" style={{ left: tip.x, top: tip.y }}>{tip.text}</div>}
       </div>
       <div className="cs-panel" aria-live="polite">
@@ -127,6 +149,7 @@ export default function ColonyStage({ villages, view, cols, rows, children }: { 
             {cur.progress && <div className="cs-bar" title={`${cur.progress.onTime} of ${cur.progress.total} done on time${cur.progress.late ? `, ${cur.progress.late} late` : ""}`}><i style={{ width: `${cur.progress.onTime / cur.progress.total * 100}%` }} /><i className="late" style={{ width: `${cur.progress.late / cur.progress.total * 100}%` }} /></div>}
             <dl className="cs-s"><div><dt>Open</dt><dd>{cur.stats.open}</dd></div><div className={cur.stats.overdue ? "bad" : undefined}><dt>Overdue</dt><dd>{cur.stats.overdue}</dd></div><div><dt>Due in 7 days</dt><dd>{cur.stats.dueSoon}</dd></div><div><dt>Done, 28 days</dt><dd>{cur.stats.done28}</dd></div></dl>
             {cur.headline && <p className="cs-r">{cur.verdict && <span className={`verdict v-${cur.verdict}`}>{cur.verdict.replace("-", " ")}</span>} {cur.headline}</p>}
+            {cur.events.length > 0 && <ul className="cs-ev" aria-label="Lately">{cur.events.slice(0, 3).map((e) => <li key={e.id} className={`k-${e.kind}`}><b>{KIND[e.kind] || e.kind}</b> {e.text} <span className="cs-ago">{e.ago}</span></li>)}</ul>}
             <a className="cs-go" href={cur.href}>Open {cur.name}</a>
           </div>
           <ul className="cs-parts">{cur.parts.map((p) => <li key={p.key}><a href={p.href} className={`t-${p.tone}${part === p.key ? " on" : ""}`} onMouseEnter={() => setPart(p.key)}><span className="vg-k">{p.name}</span><span className="vg-v">{p.text}</span></a></li>)}</ul>

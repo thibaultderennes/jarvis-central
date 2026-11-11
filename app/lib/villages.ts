@@ -227,6 +227,38 @@ export function workshopState(items: BuildRow[], hasRepo: boolean): WorkshopStat
   return { built: true, running, waiting: prs.length, failed, prUrl: prs.length === 1 ? prs[0].pr_url || null : null };
 }
 
+// ---- Events: what happened lately in a project (the colony map's chronicle, wagons and fireworks). ----
+
+export type MapEvent = { id: string; at: string; kind: "done" | "late" | "review" | "audit" | "pr" | "failed" | "building"; text: string; part: PartKey };
+export type EventItem = { id: string; title: string; status: string; due: string | null; done_at: string | null; done_on: string | null; build_status?: string | null; build_updated_at?: string | null };
+export type EventReview = { id: string; type: string; title: string; headline?: string | null; created_at: string };
+
+/** One project's events of the last `days`, newest first: items finished (on time or late), builds, reviews and audits. */
+export function eventsFor(items: EventItem[], reviews: EventReview[], now: string, days = 7, max = 12): MapEvent[] {
+  const to = Date.parse(now), from = to - days * DAY;
+  const within = (t: string | null | undefined) => { const v = t ? Date.parse(t) : NaN; return v > from && v <= to; };
+  const out: MapEvent[] = [];
+  for (const i of items) {
+    if (i.status === "done" && within(i.done_at)) out.push({ id: `d:${i.id}`, at: i.done_at!, kind: !i.due || (!!i.done_on && i.done_on <= i.due) ? "done" : "late", text: i.title, part: "hall" });
+    if (i.status !== "cancelled" && i.build_status && within(i.build_updated_at)) {
+      const k = i.build_status === "failed" ? "failed" : i.build_status === "working" ? "building" : i.build_status === "pr_open" || i.build_status === "merge_requested" ? "pr" : null;
+      if (k) out.push({ id: `b:${i.id}`, at: i.build_updated_at!, kind: k, text: i.title, part: "workshop" });
+    }
+  }
+  for (const r of reviews) if (within(r.created_at)) out.push({ id: `r:${r.id}`, at: r.created_at, kind: r.type === "project" ? "review" : "audit", text: r.headline || r.title, part: r.type === "project" ? "hall" : "police" });
+  return out.sort((a, b) => Date.parse(b.at) - Date.parse(a.at)).slice(0, max);
+}
+
+/** "12 min ago", "3 h ago", "yesterday", "4 days ago". */
+export function agoWords(at: string, now: string): string {
+  const m = Math.max(0, Math.round((Date.parse(now) - Date.parse(at)) / 60_000));
+  if (m < 1) return "just now";
+  if (m < 60) return `${m} min ago`;
+  if (m < 24 * 60) return `${Math.round(m / 60)} h ago`;
+  const d = Math.round(m / (24 * 60));
+  return d === 1 ? "yesterday" : `${d} days ago`;
+}
+
 // ---- The world: a tile grid. Each village sits in its own cell (no two cells overlap), forest fills the rest. ----
 
 /** The core every village is built on, in tiles (police, hall, bank / shop, square, workshop / houses, road, houses). */

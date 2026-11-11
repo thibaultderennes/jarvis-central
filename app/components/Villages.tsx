@@ -14,6 +14,7 @@ import { fmtDate } from "@/lib/time";
 export type Village = Region & {
   land: { weight: number; onTime: number; late: number; undated: number }; onTimeAll: number; top: boolean;
   paused?: boolean;
+  events?: (import("@/lib/villages").MapEvent & { ago: string })[];
   hall: { tier: HallTier; since: number; next: number | null };
   police: PoliceState; bank: BankState; shop: ShopState; homes: HomesState; workshop: WorkshopState;
 };

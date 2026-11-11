@@ -2,7 +2,7 @@ import Link from "next/link";
 import { displayColor, getCosts, getItems, getProjects, getReviews, splitFeatured } from "@/lib/data";
 import { getMetrics } from "@/lib/metrics";
 import { buildRegions, FOG_DAYS, nextStop, SOON_DAYS, totals, trailPoints, WINDOW_DAYS, type Region, type Trail } from "@/lib/map";
-import { areaWeight, bankState, hallTier, HALL, homesState, LAND_DAYS, onTimeCount, policeState, shopState, TOWN_HALL, workshopState, type Snap } from "@/lib/villages";
+import { agoWords, eventsFor, areaWeight, bankState, hallTier, HALL, homesState, LAND_DAYS, onTimeCount, policeState, shopState, TOWN_HALL, workshopState, type Snap } from "@/lib/villages";
 import Villages, { VillageLegend, regionLabel, type Village } from "@/components/Villages";
 import VillagesShell from "@/components/VillagesShell";
 import IsoLab, { type Look } from "@/components/IsoLab";
@@ -96,7 +96,7 @@ function RegionCard({ r, stop }: { r: Region; stop: boolean }) {
 const LOOKS: [string, string][] = [["", "Pixel cards"], ["islands", "Islands"], ["park", "Park"], ["colony", "Colony"]];
 
 export default async function MapView({ look = "" }: { look?: string } = {}) {
-  const t = today();
+  const t = today(), nowIso = new Date().toISOString();
   const since = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
   const [projects, items, reviews, security, screenings, costs, metrics] = await Promise.all([
     getProjects(), getItems(), getReviews({ type: "project", limit: 500 }),
@@ -133,6 +133,10 @@ export default async function MapView({ look = "" }: { look?: string } = {}) {
       shop: shopState(snaps, t), homes: homesState(snaps),
       workshop: workshopState(itemsBy.get(r.id) || [], !!projectById.get(r.id)?.site?.code),
       paused: !!projectById.get(r.id)?.paused_at,
+      events: eventsFor(
+        (itemsBy.get(r.id) || []).map((i) => ({ id: i.id, title: i.title, status: i.status, due: i.due, done_at: i.done_at, done_on: i.done_at ? isoInTZ(new Date(i.done_at)) : null, build_status: i.build_status, build_updated_at: i.build_updated_at })),
+        [...reviews, ...security, ...screenings].filter((x) => x.project_id === r.id), nowIso,
+      ).map((e) => ({ ...e, ago: agoWords(e.at, nowIso) })),
     };
   });
   // What needs you first: overdue, then due this week; paused projects last. Ties keep the order above.
@@ -171,7 +175,7 @@ export default async function MapView({ look = "" }: { look?: string } = {}) {
 
       <nav className="look-chips chips" aria-label="Look">{LOOKS.map(([id, label]) => <Link key={id} className="chip" href={id ? `/map?look=${id}` : "/map"} aria-current={look === id ? "page" : undefined}>{label}</Link>)}</nav>
       {regions.length && look
-        ? <IsoLab villages={plots} look={look as Look} />
+        ? <IsoLab villages={plots} look={look as Look} today={t} />
         : regions.length
         ? <VillagesShell map={map} list={list} seen={villages.map((v) => ({ id: v.id, name: v.name, onTime: v.onTimeAll }))} />
         : <div className="panel empty">No active projects yet. Approve a project folder in <Link href="/admin">Admin</Link> and it appears here.</div>}
