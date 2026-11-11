@@ -49,6 +49,7 @@ async function handle(req: NextRequest, ctx: Ctx) {
       if (b.build_status !== undefined && b.build_status !== null && !["working", "pr_open", "merged", "failed", "sent_back"].includes(b.build_status))
         return bad(b.build_status === "merge_requested" ? "merge_requested only from the owner's Approve & merge on the site" : "bad build_status", b.build_status === "merge_requested" ? 403 : 400);
       if (b.due && !isDate(b.due)) return bad("due must be YYYY-MM-DD");
+      if (b.keep_open !== undefined && typeof b.keep_open !== "boolean") return bad("keep_open must be true or false");
       const { project_id, id, ...patch } = b;
       const it = await D.updateItem(project_id, id, patch, "agent");
       if (!it) return bad("No such item", 404);
