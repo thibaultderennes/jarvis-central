@@ -62,7 +62,7 @@ export function StackedColumns({ xs, xLabels, series, values, marker, markerLabe
       </svg>
       {tip && (
         <div className="tip" style={{ left: tip.x, top: tip.y }}>
-          <div style={{ marginBottom: 3, opacity: .8 }}>{tip.title}</div>
+          <div style={{ marginBottom: "var(--s-1)", opacity: .8 }}>{tip.title}</div>
           {tip.rows.length ? tip.rows.map((r) => (
             <div className="row" key={r.label}>{r.color ? <i className="dot" data-c={r.color} /> : <i className="dot" style={{ background: "transparent", border: "1.5px solid currentColor" }} />}{r.label} <b>{r.v}</b></div>
           )) : <div>Nothing</div>}
@@ -73,7 +73,7 @@ export function StackedColumns({ xs, xLabels, series, values, marker, markerLabe
         {marker && <span><i className="ring" />{markerLabel || "Planned"}</span>}
       </div>
       <details className="tabletoggle">
-        <summary>Show as a table</summary>
+        <summary data-track="Chart as a table">Show as a table</summary>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead><tr><th></th>{series.map((s) => <th key={s.key}>{s.label}</th>)}{marker && <th>{markerLabel || "Planned"}</th>}</tr></thead>

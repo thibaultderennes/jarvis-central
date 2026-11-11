@@ -3,6 +3,7 @@ import { requireSession } from "@/lib/auth";
 import { boardData } from "@/lib/board";
 import { addDays, fmtDate, isDate, mondayOf, today, weekday } from "@/lib/time";
 import Board from "@/components/Board";
+import LogOpen from "@/components/LogOpen";
 import Markdown from "@/components/Markdown";
 import { HBars } from "@/components/Charts";
 import { getPlan } from "@/lib/plan";
@@ -47,8 +48,8 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
               <HBars rows={perProject.sort((a, b) => b[1] - a[1]).map(([id, v]) => ({ key: id, label: pname[id]?.name || id, color: pname[id]?.color || "other", v }))} format="minutes" />
               {plan.unscheduled.length > 0 && (
                 <div className="pb" style={{ paddingTop: 0 }}>
-                  <div className="lbl" style={{ marginBottom: 6 }}>Didn&apos;t fit this week ({plan.unscheduled.length})</div>
-                  {plan.unscheduled.map((u) => <div key={u.project_id + u.item_id} style={{ fontSize: 13, padding: "3px 0" }} data-c={pname[u.project_id]?.color}><i className="dot" /> {u.title} <span className="due">· {u.reason}</span></div>)}
+                  <div className="lbl" style={{ marginBottom: "var(--s-2)" }}>Didn&apos;t fit this week ({plan.unscheduled.length})</div>
+                  {plan.unscheduled.map((u) => <div key={u.project_id + u.item_id} style={{ fontSize: 13, padding: "var(--s-1) 0" }} data-c={pname[u.project_id]?.color}><i className="dot" /> {u.title} <span className="due">· {u.reason}</span></div>)}
                 </div>
               )}
             </div>
@@ -57,6 +58,7 @@ export default async function WeekPage({ searchParams }: { searchParams: Promise
         ) : <div className="empty">No plan for this week yet. {cap(PLAN_WHEN)} your Mac looks at what&apos;s due, estimates each item, and fits it around your calendar. The blocks land here as todos and in a &ldquo;Jarvis · work plan&rdquo; Google Calendar.</div>}
       </section>
       <Board mode="week" days={days} {...data} />
+      <LogOpen kind="calendar_view" page="/week" id={w} detail={{ via: "week", week: w }} />
     </>
   );
 }

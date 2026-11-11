@@ -72,7 +72,9 @@ export async function usageSummary(since: string, until: string) {
     if (!sessions.has(r.session_id)) sessions.set(r.session_id, []);
     sessions.get(r.session_id)!.push(r);
     if (r.kind === "click") {
-      inc(clicks, [r.page, r.label || (r.href ? `→ ${r.href}` : `(${r.target || "unlabelled"})`), r.target, r.section].join(SEP));
+      // Rows from before every disclosure had a name: call them by where they are, not "(disclosure)".
+      const unnamed = r.target === "disclosure" ? `Disclosure in ${r.section || "page"}` : `(${r.target || "unlabelled"})`;
+      inc(clicks, [r.page, r.label || (r.href ? `→ ${r.href}` : unnamed), r.target, r.section].join(SEP));
       inc(pageClicks, r.page);
     }
   }

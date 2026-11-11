@@ -45,7 +45,7 @@ if (URL_) {
   if (calTok) {
     const x = await get("/api/agent/projects", { Authorization: `Bearer ${calTok}` });
     x.status === 401 ? pass("the calendar token can't read the agent API") : fail(`the calendar token opened /api/agent/projects (${x.status})`, "JARVIS_CAL_TOKEN and JARVIS_AGENT_TOKEN must be different values");
-  } else warn("no google/Code.gs: skipped the calendar-token scope check", "run it again after `node app/scripts/setup.mjs apps-script`");
+  } else warn("no google/Code.gs: skipped the calendar-token scope check", "run it again after `cd app && node scripts/setup.mjs apps-script`");
 
   // usage tracking endpoint: writes only with the owner's session (an empty batch, so nothing is stored either way)
   const u = await fetch(URL_ + "/api/usage", { method: "POST", body: '{"events":[]}', redirect: "manual", signal: AbortSignal.timeout(15_000) }).catch((e) => ({ status: 0, error: e.message }));

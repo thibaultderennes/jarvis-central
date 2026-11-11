@@ -10,19 +10,23 @@ import WebsiteCard, { type WebsiteRun } from "@/components/WebsiteCard";
 import { siteSummary, websiteKind } from "@/lib/website";
 import Markdown from "@/components/Markdown";
 import Thread from "@/components/Thread";
+import LogOpen from "@/components/LogOpen";
 import ProjectSettings from "@/components/ProjectSettings";
 import PlanButton from "@/components/PlanButton";
+import PauseButton from "@/components/PauseButton";
 import Costs from "@/components/Costs";
 import UnitEconomics from "@/components/UnitEconomics";
 import ProjectStats from "@/components/ProjectStats";
 import { getMetrics } from "@/lib/metrics";
+import AnalysisPanel from "@/components/AnalysisPanel";
+import { connectedTools, latestBySource } from "@/lib/analysis";
 import { deliveryStats, productStats } from "@/lib/projectStats";
 import Timeline, { MilestoneList } from "@/components/Timeline";
 import { timelineData } from "@/lib/timeline";
 import { REVIEW_WHEN } from "@/lib/instance";
 import { effectiveBuildMode, isBuildMode, nextReview, reviewEvery } from "@/lib/projectSettings";
 import { filterHub, HUB_KINDS, hubDate, hubKind, hubList, isHubKind, reviewProposals, type HubKind } from "@/lib/docsHub";
-import { AckButton, AddAllButton, Proposals } from "@/components/ReviewActions";
+import { AckButton, AddAllButton, Proposals, RerunButton, FollowThrough } from "@/components/ReviewActions";
 import "./project.css";
 import "../../finance/finance.css";
 
@@ -92,10 +96,12 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
     <div data-c={p.color} className="ppage">
       <div className="hello">
         <div>
-          <h1 className="page" style={{ display: "flex", gap: 12, alignItems: "center" }}><i className="dot" style={{ width: 14, height: 14 }} />{p.name}</h1>
+          <h1 className="page" style={{ display: "flex", gap: 12, alignItems: "center" }}><i className="dot" style={{ width: 14, height: 14 }} />{p.name}{p.paused_at && <span className="pill">Paused</span>}</h1>
+          {p.paused_at && <p className="due">Paused since {fmtDate(p.paused_at.slice(0, 10))}: out of the plan, Today, the overdue queue, the reviews and the audits. Resume it to bring it back.</p>}
           <p className="sub">{p.tagline} · {dn} of {items.filter((i) => i.status !== "cancelled").length} done{next ? ` · ${next.label} in ${daysBetween(t, next.date)} days (${fmtDate(next.date)})` : ""}</p>
         </div>
         <div className="subtabs">
+          <PauseButton projectId={p.id} name={p.name} paused={!!p.paused_at} />
           {p.links.map((l) => <a key={l.url} className="chip" href={l.url} target="_blank" rel="noopener noreferrer">{l.label} ↗</a>)}
         </div>
       </div>
@@ -125,6 +131,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
               strategy: <>No strategy documents for {p.name} yet. Ask Claude for one from the Inbox (for example &ldquo;Run a CEO review of {p.name}: moat, 5 whys, competitors&rdquo;). They land here.</>,
               plan: <>No plan yet. Press &ldquo;{items.length ? "Refresh this project checklist" : "Plan this project"}&rdquo; in <Link href={href({ v: "settings" })}>Settings</Link>: the report lands here.</>,
               setup: <>No project setup report yet. The first setup run of {p.name} writes one here.</>,
+              analysis: <>No analysis reports yet. A project&apos;s own analysis job (a stats digest, a growth review) posts them with <code>jarvis analysis {id} --file report.json</code>; they also show on <Link href={href({ v: "stats" })}>Stats</Link>. See docs/analysis.md.</>,
               screening: <>No screening yet. Run one above: Claude checks the folder against a researched check list, writes the report here and adds what to fix to the checklist.</>,
               security: <>No audit reports yet. Markdown reports in the project folder&apos;s audits directory (<code>docs/audits</code> unless <code>audits.dir</code> says otherwise) appear here after the next sync, within an hour of landing.</>,
             }}
@@ -141,7 +148,7 @@ export default async function ProjectPage({ params, searchParams }: { params: Pr
           </div>
         )}
 
-        {view === "stats" && <Stats project={p} today={t} />}
+        {view === "stats" && <Stats project={p} today={t} reports={reports} docsHref={(r) => href({ v: "docs", r })} />}
 
         {view === "settings" && (
           <SettingsView p={p} rank={rank} every={every} weekly={weekly} today={t}
@@ -254,14 +261,25 @@ async function ProjectTimeline({ id, shift }: { id: string; shift: number }) {
   );
 }
 
-/** Stats: Product (metrics snapshots, costs, unit economics) and Delivery (flow metrics from the checklist). */
-async function Stats({ project, today: t }: { project: D.Project; today: string }) {
+/** Stats: the project's analysis reports and connected tools (when it has any), then Product (metrics snapshots, costs,
+ * unit economics) and Delivery (flow metrics from the checklist). */
+async function Stats({ project, today: t, reports, docsHref }: { project: D.Project; today: string; reports: D.Review[]; docsHref: (id: string) => string }) {
   const [items, snaps, costs, economics, prefs, weekly] = await Promise.all([
     D.getItems({ project: project.id }), getMetrics({ project: project.id, since: addDays(t, -120) }), D.getCosts({ project: project.id }),
     D.getEconomics(project.id), D.getPrefs(), D.dailyStats(13, project.id, { bucket: "week" }),
   ]);
   const { latest, ...product } = productStats(snaps, costs, economics, prefs.finance_currency || "USD");
-  return <ProjectStats project={{ id: project.id, name: project.name }} today={t} product={{ ...product, latest: latest && { date: latest.date, source: latest.source } }} delivery={deliveryStats(project, items, weekly, t)} />;
+  // The project's own analysis jobs (lib/analysis.ts): the newest report per source, and the tools they name.
+  const analyses = latestBySource(reports);
+  const tools = connectedTools(analyses, latest && { date: latest.date, source: latest.source });
+  const stats = <ProjectStats project={{ id: project.id, name: project.name }} today={t} product={{ ...product, latest: latest && { date: latest.date, source: latest.source } }} delivery={deliveryStats(project, items, weekly, t)} />;
+  if (!analyses.length) return stats;
+  return (
+    <div className="pstats">
+      <AnalysisPanel tools={tools} reports={analyses.map(({ review, ...a }) => ({ ...a, id: review.id, title: review.title, headline: review.headline, href: docsHref(review.id), unread: !review.acked_at }))} />
+      {stats}
+    </div>
+  );
 }
 
 /**
@@ -326,8 +344,13 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
   const proposals = reviewProposals(r, items);
   const titles = Object.fromEntries(items.map((i) => [i.id, i.title]));
   const toPush = proposals.filter((x) => x.state === "pushable").length;
+  // The follow-through ledger for an advisor review's Top 3 (a review from before the ledger is recorded on first view).
+  const followed = r.type !== "project" ? [] : await D.getAdvice({ review: r.id })
+    .then(async (l) => (l.length ? l : D.syncAdvice(r).then(() => D.getAdvice({ review: r.id }))))
+    .catch(() => []);
   return (
     <article className="panel pb hub-doc">
+      <LogOpen kind="review_open" page={`/p/${p.id}`} id={r.id} detail={{ id: r.id, type: r.type, via: "project" }} />
       <div className="hub-doc-h">
         {r.verdict && <span className={`verdict v-${r.verdict}`}>{r.verdict.replace("-", " ")}</span>}
         <span className="lbl">{r.title}</span>
@@ -335,6 +358,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
         <span className="sp" />
         {/* Stays at the top of the report while you scroll it: read state, and the proposed tasks in one click. */}
         <span className="hub-doc-act">
+          {r.verdict === "failed" && r.week_start && <RerunButton id={r.id} queued={await D.rerunQueued(r.id)} />}
           {toPush > 0 && <a className="btn sm ghost" href={`#props-${r.id}`}>{proposals.length} proposed task{proposals.length === 1 ? "" : "s"} ↓</a>}
           <AddAllButton reviewId={r.id} count={toPush} />
           <AckButton id={r.id} ackedOn={r.acked_at ? fmtDate(r.acked_at.slice(0, 10)) : null} />
@@ -351,6 +375,7 @@ async function Report({ r, p, items, subtab, q }: { r: D.Review; p: D.Project; i
         <p className="hub-tabhead">{cur.verdict && <span className={`verdict v-${cur.verdict}`}>{cur.verdict.replace("-", " ")}</span>}{cur.headline}</p>
       )}
       <Markdown>{cur ? cur.body_md : r.body_md}</Markdown>
+      {followed.length > 0 && <FollowThrough reviewId={r.id} projectId={p.id} list={followed} titles={titles} />}
       {proposals.length > 0 && <Proposals reviewId={r.id} projectId={p.id} list={proposals} sections={p.sections.map((s) => ({ id: s.id, name: s.name, owner_default: s.owner_default }))} titles={titles} />}
       <Thread reviewId={r.id} projectId={r.project_id} tab={cur?.key || null} messages={thread} canBuild />
     </article>

@@ -1,5 +1,4 @@
 {
-  "$schema": "./docs/config.schema.json",
   "owner_name": "Alex",
   "projects_root": "~/Projects",
   "timezone": "America/New_York",
@@ -39,7 +38,7 @@
   },
 
   "worker": {
-    "interval_seconds": 60,
+    "interval_seconds": 3600,
     "allow_build": true,
     "refine_new_items": true,
     "refine_inbox_notes": false,
@@ -57,6 +56,10 @@
     "model": null
   },
 
+  "inbox": {
+    "auto_treat_fyi_days": 3
+  },
+
   "audits": {
     "dir": "docs/audits",
     "sync_minutes": 60
@@ -72,9 +75,17 @@
   "metrics": {
     "sync_minutes": 1440,
     "timeout_seconds": 30,
+    "stale_days": 7,
+    "remind": true,
+    "expect": ["example-channel"],
+    "skip": ["example-internal-tool"],
     "sources": {
       "example-project": { "url": "https://example.com/api/metrics", "token_env": "EXAMPLE_METRICS_TOKEN" },
-      "other-project": { "command": "node scripts/metrics.mjs", "map": { "visits": "traffic.visitors", "users": "accounts.total" } }
+      "other-project": { "command": "node scripts/metrics.mjs", "map": { "visits": "traffic.visitors", "users": "accounts.total" } },
+      "example-channel": [
+        { "url": "https://example.com/api/funnel?weeks=2", "token_env": "EXAMPLE_METRICS_TOKEN", "map": { "signups": "weeks.-2.signups" } },
+        { "command": "node scripts/channel-stats.mjs" }
+      ]
     }
   },
 

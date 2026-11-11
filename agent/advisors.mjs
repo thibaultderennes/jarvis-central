@@ -7,6 +7,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { HOME, JARVIS_ROOT, CONFIG, OWNER } from "./lib.mjs";
+import { HEADLESS } from "./skillpacks.mjs";
 
 export const ALL_ROLES = [
   { key: "ceo", label: "CEO · strategy" },
@@ -79,7 +80,8 @@ const FOCUS = {
   po: `Your report covers product and tech: what shipped against the checklist, scope creep, quality and tech debt, tests, and the next build steps. Include checklist hygiene: overdue items, stale in-progress items, items to cut, split or re-date (use item codes).`,
 };
 
-export function advisorPrompt({ p, role, W, file, persona, line, prevHeadline }) {
+/** `skills`: the reviews pack section for this role (skillpacks.mjs reviewSkillsBrief), "" without the pack. */
+export function advisorPrompt({ p, role, W, file, persona, line, prevHeadline, skills = "" }) {
   const where = `${p.name} (${p.id}${p.dir ? `, ${p.dir}` : ""})${line ? ` — ${line}` : ""}`;
   const adapt = persona.native
     ? `The persona above was written for this project.`
@@ -90,22 +92,35 @@ export function advisorPrompt({ p, role, W, file, persona, line, prevHeadline })
 # Headless Monday review — ${role.toUpperCase()}
 Headless Monday review for project ${where}, week ${W.startDate}..${W.lastDate}. ${adapt}
 You can't ask ${OWNER} anything: turn every "stop and ask" or open decision into an entry in "## Questions for you". Tools the persona may mention that aren't available here (memory graphs, spreadsheets, dashboards): skip them and use the bundle, the project's PRD.md, CLAUDE.md and docs/, memory files under ~/.claude/projects/*/memory/ and the previous review instead. Web research: allowed (WebSearch/WebFetch), cite sources with dates. Never invent numbers.
+${HEADLESS}
 Stance: ${STANCE}
 
 Read the bundle first: ${file} (checklist state and changes, product metrics snapshots (users, active users, visits, revenue: cite them with their date when they bear on your advice) and recurring costs, git commits, pull requests with CI, npm audit counts, Claude Code session stats, the owner's messages this week, last week's review${prevHeadline ? ` — last headline: "${prevHeadline}"` : ""}).
 
 ${FOCUS[role]}
 
-Write your review in your persona's voice and format, adapted to a weekly review, under ~900 words. Use "## " headings. It must start with "## Verdict" (two sentences) and end with "## Top 3 for this week" (each tied to a checklist code in backticks or marked "new item:") and "## Questions for you".
+Follow-through: the bundle opens with the last review's Top 3 and what happened to each (done, started, ignored, rejected) and lists every piece of advice ${OWNER} rejected. Never propose rejected advice again, in any wording. An entry ignored once may come back only with a new reason it matters now; otherwise drop it.
 
+Write your review in your persona's voice and format, adapted to a weekly review, under ~900 words. Use "## " headings. It must start with "## Verdict" (two sentences) and end with "## Top 3 for this week" (each tied to a checklist code in backticks or marked "new item:") and "## Questions for you".
+${skills ? `\n${skills}\n` : ""}
 Output ONLY one JSON object, no prose before or after, no code fences:
 {"verdict": "on-track" | "at-risk" | "off-track", "headline": "<one sentence, max 120 chars>", "body_md": "<markdown>"}`;
 }
 
-export function synthesisPrompt({ p, W, reports, meta }) {
+export function synthesisPrompt({ p, W, reports, meta, skills = "", ledger = [], rejected = [] }) {
   const parts = reports.map((r) => `### ${r.label}${r.error ? " — FAILED" : ` — [${r.verdict}] ${r.headline}`}\n\n${r.error ? `(This advisor's run failed: ${r.error})` : r.body_md}`).join("\n\n---\n\n");
   return `${reports.length} advisors (${reports.map((r) => r.label.split(" ")[0]).join(", ")}) reviewed the project "${p.name}" for the week ${W.startDate}..${W.lastDate}. Numbers for the week: ${JSON.stringify(meta)}.
 Synthesise their reports for ${OWNER}. Stance: ${STANCE} Use only what the reports say; don't add new facts or numbers.
+${ledger.length ? `
+Last review's Top 3 and what happened (the review is posted with this list on top already: don't repeat it as a section):
+${ledger.join("\n")}
+An entry ignored again: name it in "Where they agree" or "Where they disagree" only if an advisor gives a new reason it matters now.
+` : ""}${rejected.length ? `
+Advice ${OWNER} rejected. Never put any of it, in any wording, in the Top 3 or the proposals, even if an advisor repeats it:
+${rejected.join("\n")}
+` : ""}
+${HEADLESS}
+Aim for 500 words or fewer in body_md: the advisors' tabs keep the detail.
 
 body_md sections, as "## " headings:
 ## Where they agree
@@ -115,7 +130,7 @@ body_md sections, as "## " headings:
 
 "proposals" repeats each Top 3 entry marked "new item:" as data, so ${OWNER} can push it to the checklist in one click (none → []).
 Sections of this checklist: ${(p.sections || []).map((s) => `${s.id} (${s.name})`).join(", ") || "(none)"}.
-
+${skills ? `\n${skills}\n` : ""}
 Output ONLY one JSON object, no prose before or after, no code fences:
 {"verdict": "on-track" | "at-risk" | "off-track", "headline": "<overall, one sentence, max 120 chars>", "body_md": "<markdown>",
  "proposals": [{"title": "<the new item's title, same words as in Top 3, max 100 chars>", "detail": "<what done looks like, 1-3 sentences>", "section": "<a section id above>", "owner": "founder" | "claude" | "both", "estimate_minutes": <number or null>}]}

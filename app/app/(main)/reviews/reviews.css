@@ -1,0 +1,17 @@
+/* The Jarvis review's "Your settings" cards (components/SettingsSuggestions.tsx). */
+.sset { margin-top: var(--s-5); display: flex; flex-direction: column; gap: var(--s-3); }
+.sset-h { display: flex; gap: var(--s-3); align-items: baseline; flex-wrap: wrap; }
+.sset-h .ph-t { margin: 0; }
+.sset-h .hint { font-size: 12.5px; color: var(--ink-3); }
+.sset-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--s-2); }
+.sset-card { display: flex; flex-direction: column; gap: var(--s-2); padding: var(--s-3) var(--s-4); border: 1px solid var(--line); border-radius: 8px; }
+.sset-card[data-state="applied"], .sset-card[data-state="done"], .sset-card[data-state="dismissed"] { border-color: var(--line-2); }
+.sset-card[data-state="dismissed"] .sset-t { color: var(--ink-3); }
+.sset-t { margin: 0; font-size: 13.5px; max-width: 80ch; }
+.sset-t code, .sset-keys code { font-family: var(--mono); font-size: 12px; background: var(--line-2); border-radius: 4px; padding: 0 var(--s-1); overflow-wrap: anywhere; }
+.sset-keys { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--s-1); font-size: 12.5px; color: var(--ink-2); }
+.sset-err { margin: 0; font-size: 12.5px; color: var(--bad); }
+.sset-card .hint { margin: 0; font-size: 12.5px; color: var(--ink-3); }
+.sset-f { display: flex; gap: var(--s-2); align-items: center; flex-wrap: wrap; }
+.sset .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+@media (max-width: 600px) { .sset-card { padding: var(--s-3); } }

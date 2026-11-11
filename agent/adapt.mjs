@@ -8,13 +8,12 @@
 // (GET /api/agent/stats items=1) over the 14 days before the planned week; the owner's actions on the site
 // (GET /api/agent/activity) and typed Claude Code messages (agent/transcripts.mjs) for the hours check, with their
 // active Claude minutes per project folder.
-import { api, qs, addDays, TZ } from "./lib.mjs";
+import { api, qs, addDays, TZ, MACHINE_KINDS as MACHINE } from "./lib.mjs";
 import { scan, statsForDir } from "./transcripts.mjs";
 
 export const MODES = ["suggest", "apply", "off"];
 export const normMode = (m) => (MODES.includes(m) ? m : "suggest");
 const HISTORY_DAYS = 14;
-const MACHINE = new Set(["calendar_feed", "calendar_sync"]); // feed polls and syncs: not the owner
 
 const toMin = (hhmm) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
 const pad = (n) => String(n).padStart(2, "0");

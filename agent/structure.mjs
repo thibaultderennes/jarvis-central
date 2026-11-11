@@ -13,6 +13,14 @@ export const DEFAULT_SECTIONS = [
 export const slugify = (s) => s.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, "").replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "") || "project";
 const read = (f) => { try { return fs.readFileSync(f, "utf8"); } catch { return null; } };
 
+/** Where a project keeps its PRD: `PRD.md` at the root (the convention), else `docs/PRD.md`. */
+export const PRD_PATHS = ["PRD.md", path.join("docs", "PRD.md")];
+/** The project's PRD file, or null when it has none in a known place. */
+export function findPrd(dir) {
+  for (const rel of PRD_PATHS) { const f = path.join(dir, rel); if (fs.existsSync(f)) return f; }
+  return null;
+}
+
 /** `| 2026-11-02 | Public launch |` rows under a Milestones heading (or anywhere) → deadlines. */
 const MS_ROW = /^\|\s*(\d{4}-\d{2}-\d{2})\s*\|\s*([^|]+?)\s*\|/;
 const msLabel = (raw) => raw.replace(/\*\*/g, "").slice(0, 80);
@@ -43,15 +51,16 @@ export function moveMilestoneRows(prd, deadlines) {
   return { text, moved: moves.length - left.length, unmatched: left };
 }
 
-/** What a project folder has of the expected structure: PRD.md at the root, "How we work" in CLAUDE.md, audit prompts. */
+/** What a project folder has of the expected structure: PRD.md (root or docs/), "How we work" in CLAUDE.md, audit prompts. */
 export function readStructure(dir) {
   const claude = read(path.join(dir, "CLAUDE.md"));
-  const prd = read(path.join(dir, "PRD.md"));
+  const prdFile = findPrd(dir);
+  const prd = prdFile ? read(prdFile) : null;
   const auditDir = path.join(dir, "docs", "audits");
   let audits = [];
   try { audits = fs.readdirSync(auditDir).filter((f) => !f.startsWith(".")).sort(); } catch {}
   return {
-    claude, prd, milestones: parseMilestones(prd), audits,
+    claude, prd, prdFile, milestones: parseMilestones(prd), audits,
     hasHowWeWork: !!claude && /^#{1,3}\s+How we work\b/im.test(claude),
     hasAuditPrompts: audits.includes("PROMPTS.md"),
   };

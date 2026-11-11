@@ -9,7 +9,7 @@ export type Card = {
   done: number; doing: number; late: number; total: number;
   next: { id: string; title: string; due: string }[];
   verdict: string | null; deadline: { date: string; label: string; days: number } | null;
-  plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean;
+  plan_enabled: boolean; weekly_minutes: number | null; reviews_enabled: boolean; paused?: boolean;
   /** Next milestone vs current pace (Home); omitted = not shown. */
   pace?: { text: string; risk: boolean } | null;
 };
@@ -50,7 +50,7 @@ export default function ProjectsBoard({ featured, others, today }: { featured: C
       </div>
       {rest.length > 0 && (
         <>
-          <div className="lbl" style={{ marginTop: 6 }}>Other projects · drag one onto a card above to swap it into your top 3</div>
+          <div className="lbl" style={{ marginTop: "var(--s-2)" }}>Other projects · drag one onto a card above to swap it into your top 3</div>
           <div className="minis">
             {rest.map((c) => <Mini key={c.id} c={c} />)}
           </div>
@@ -100,6 +100,7 @@ function Full({ c, today }: { c: Card; today: string }) {
         {!c.next.length && <span className="due">Nothing open with a date</span>}
       </div>
       <div className="flags">
+        {c.paused && <span className="off">Paused</span>}
         <span className={c.plan_enabled ? "on" : "off"}>{c.plan_enabled ? "In calendar" : "Not in calendar"}</span>
         <span>{c.weekly_minutes ? `${hours(c.weekly_minutes)}/week` : "No weekly limit"}</span>
         <span className={c.reviews_enabled ? "on" : "off"}>{c.reviews_enabled ? "Weekly review on" : "Weekly review off"}</span>

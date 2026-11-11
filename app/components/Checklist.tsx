@@ -58,7 +58,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   const router = useRouter();
   const busy = items.some((i) => i.refine === "pending" || i.build_status === "working" || i.build_status === "merge_requested" || i.build_status === "sent_back" || (i.status === "doing" && (i.owner === "claude" || i.owner === "both") && !i.build_status));
   // While Claude is refining, reading a comment or building, refresh so the changes appear on their own.
-  useEffect(() => { if (!busy) return; const t = setInterval(() => router.refresh(), 10000); return () => clearInterval(t); }, [busy, router]);
+  useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 10000); return () => clearInterval(t); }, [busy, router]);
   const [, start] = useTransition();
   const [err, setErr] = useState("");
   const [fresh, setFresh] = useState("");
@@ -116,7 +116,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
   const chip = (label: string, on: boolean, click: () => void, title?: string) => <button key={label} className="chip" aria-pressed={on} onClick={click} title={title}>{label}</button>;
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+    <div style={{ display: "flex", flexDirection: "column", gap: "var(--s-4)" }}>
       <div className="summary" role="group" aria-label="Filter by section">
         {sections.map((s) => {
           const its = list.filter((i) => i.section === s.id && i.status !== "cancelled"), d = its.filter((i) => i.status === "done").length, g = its.filter((i) => i.status === "doing").length, n = its.length || 1;
@@ -178,7 +178,7 @@ export default function Checklist({ projectId, sections: given, items, today, sh
                 </div>
               )}
               {its.map((i) => <Row key={i.id} i={i} s={s} byId={byId} sprint={i.sprint_id ? sprintById.get(i.sprint_id) : undefined} selecting={selecting} selected={sel.includes(i.id)} onSelect={() => toggleSel(i.id)} today={today} fresh={i.id === fresh} onStatus={(st) => setStatus(i, st)} run={run} projectId={projectId} />)}
-              {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "8px 14px" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
+              {its.length > 0 && hiddenClosed > 0 && <div className="empty" style={{ padding: "var(--s-2) var(--s-4)" }}>{hiddenClosed} completed hidden · <button className="more" onClick={() => setFilters({ ...f, showDone: true })}>Show completed</button></div>}
               <AddRow projectId={projectId} section={s} today={today} onAdded={setFresh} />
             </div>
           </section>
@@ -219,7 +219,7 @@ function Row({ i, s, byId, sprint, selecting, selected, onSelect, today, fresh, 
           {i.refine === "pending" && <span className="pill go" title={i.refine_request ? "Claude is reading your comment and will adjust the item" : "Claude is reading this item and will add steps, a priority, an estimate and a due date that doesn't clash"}>{i.refine_request ? "reading your comment…" : "refining…"}</span>}
           {i.refine === "done" && <span className="pill" title={i.refine_note || "Refined by Claude"}>refined by Claude</span>}
           {i.refine === "flagged" && <span className="pill crit" title={i.refine_note}>{/* agent/rollover.mjs RESCOPE */ i.refine_note?.startsWith("Re-scope:") ? "check: re-scope" : "check: overlaps"}</span>}
-          {claudeOwned && i.status === "doing" && !i.build_status && <span className="pill go" title="The Mac worker starts building this within a minute">go given · queued</span>}
+          {claudeOwned && i.status === "doing" && !i.build_status && <span className="pill go" title="The Mac worker starts building this at its next check, or now with Jarvis Check Now on your Mac">go given · queued</span>}
           {i.build_status === "working" && <span className="pill go">Claude is building…</span>}
           {i.build_status === "pr_open" && <span className="pill go">PR ready for you</span>}
           {i.build_status === "merge_requested" && <span className="pill go">merging…</span>}
@@ -240,7 +240,7 @@ function Row({ i, s, byId, sprint, selecting, selected, onSelect, today, fresh, 
           onChange={(e) => run(() => setDue(projectId, i.id, e.target.value || null))} />
         {i.status === "todo" && !ACTIVE_BUILD.includes(i.build_status || "") && (
           <button className="btn sm ghost startbtn" onClick={() => onStatus("doing")} aria-label={`${claudeOwned ? "Start build" : "Start"}: ${i.title}`}
-            title={claudeOwned ? "Claude builds this on a branch and opens a pull request for you to review (the Mac worker picks it up within a minute)" : "Mark it in progress"}>{claudeOwned ? "Start build ▸" : "Start ▸"}</button>
+            title={claudeOwned ? "Claude builds this on a branch and opens a pull request for you to review (the Mac worker picks it up at its next check)" : "Mark it in progress"}>{claudeOwned ? "Start build ▸" : "Start ▸"}</button>
         )}
         {i.status === "doing" && (
           <span className="inprog">
@@ -264,7 +264,7 @@ function Build({ i, run, projectId }: { i: Item; run: (fn: () => Promise<unknown
     <div className="buildbar">
       {i.pr_url && <a href={i.pr_url} target="_blank" rel="noopener noreferrer">Pull request {short} ↗</a>}
       {i.build_status === "pr_open" && <span className={`due${i.build_note ? " late" : ""}`}>{i.build_note || "not merged · review it, then:"}</span>}
-      {i.build_status === "merge_requested" && <span className="due">the Mac worker merges it within a minute</span>}
+      {i.build_status === "merge_requested" && <span className="due">the Mac worker merges it at its next check</span>}
       {i.build_status === "merged" && <span className="due">merged{i.build_updated_at ? ` ${fmtWhen(i.build_updated_at)}` : ""}</span>}
       {i.build_status === "failed" && <span className="due late">{i.build_note || "The build run failed."}</span>}
       {i.build_status === "sent_back" && <span className="due">Claude is continuing on this branch{i.build_note ? `: ${i.build_note}` : ""}</span>}
@@ -440,7 +440,7 @@ function Note({ i, projectId }: { i: Item; projectId: string }) {
     <form className="note" onSubmit={(e) => { e.preventDefault(); if (!dirty || !note.trim() || s.pending) return; s.submit(() => sendNote(projectId, i.id, note), { ok: "Sent", onOk: () => { try { localStorage.removeItem(draftKey); } catch { /* ignore */ } } }); }}>
       <label className="lbl" htmlFor={`note-${i.id}`}>Your answer (Claude reads it when you send it)</label>
       <textarea id={`note-${i.id}`} className="textarea" rows={2} value={note} placeholder="Your call, or a question back · Enter sends, Shift+Enter for a new line" onChange={(e) => change(e.target.value)} onKeyDown={enterSends} />
-      <div className="crow" style={{ gap: 10 }}>
+      <div className="crow" style={{ gap: "var(--s-2)" }}>
         <button className="btn sm" disabled={!dirty || !note.trim() || s.pending}>{s.pending ? "Sending…" : "Send to Claude"}</button>
         {s.err || s.pending || s.ok ? <Ack s={s} busy="Sending…" /> : (
           <span className="due">

@@ -1,17 +1,18 @@
 import type { NextRequest } from "next/server";
-import { COOKIE, validSession } from "@/lib/auth";
+import { COOKIE, sessionOk } from "@/lib/auth";
 import { addClickEvents, trackingEnabled, type ClickIn } from "@/lib/usage";
+import { isAutomatedUA } from "@/lib/automation";
 
 // Batches from components/UsageTracker.tsx (navigator.sendBeacon or fetch keepalive). Owner session only, same origin.
 // Always answers 204 once authenticated: a failed insert (e.g. before the deploy migration) is dropped silently.
 const none = (status = 204) => new Response(null, { status });
 
 export async function POST(req: NextRequest) {
-  if (!validSession(req.cookies.get(COOKIE)?.value)) return none(401);
+  if (!(await sessionOk(req.cookies.get(COOKIE)?.value))) return none(401);
   const origin = req.headers.get("origin");
   const host = (() => { try { return origin ? new URL(origin).host : null; } catch { return "?"; } })();
   if (host && host !== req.headers.get("host") && host !== req.nextUrl.host) return none(403);
-  if (!trackingEnabled()) return none();
+  if (!trackingEnabled() || isAutomatedUA(req.headers.get("user-agent"))) return none(); // a screenshot pass or a test run isn't the owner
   const text = await req.text().catch(() => "");
   if (!text || text.length > 64_000) return none(text ? 413 : 400);
   let b: { sid?: unknown; events?: unknown };

@@ -12,6 +12,7 @@ These are the few rules the whole tool relies on. Setup enforces them; everythin
   folder named `ACME-2024`) and point at a **subfolder** (`"dir": "app"` when the code lives in `MyProject/app`).
 - Re-running `sync` never wipes what's on the site: deadlines change only when the PRD has a milestones table,
   and an existing tagline or status line is kept unless you override it.
+  A PRD without a dated table is listed by `sync` and `doctor`, since its Timeline deadlines no longer follow the file.
 - A milestone dragged to a new date on the Timeline is written back into its PRD.md row (the date cell only, no
   commit) by the Mac worker on its next pass, and by `sync` / plan before they read the file, so the move sticks.
 - The Jarvis tool itself can live inside `projects_root`; it then shows up as a project like any other.
@@ -32,7 +33,7 @@ a `jarvis/setup-<id>` pull request. `node agent/projects.mjs scaffold` is the of
 
 What "Plan this project" expects, and adds checklist items to create when missing (it doesn't invent a roadmap
 without a PRD):
-- `PRD.md` **at the repo root** with a dated Milestones table: the plan dates items before the milestone they serve.
+- `PRD.md` **at the repo root** (`docs/PRD.md` is read too) with a dated Milestones table: the plan dates items before the milestone they serve.
 - A `## How we work` section in `CLAUDE.md` (in `templates/CLAUDE.md`): the checklist on Jarvis is the source of
   truth, the loop rule (an item in Claude's section set to in progress is the go; branch + PR; nothing merges on its
   own), the 3-day audit, the PRD.

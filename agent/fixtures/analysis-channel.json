@@ -1,0 +1,20 @@
+{
+  "title": "Biweekly stats digest",
+  "headline": "Channel B retention has risen five publish weeks in a row; Channel A fell after the voice change. Last cycle's work first airs on 4 Nov, so its numbers are not a verdict yet.",
+  "body_md": "## What moved\n\nRetention by publish week, view-weighted.\n\n## What to try next\n\n1. Revert the voice on Channel A for one cohort.\n\n## What to watch\n\nChannel A retention for reels built after 21 Oct (first airs 4 Nov).",
+  "source": "stats-digest",
+  "date": "2026-10-21",
+  "period": { "from": "2026-09-23", "to": "2026-10-21" },
+  "numbers": { "a_views_28d": 8267, "a_avg_view_pct": 44.5, "b_views_28d": 3505, "b_avg_view_pct": 31.96, "queued_unpublished": 42, "median_lead_days": 12.7 },
+  "series": [
+    { "key": "a_retention", "label": "Channel A", "chart": "Retention by publish week", "unit": "pct",
+      "points": [{ "x": "2026-08-31", "v": 66.0, "n": 1210 }, { "x": "2026-09-07", "v": 57.5, "n": 980 }, { "x": "2026-09-14", "v": 44.5, "n": 1430 }, { "x": "2026-09-21", "v": 50.8, "n": 1102 }] },
+    { "key": "b_retention", "label": "Channel B", "chart": "Retention by publish week", "unit": "pct",
+      "points": [{ "x": "2026-08-31", "v": 12.3, "n": 410 }, { "x": "2026-09-07", "v": 15.4, "n": 520 }, { "x": "2026-09-14", "v": 18.3, "n": 611 }, { "x": "2026-09-21", "v": 25.8, "n": 702 }, { "x": "2026-09-28", "v": 29.1, "n": 655 }] }
+  ],
+  "markers": [{ "x": "2026-09-14", "label": "Voice change first airs" }],
+  "tools": [
+    { "name": "YouTube Analytics", "role": "source", "detail": "28-day window, 200 videos per channel", "status": "ok" },
+    { "name": "Discord", "role": "destination", "detail": "#monthly-review", "status": "ok" }
+  ]
+}

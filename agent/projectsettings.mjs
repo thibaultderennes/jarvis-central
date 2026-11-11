@@ -32,7 +32,7 @@ export function daysFrom(a, b) {
  */
 export function reviewsDue(projects, { last = {}, tried = {}, today, busy = new Set() }) {
   return projects.filter((p) => {
-    if (p.archived || p.reviews_enabled === false || busy.has(p.id)) return false;
+    if (p.archived || p.paused_at || p.reviews_enabled === false || busy.has(p.id)) return false;
     const every = reviewEvery(p);
     if (every === 7) return false; // the Monday run (weekly.mjs) reviews these
     const since = [last[p.id], tried[p.id]].filter(Boolean).sort().pop();

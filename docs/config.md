@@ -2,7 +2,7 @@
 
 Lives at the repo root, is gitignored, and is created during setup from `jarvis.config.example.json`. Missing keys
 fall back to the defaults below, so an old file keeps working after an update. The website gets the few values it
-needs (timezone, your name, schedule wording) as Vercel env vars, written by `node app/scripts/setup.mjs secrets`:
+needs (timezone, your name, schedule wording) as Vercel env vars, written by `cd app && node scripts/setup.mjs secrets`:
 re-run it and redeploy after changing those.
 
 | Key | Default | What it does |
@@ -33,7 +33,7 @@ re-run it and redeploy after changing those.
 | `reviews.concurrency` | `2` | Projects reviewed in parallel. |
 | `reviews.repo_scout` | `true` | The Monday Jarvis review also searches GitHub and the web (read-only) for agent skills and tools that address the week's pain points, and proposes up to 3. `false` = no web access for that review. |
 | `reviews.repo_scout_skip` | `[]` | Repos (`owner/repo`) the scout should never propose again. Installed skills are skipped automatically. |
-| `worker.interval_seconds` | `60` | How often the inbox is checked. |
+| `worker.interval_seconds` | `3600` | How often the worker checks the inbox, builds and merges (minimum 30). Each check wakes the database for about 5 minutes, so a free-tier Neon plan wants an hour or more; every minute keeps it awake and uses up the free compute hours. `jarvis check` or the Jarvis Check Now app runs a check at once. |
 | `worker.allow_build` | `true` | `false` = the worker only discusses, never edits code. |
 | `worker.refine_new_items` | `true` | Items you add on the site get steps, a section, priority, an estimate and a due date on a day with room. `false` = leave them as typed. |
 | `worker.refine_inbox_notes` | `false` | `true` = also post an Inbox note each time a new item is refined (the result is always on the item itself). Replies to your comments on an item always go to the Inbox. |
@@ -46,15 +46,20 @@ re-run it and redeploy after changing those.
 | `project_setup.cooldown_days` | `7` | Fewest days between two automatic runs on the same project. |
 | `project_setup.check_minutes` | `60` | How often the worker checks registered projects for an update run (new projects are picked up every pass). |
 | `project_setup.model` | `null` | Model for the setup session (`null` = `worker.build_model`, then Claude Code's default). |
+| `inbox.auto_treat_fyi_days` | `3` | A reply that is only FYI (a refine or comment note, a discussion answered without code) moves from Pending to Treated on its own once you opened it this many days ago; the worker checks hourly. Never applies to "needs you", errors, or anything with a branch or PR, and a reply you move back to Pending stays there. `0` = off. `node agent/inbox.mjs auto-treat --dry-run` lists what it would mark. |
 | `audits.dir` | `"docs/audits"` | Folder inside each project where security audit reports live (`*.md`, one per run, e.g. `2026-10-01-sued-hacked.md`; `PROMPTS.md` and `README.md` are ignored). They show on the project page's Docs and reviews (Security audits). |
 | `audits.sync_minutes` | `60` | How often the worker mirrors those reports to the site (`0` = every worker pass). `node agent/audits.mjs sync` does it now. |
 | `economics.files` | `["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"]` | File names, relative to each project folder, that opt a project into unit economics: the first that exists is its model. See [`unit-economics.md`](unit-economics.md). |
 | `economics.models` | `{}` | A model path per project id that replaces `economics.files` for that project, e.g. `{"my-app": "docs/finance/jarvis.economics.cjs"}`. Must stay inside the project folder. |
 | `economics.sync_minutes` | `60` | How often the worker evaluates the models and uploads changed results to the project's Finances tab (`0` = every worker pass). `node agent/economics.mjs sync` does it now. |
 | `economics.timeout_seconds` | `30` | Time limit for evaluating one model (each runs in its own Node process). |
-| `metrics.sources.<id>` | `{}` | Where a project's product numbers come from: `{"url": "https://…", "token_env": "VAR", "header": "Authorization", "map": {…}}` (GET; the token is read from that env var, in your shell or `~/.config/jarvis/env`, and sent as `Bearer <token>`, or raw when `header` is another name) or `{"command": "…", "map": {…}}` (run in the project folder). Either must give a JSON object; `map` picks numbers by dotted path (`{"visits": "results.visitors.value"}`). See [`metrics.md`](metrics.md). |
+| `metrics.sources.<id>` | `{}` | Where a project's product numbers come from: `{"url": "https://…", "token_env": "VAR", "header": "Authorization", "map": {…}}` (GET; the token is read from that env var, in your shell or `~/.config/jarvis/env`, and sent as `Bearer <token>`, or raw when `header` is another name) or `{"command": "…", "map": {…}}` (run in the project folder). Either must give a JSON object; `map` picks numbers by dotted path (`{"visits": "results.visitors.value"}`, `-1` = the last array element). A list of sources is merged into one snapshot. See [`metrics.md`](metrics.md). |
 | `metrics.sync_minutes` | `1440` | How often the worker fetches the sources and posts a snapshot (`0` = every worker pass). `node agent/metrics.mjs sync` does it now. |
 | `metrics.timeout_seconds` | `30` | Time limit for one source (fetch or command). |
+| `metrics.stale_days` | `7` | A live project whose newest snapshot is this old (or that has none) is named in `doctor`, `node agent/metrics.mjs status` and the Monday reviews. |
+| `metrics.remind` | `true` | Once a week, one todo on today listing the live projects with no source and no numbers typed lately. `false` turns it off. |
+| `metrics.expect` | `[]` | Project ids that should have numbers although they have no website that answers (a channel, an app). |
+| `metrics.skip` | `[]` | Project ids that never need numbers although their site is live (an internal tool, a client site). |
 | `calendars.read_google` / `read_apple` | `true` / `false` | Show those appointments and plan around them. |
 | `calendars.write_google` / `write_apple_feed` | `true` / `false` | Put the week plan in those calendars. |
 | `usage.track_clicks` | `true` | Records your page views and clicks on the site (first-party, in your own database; only the labels the tool gives its buttons, links and tabs, never what you type) so the Monday Jarvis review can base its flow advice on how you actually move around. `false` stops it: the site gets it as `JARVIS_TRACK_CLICKS` from `setup.mjs secrets` (or just `setup.mjs usage`), then redeploy. |

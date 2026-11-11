@@ -43,8 +43,12 @@ It should look like a well-kept instrument, not a landing page: no decoration th
 No other fonts. No serif, no italic display accents, no emoji in headings or labels (a ✓ inside a control is fine).
 
 ## Spacing and shape
-- **Spacing scale (4px base):** 4, 8, 12, 16, 20, 24, 32, 40. New code uses only these; the odd 7/9/11/13px paddings
-  are migrated over time (checklist item `spacing-scale-tokens-and`).
+- **Spacing scale (4px base):** 4, 8, 12, 16, 20, 24, 32, 40, as tokens on `:root`: `--s-1` (4), `--s-2` (8),
+  `--s-3` (12), `--s-4` (16), `--s-5` (20), `--s-6` (24), `--s-8` (32), `--s-10` (40). Padding, margin and gap use a
+  token (`padding: var(--s-2) var(--s-3)`; inline styles too: `gap: "var(--s-2)"`); 0, 1px and 2px hairlines (and
+  negative margins that cancel a border) stay raw pixels. `app/test/spacing.test.mjs` fails on any pixel value off
+  the scale; its short allowlist holds the few layout offsets that must match a
+  measured position (the bottom bar's clearance, the all-day row that lines up with timed blocks).
 - **Radius:** 4 (pills, inputs), 6 (buttons), 8 (cards, panels), 10 (floating layers). Nothing rounder except fully
   round dots and pills.
 - Panels are bordered (`1px --line`), not shadowed.

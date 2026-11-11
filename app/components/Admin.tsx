@@ -3,6 +3,7 @@ import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { approveProject, declineProject, removeProject, requestRescan, restoreProject, savePrefs, startProject, type Ignored } from "@/lib/actions";
 import { Ack, enterCommits, useSubmit } from "./Submit";
+import { everyLabel, workerAlive } from "@/lib/workerBeat";
 
 export type Proposal = { id: string; name: string; folder?: string; dir?: string; tagline?: string };
 export type Rescan = { status: "queued" | "running" | "done" | "failed"; requested_at?: string; started_at?: string; finished_at?: string; added?: string[]; proposed?: Proposal[]; archived?: string[]; total?: number; error?: string };
@@ -10,16 +11,16 @@ export type Rescan = { status: "queued" | "running" | "done" | "failed"; request
 const ago = (t: string) => { const m = Math.round((Date.now() - +new Date(t)) / 6e4); return m < 1 ? "just now" : m < 60 ? `${m} min ago` : m < 2880 ? `${Math.round(m / 60)} h ago` : `${Math.round(m / 1440)} days ago`; };
 
 /** "Refresh project folders": queues a scan for the Mac worker and shows how it went. */
-export function RescanButton({ state, workerAt }: { state: Rescan | null; workerAt: string | null }) {
+export function RescanButton({ state, workerAt, workerEvery }: { state: Rescan | null; workerAt: string | null; workerEvery: number }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
   const busy = state?.status === "queued" || state?.status === "running";
-  useEffect(() => { if (!busy) return; const t = setInterval(() => router.refresh(), 5000); return () => clearInterval(t); }, [busy, router]);
-  const offline = mounted && (!workerAt || Date.now() - +new Date(workerAt) > 5 * 60_000);
+  useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 5000); return () => clearInterval(t); }, [busy, router]);
+  const offline = mounted && !workerAlive(workerAt, workerEvery, Date.now());
   let line = "Never scanned from here.";
-  if (state?.status === "queued") line = "Queued: the Mac worker picks it up within a minute.";
+  if (state?.status === "queued") line = `Queued: the Mac worker picks it up at its next check (${everyLabel(workerEvery)}), or now with Jarvis Check Now on your Mac.`;
   else if (state?.status === "running") line = `Scanning your projects folder…${mounted && state.started_at ? ` (started ${ago(state.started_at)})` : ""}`;
   else if (state?.status === "done") line = `Done${mounted && state.finished_at ? ` ${ago(state.finished_at)}` : ""}: ${state.proposed?.length ? `${state.proposed.length} new folder${state.proposed.length > 1 ? "s" : ""} waiting for your approval below` : state.added?.length ? `${state.added.length} new project${state.added.length > 1 ? "s" : ""} (${state.added.join(", ")})` : "no new folders"}${state.archived?.length ? `, ${state.archived.length} archived (folder gone)` : ""}${state.total != null ? ` · ${state.total} registered` : ""}.`;
   else if (state?.status === "failed") line = `Failed${mounted && state.finished_at ? ` ${ago(state.finished_at)}` : ""}: ${state.error || "unknown error"}`;

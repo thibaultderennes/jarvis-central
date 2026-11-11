@@ -1,0 +1,20 @@
+{
+  "title": "Weekly growth review",
+  "headline": "Activation of the 12 Oct signup cohort doubled after the onboarding change; paid conversion has not moved yet.",
+  "body_md": "## Funnel\n\nActivation by signup week.\n\n## Next\n\n- Watch paid conversion of the 12 Oct cohort at day 14.",
+  "source": "growth-review",
+  "date": "2026-10-26",
+  "period": { "from": "2026-09-28", "to": "2026-10-25" },
+  "numbers": { "signups_7d": 41, "activation_pct": 38, "mrr": 1240 },
+  "series": [
+    { "key": "activation", "label": "Activated within 24 h", "chart": "Activation by signup week", "unit": "pct",
+      "points": [{ "x": "2026-09-28", "v": 17, "n": 30 }, { "x": "2026-10-05", "v": 19, "n": 36 }, { "x": "2026-10-12", "v": 38, "n": 41 }] },
+    { "key": "mrr", "label": "MRR", "chart": "Revenue", "points": [{ "x": "2026-10-05", "v": 1100 }, { "x": "2026-10-12", "v": 1180 }, { "x": "2026-10-19", "v": 1240 }] }
+  ],
+  "markers": [{ "x": "2026-10-12", "label": "New onboarding" }],
+  "tools": [
+    { "name": "Stripe", "role": "source", "status": "ok" },
+    { "name": "Plausible", "role": "source", "status": "degraded", "note": "API rate-limited on one day" },
+    { "name": "Slack", "role": "destination", "detail": "#growth" }
+  ]
+}

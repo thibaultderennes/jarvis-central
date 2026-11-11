@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-// Jarvis inbox worker. The scheduler runs one pass every minute: pick up messages the owner left on the
+// Jarvis inbox worker. The scheduler runs one pass every worker.interval_seconds (an hour by default; `jarvis check`
+// or the Jarvis Check Now app runs one at once): pick up messages the owner left on the
 // website, run `claude -p` in the right project, reply. Code work happens only in a throwaway git
 // worktree; this script (not Claude) pushes the branch and opens the PR. Nothing is ever merged.
 //
@@ -8,17 +9,20 @@
 import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
-import { api, qs, makeLog, makeLogOnce, acquireLock, todayTZ, hostName, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
+import { api, qs, makeLog, makeLogOnce, acquireLock, todayTZ, hostName, WORKER_INTERVAL, JARVIS_ROOT, CLI, CONFIG, TZ, OWNER, PROJECTS_ROOT } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
+import { checkClaude, tellLoginExpired, catchUpWeekly } from "./preflight.mjs";
 import { refinePending } from "./refine.mjs";
 import { planProject } from "./planproject.mjs";
 import { screenProject } from "./screen.mjs";
 import { syncAuditsDue } from "./audits.mjs";
 import { syncEconomicsDue } from "./economics.mjs";
-import { syncMetricsDue } from "./metrics.mjs";
+import { syncMetricsDue, remindMetricsDue } from "./metrics.mjs";
 import { rescanIfRequested } from "./rescan.mjs";
+import { applyQueuedSettings } from "./settingsapply.mjs";
 import { rolloverDue, describe as describeRollover } from "./rollover.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
+import { autoTreatDue } from "./inbox.mjs";
 import { prepareWebsiteSkills, websiteBrief, playwrightCommand, githubWebUrl } from "./website.mjs";
 import { prepareLughSkills, lughBrief, PLUGIN_NAME as LUGH_PLUGIN } from "./lugh.mjs";
 import { skillUse, missingSkillsPrompt } from "./skillpacks.mjs";
@@ -52,6 +56,8 @@ const WEBSITE_TOOLS = ["Bash(npm run dev:*)", "Bash(npm run start:*)", "Bash(npm
 const DENY = ["Bash(git push:*)", "Bash(gh pr merge:*)", "Bash(gh pr create:*)", "Bash(rm -rf:*)", "Bash(curl:*)", "Bash(vercel:*)", "Bash(railway:*)", "Bash(stripe:*)", "Bash(supabase:*)"];
 
 const git = (dir, ...args) => execFileSync("git", ["-C", dir, ...args], { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"], timeout: 120_000 }).trim();
+/** The shared .git of a worktree (where its commits are written), or null outside a repo. */
+const gitCommonDir = (dir) => { try { return git(dir, "rev-parse", "--path-format=absolute", "--git-common-dir"); } catch { return null; } };
 const tryGit = (dir, ...args) => { try { return git(dir, ...args); } catch { return null; } };
 
 export function repoInfo(dir) {
@@ -180,7 +186,7 @@ ${mode === "code"
 ${CLI_CMD} projects
 ${CLI_CMD} items <project> [--open] [--section S]
 ${CLI_CMD} item <project> <id>
-${CLI_CMD} set <project> <id> status=todo|doing|done due=YYYY-MM-DD note="..." title="..." section=S owner=founder|claude|both critical=true|false
+${CLI_CMD} set <project> <id> status=todo|done due=YYYY-MM-DD note="..." title="..." section=S critical=true|false   (setting an item in progress or changing its owner is the owner's call: refused here)
 ${CLI_CMD} add <project> <section> "title" [--due D] [--owner O] [--detail T] [--critical]
 ${CLI_CMD} todo add "title" [--date D|today|tomorrow] [--time HH:MM] [--project P] [--item ID] [--life]
 ${CLI_CMD} todos [--from D] [--to D]
@@ -226,6 +232,11 @@ async function handle(message, projects) {
   const shortId = message.id.replace(/-/g, "").slice(0, 8);
   const project = projects.find((p) => p.id === message.project_id) || null;
   await api("PATCH", "/api/agent/messages", { id: message.id, status: "seen" });
+  // A paused project's audits and reviews wait: Screenings and Run now are declined until it is resumed.
+  if (project?.paused_at && (message.mode === "screen" || message.mode === "review")) {
+    log("declined, project paused", message.mode, project.id);
+    return api("PATCH", "/api/agent/messages", { id: message.id, status: "answered", reply: `${project.name} is paused, so its audits and reviews are on hold. Resume it from its page, then run this again.` });
+  }
   if (message.mode === "plan") return planProject(message, project, log); // "Plan this project" button
   if (message.mode === "screen") return screenProject(message, project, log); // Docs and reviews → Screenings → Run
   if (message.mode === "review") return runProjectReview(message, project, log); // Settings → Run now, or the project's own schedule
@@ -287,7 +298,10 @@ async function handle(message, projects) {
       addDirs: site && pack ? [pack.pluginDir, ...(pack.designsDir ? [pack.designsDir] : [])] : plugins, pluginDirs: plugins,
       model: (mode === "code" ? W.build_model : W.discuss_model) || undefined, maxTurns: site ? 120 : lugh ? 90 : mode === "code" ? 60 : 30,
       // A website takes longer than an item: twice the usual limit; a Lugh build (tests, review, docs) half as long again.
-      timeoutMs: (W.timeout_minutes || 25) * runMultiplier({ site, lugh: !!lugh }) * 60_000, log };
+      timeoutMs: (W.timeout_minutes || 25) * runMultiplier({ site, lugh: !!lugh }) * 60_000, log,
+      // Code runs edit files and run scripts: every Bash command runs sandboxed (no network but localhost, writes only
+      // in the worktree and its git dir), so an edited test or package script can't reach out or touch the Mac (H8.3).
+      sandbox: mode === "code" ? { allowWrite: [gitCommonDir(cwd)].filter(Boolean) } : null };
     res = await runClaude({ prompt, ...runOpts });
     // Skill packs are only worth loading if the run opens them: check the transcript, and give a run that skipped required
     // skills one follow-up turn (same session) to read and apply them. The PR and reply say which were used.
@@ -408,44 +422,65 @@ async function pass() {
   const release = acquireLock("worker");
   if (!release) return log("previous pass still running, skipping");
   try {
-    const hb = await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName(), build_mode: buildModeFor(null, W.build_mode) } }).catch((e) => (log("heartbeat failed", e.message), null));
+    const hb = await api("POST", "/api/agent/heartbeat", { worker: "worker", info: { version: VERSION, host: hostName(), interval_s: WORKER_INTERVAL, build_mode: buildModeFor(null, W.build_mode) } }).catch((e) => (log("heartbeat failed", e.message), null));
     // Agent and site from different releases disagree on the API: building or merging against it can loop
     // over every item. Pause those two passes (refine and messages stay on) until both are updated.
     const mm = (v) => String(v || "").split(".").slice(0, 2).join(".");
     const skew = hb && mm(hb.version) !== mm(VERSION) && VERSION !== "dev" ? (hb.version || "older than 0.6") : null;
     logChanged("version-skew", skew, skew ? `version skew: agent ${VERSION}, site ${skew}. Build and merge passes paused until both run the same release (git pull, re-run agent/install.sh, redeploy).` : "agent and site versions match again");
     const projects = await api("GET", "/api/agent/projects");
+    // This week's Monday run never got going (Mac asleep or offline, site down, Claude signed out): start it now.
+    try { catchUpWeekly({ log }); } catch (e) { log("monday catch-up check failed", e.message); }
+    // Paused on the site: messages about it are still answered and approved merges still land, but nothing starts on its own.
+    const active = projects.filter((p) => !p.paused_at);
     // Items the owner just added on the site: add steps, priority, estimate and a due date that doesn't clash.
     await refinePending(projects, log).catch((e) => log("refine pass failed", e.message));
-    // Security audit reports in each project folder → the project's Security tab; at most once an hour.
-    await syncAuditsDue(projects, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
+    // Security audit reports in each project folder → the project's Security tab; at most once an hour. Not for a paused project.
+    await syncAuditsDue(active, log).then((r) => r?.synced && log("audits synced", r)).catch((e) => log("audits sync failed", e.message));
     // Unit-economics model files in project folders → evaluated here, results on the project's Finances tab; hourly.
     await syncEconomicsDue(projects, log).then((r) => r?.synced && log("economics synced", r)).catch((e) => log("economics sync failed", e.message));
     // Product metrics (users, visits, revenue…) from each project's source in the config → the project's Stats view; daily.
-    await syncMetricsDue(projects, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
+    await syncMetricsDue(active, log).then((r) => r?.synced && log("metrics synced", r)).catch((e) => log("metrics sync failed", e.message));
+    // Once a week: one todo naming the live projects with no source and no numbers typed lately (metrics.remind).
+    await remindMetricsDue(active, log).catch((e) => logChanged("metrics-reminder", e.message, "metrics reminder failed", e.message));
     // Milestones moved on the Timeline: write the new dates into each PRD.md so the next sync keeps them.
     await applyMilestoneMoves(projects, log).then((r) => r.length && log("milestone moves applied", r)).catch((e) => log("milestone write-back failed", e.message));
     // "Refresh project folders" pressed on the Admin page: scan projects_root and register what's new.
     await rescanIfRequested(log).catch((e) => log("rescan failed", e.message));
+    // FYI replies (refine/comment notes, plain answers) opened inbox.auto_treat_fyi_days ago: mark them treated; hourly.
+    await autoTreatDue(log).catch((e) => logChanged("inbox-auto-treat", e.message, "inbox auto-treat failed", e.message));
+    // "Apply" pressed on a Jarvis review's settings suggestion: write those keys into jarvis.config.json.
+    await applyQueuedSettings(log).catch((e) => logChanged("settings-apply", e.message, "settings apply failed", e.message));
     // A project loaded for the first time, or updated with a foundation gap: queue its setup session (setup.mjs).
-    await queueSetupDue(projects, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
+    await queueSetupDue(active, log).catch((e) => logChanged("setup-queue", e.message, "setup queue failed", e.message));
     // PRs the owner approved on a checklist item, then in-progress items owned by Claude that need a build run.
     if (!skew) {
       // Once a day on a work day: yesterday's undone todos and overdue items back to the top of today (agent/rollover.mjs).
       await rolloverDue(log).then((r) => r && r.workday && log("rollover", { carried: r.carried, parked: r.parks.length, flagged: r.flags.length, waiting: r.waiting.length }, describeRollover(r).join(" | "))).catch((e) => log("rollover failed", e.message));
       // Projects reviewed every N days (Settings) rather than in the weekly run: queue the ones due; hourly. Paused on
       // skew too, since an older site stores a 'review' message as a discussion.
-      await queueDueReviews(projects, log).catch((e) => logChanged("review-queue", e.message, "review schedule check failed", e.message));
+      await queueDueReviews(active, log).catch((e) => logChanged("review-queue", e.message, "review schedule check failed", e.message));
       await mergeApproved(projects, log).catch((e) => logChanged("merge-pass", e.message, "merge pass failed", e.message));
       await queueBuilds(projects, log).catch((e) => logChanged("build-queue", e.message, "build queue failed", e.message));
     }
-    const messages = await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }));
-    if (!messages.length) return;
-    for (const m of messages) {
-      try { await handle(m, projects); }
-      catch (e) {
-        log("error", m.id, e.message);
-        await api("PATCH", "/api/agent/messages", { id: m.id, status: "error", reply: `The worker hit an error: ${e.message.slice(0, 500)}` }).catch((e2) => log("could not report error", e2.message));
+    // Passes are an hour apart by default, so work through everything waiting rather than three at a time.
+    // Each round re-reads the inbox (handled messages leave "new"); the cap stops a message that never does.
+    const done = new Set();
+    for (let round = 0; round < 10; round++) {
+      const messages = (await api("GET", "/api/agent/messages" + qs({ status: "new", limit: 3 }))).filter((m) => !done.has(m.id));
+      if (!messages.length) return;
+      // Once per pass, before the first message: a signed-out Claude would turn every message into an error.
+      if (round === 0) {
+        const c = await checkClaude({ log });
+        if (!c.ok && c.auth) { log("claude isn't signed in, leaving messages for the next pass", c.why); await tellLoginExpired(c.why, "worker", { log }); return; }
+      }
+      for (const m of messages) {
+        done.add(m.id);
+        try { await handle(m, projects); }
+        catch (e) {
+          log("error", m.id, e.message);
+          await api("PATCH", "/api/agent/messages", { id: m.id, status: "error", reply: `The worker hit an error: ${e.message.slice(0, 500)}` }).catch((e2) => log("could not report error", e2.message));
+        }
       }
     }
   } finally { release(); }

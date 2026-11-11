@@ -10,7 +10,7 @@ export default function Screenings({ projectId, cards }: { projectId: string; ca
   const router = useRouter();
   const [pending, start] = useTransition();
   const busy = cards.some((c) => c.running);
-  useEffect(() => { if (!busy) return; const t = setInterval(() => router.refresh(), 15000); return () => clearInterval(t); }, [busy, router]);
+  useEffect(() => { if (!busy) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 15000); return () => clearInterval(t); }, [busy, router]);
   return (
     <div className="screens" data-track-section="Screenings">
       {cards.map((c) => (

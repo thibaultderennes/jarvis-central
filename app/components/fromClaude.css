@@ -1,0 +1,20 @@
+/* From Claude digest (components/FromClaude.tsx): on Home under the Now rail, and atop the Inbox. */
+.fromclaude .ph .ct { font-family: var(--mono); font-size: 11px; background: var(--surface-2); color: var(--ink-2); border-radius: 8px; padding: 0 var(--s-2); line-height: 18px; }
+.fromclaude .ph .hint { font-size: 12.5px; color: var(--ink-3); }
+.fc-groups, .fc-lines { list-style: none; margin: 0; padding: 0; }
+.fc-group { padding: var(--s-2) var(--s-4) var(--s-3); border-top: 1px solid var(--line-2); }
+.fc-group:first-child { border-top: 0; }
+.fc-head { display: flex; align-items: center; gap: var(--s-2); }
+.fc-head .sp { flex: 1; }
+.fc-head .more { margin-top: 0; }
+.fc-p { display: flex; align-items: center; gap: var(--s-2); font-size: 12.5px; font-weight: 600; color: var(--ink); }
+.fc-line { display: grid; grid-template-columns: 64px minmax(0, 1fr) auto; gap: var(--s-3); align-items: center; padding: var(--s-1) 0; }
+.fc-line .pill { justify-self: start; }
+.fc-line a { font-size: 13.5px; text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; color: var(--ink); }
+.fc-line a:hover { text-decoration: underline; }
+.fc-more summary { font-size: 12px; color: var(--ink-2); cursor: pointer; padding: var(--s-1) 0; }
+@media (max-width: 600px) {
+  .fc-line { grid-template-columns: auto minmax(0, 1fr); row-gap: var(--s-1); }
+  .fc-line a { grid-column: 1 / -1; white-space: normal; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+  .fc-line .due { grid-row: 1; grid-column: 2; justify-self: end; }
+}

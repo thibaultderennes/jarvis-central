@@ -1,0 +1,29 @@
+/* The overdue queue (OverdueQueue.tsx): Home box and Today panel. Late = red per DESIGN.md, kept to counts and the due column. */
+.oq { display: flex; flex-direction: column; min-width: 0; }
+.oq-bar { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-2) var(--s-3); padding: 0 0 var(--s-2); border-bottom: 1px solid var(--line-2); font-size: 13px; color: var(--ink-2); }
+.oq-all { display: inline-flex; align-items: center; gap: var(--s-2); cursor: pointer; }
+.oq-all b { color: var(--ink); font-variant-numeric: tabular-nums; }
+.oq-crit { color: var(--bad); font-weight: 600; }
+.oq-acts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s-1); margin-left: auto; }
+.oq-acts .input { width: 140px; padding: var(--s-1) var(--s-2); font-size: 12px; }
+.oq-list { list-style: none; margin: 0; padding: 0; }
+.oq-row { display: grid; grid-template-columns: auto minmax(0, 1fr) auto auto; gap: var(--s-2) var(--s-3); align-items: center; padding: var(--s-2) 0; border-top: 1px solid var(--line-2); font-size: 13.5px; }
+.oq-list > .oq-row:first-child { border-top: 0; }
+.oq-row.crit { box-shadow: inset 3px 0 0 var(--bad); padding-left: var(--s-2); }
+.oq-row.on { background: var(--signal-soft); }
+.oq-row .tt { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.oq-row .tt > a { text-decoration: none; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oq-row .tt > a:hover { text-decoration: underline; }
+.oq-row small { display: flex; align-items: center; gap: var(--s-1); font-family: var(--mono); font-size: 10.5px; color: var(--ink-3); overflow: hidden; white-space: nowrap; }
+.oq-row .due { white-space: nowrap; font-size: 12px; }
+.oq-ra { display: flex; align-items: center; gap: var(--s-1); }
+.oq-ra .btn { padding: 2px var(--s-2); font-size: 11.5px; white-space: nowrap; }
+.oq-date { width: 28px; height: 24px; padding: 0; border: 1px solid var(--line); border-radius: 6px; background: none; color: var(--ink-2); cursor: pointer; font-size: 12px; }
+.oq-date::-webkit-calendar-picker-indicator { cursor: pointer; margin: 0 auto; padding: 0; }
+.oq-date::-webkit-datetime-edit { display: none; }
+.oq-more { align-self: flex-start; border: 0; background: none; color: var(--ink-2); font-size: 12.5px; padding: var(--s-2) 0; cursor: pointer; text-decoration: underline; }
+@media (max-width: 600px) {
+  .oq-acts { margin-left: 0; }
+  .oq-row { grid-template-columns: auto minmax(0, 1fr) auto; }
+  .oq-ra { grid-column: 2 / -1; flex-wrap: wrap; }
+}

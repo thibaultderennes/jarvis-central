@@ -26,7 +26,7 @@ const sign = (k: number) => `${k > 0 ? "+" : "−"}${Math.abs(k)} d`;
 
 /**
  * Multi-week timeline: one lane per project (or per section on a project page). Milestones are diamonds, open items
- * are due-date ticks clustered per day (taller = more; red = overdue, amber = critical), Sunday-plan blocks are bars
+ * are due-date ticks clustered per day (taller = more; red = overdue, ink = critical; amber is only the today line), Sunday-plan blocks are bars
  * along the top of the lane, the signal line is today. Lane labels stay put; the chart scrolls sideways on phones.
  * Pins move: drag one (or focus it and use ←/→, Shift = a week, then Enter) and confirm in the popover; nothing saves before.
  */
@@ -357,7 +357,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
             </svg>
             {tip && (
               <div className={`tip tl-tip${tip.y < 110 ? " below" : ""}`} style={{ left: tip.x, top: tip.y }}>
-                <div style={{ marginBottom: 3, fontWeight: 600 }}>{tip.title}</div>
+                <div style={{ marginBottom: "var(--s-1)", fontWeight: 600 }}>{tip.title}</div>
                 {tip.rows.map((r, i) => <div key={i} className={r.tone ? `tl-t-${r.tone}` : undefined}>{r.text}</div>)}
               </div>
             )}
@@ -391,7 +391,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
           </div>
         );
       })()}
-      <div className="legend" style={{ paddingTop: 10 }}>
+      <div className="legend" style={{ paddingTop: "var(--s-2)" }}>
         <span><svg width="12" height="12" aria-hidden="true"><path className="tl-ms" d="M6,0 L12,6 L6,12 L0,6 Z" /></svg>Milestone</span>
         <span><i className="tl-k" />Items due (taller = more)</span>
         <span><i className="tl-k crit" />Critical</span>
@@ -418,7 +418,7 @@ export default function Timeline({ data }: { data: TimelineData }) {
         </section>
       )}
       <details className="tabletoggle">
-        <summary>Show as a list</summary>
+        <summary data-track="Timeline as a list">Show as a list</summary>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead><tr><th>Date</th><th>Lane</th><th>What</th></tr></thead>

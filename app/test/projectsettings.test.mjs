@@ -40,6 +40,7 @@ test("reviewsDue: only own-schedule projects, due after N days from the last rev
     { id: "never", review_every_days: 14 },
     { id: "off", review_every_days: 2, reviews_enabled: false },
     { id: "gone", review_every_days: 2, archived: true },
+    { id: "paused", review_every_days: 2, paused_at: "2026-10-01T12:00:00Z" },
     { id: "queued", review_every_days: 2 },
     { id: "failing", review_every_days: 2 },
   ];

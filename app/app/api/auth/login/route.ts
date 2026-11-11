@@ -2,6 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import { COOKIE, newSessionValue, verifyPassword, verifyTotp } from "@/lib/auth";
 import { sql } from "@/lib/db";
 import { logActivity } from "@/lib/data";
+import { sessionEpoch } from "@/lib/sessionEpoch";
 
 const WINDOW_MIN = 15, MAX_FAILS = 5;
 
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest) {
   await sql()`insert into login_attempts (ip, ok) values (${ip}, ${okPw && okCode})`;
   if (!okPw || !okCode) return NextResponse.json({ error: "That password and code don't match." }, { status: 401 });
 
-  const s = newSessionValue();
+  const s = newSessionValue(await sessionEpoch());
   const res = NextResponse.json({ ok: true });
   res.cookies.set(COOKIE, s.value, { httpOnly: true, secure: true, sameSite: "lax", path: "/", maxAge: s.maxAge });
   await logActivity("login", "/login");

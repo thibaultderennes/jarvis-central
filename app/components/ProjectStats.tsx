@@ -66,9 +66,10 @@ function StatTile({ t, currency }: { t: Tile; currency?: string }) {
   );
 }
 
-type Line = { key: string; label: string; color: string; dash?: boolean; pts: Pt[] };
-/** Lines over time on one scale; a crosshair shows every series on the hovered date. */
-function LineChart({ title, hint, lines }: { title: string; hint: string; lines: Line[] }) {
+export type Line = { key: string; label: string; color: string; dash?: boolean; pts: Pt[] };
+/** Lines over time on one scale; a crosshair shows every series on the hovered date. `markers` draws dated events (a
+ * change, when it first reached people) as dashed rules; `unit: "pct"` adds a % to the values. */
+export function LineChart({ title, hint, lines, markers = [], unit }: { title: string; hint: string; lines: Line[]; markers?: { x: string; label: string }[]; unit?: "pct" }) {
   const ref = useRef<HTMLDivElement>(null);
   const [hover, setHover] = useState<string | null>(null);
   const ls = lines.filter((l) => l.pts.length);
@@ -78,6 +79,8 @@ function LineChart({ title, hint, lines }: { title: string; hint: string; lines:
   if (dates.length < 2) return <section className="panel ps-chart">{head}<div className="empty">{!dates.length && <EmptyArt kind="numbers" />}{dates.length ? `One snapshot so far (${fd(dates[0])}): the line starts with the second.` : "No numbers yet."}</div></section>;
   const max = niceMax(Math.max(1, ...ls.flatMap((l) => l.pts.map((p) => p.v)))), n = span(dates[0], dates.at(-1)!) || 1;
   const x = (d: string) => L + ((W - L - R) * span(dates[0], d)) / n, y = (v: number) => T + (H - T - B) * (1 - v / max);
+  const val = (v: number) => (unit === "pct" ? `${num(v)}%` : num(v));
+  const ms = markers.filter((m) => m.x >= dates[0] && m.x <= dates.at(-1)!);
   const ticks = [0, max / 2, max], xt = [dates[0], dates[Math.floor(dates.length / 2)], dates.at(-1)!].filter((v, i, a) => a.indexOf(v) === i);
   const move = (e: React.MouseEvent) => {
     const b = ref.current!.getBoundingClientRect(), px = ((e.clientX - b.left) / b.width) * W;
@@ -92,6 +95,7 @@ function LineChart({ title, hint, lines }: { title: string; hint: string; lines:
           <g className="axis">{ticks.map((t) => <text key={t} x={L - 6} y={y(t) + 3.5} textAnchor="end">{num(t)}</text>)}</g>
           {xt.map((d, i) => <text key={d} x={x(d)} y={H - 6} textAnchor={i === 0 ? "start" : i === xt.length - 1 ? "end" : "middle"}>{fd(d)}</text>)}
           <line className="base" x1={L} x2={W - R} y1={y(0)} y2={y(0)} />
+          {ms.map((m) => <g key={m.x + m.label}><title>{`${fd(m.x)}: ${m.label}`}</title><line x1={x(m.x)} x2={x(m.x)} y1={T} y2={H - B} stroke="var(--signal)" strokeWidth={1.5} strokeDasharray="4 3" /></g>)}
           {hover && <line x1={x(hover)} x2={x(hover)} y1={T} y2={H - B} stroke="var(--ink-3)" strokeWidth={1} />}
           {ls.map((l) => (
             <g key={l.key}>
@@ -104,13 +108,15 @@ function LineChart({ title, hint, lines }: { title: string; hint: string; lines:
         {hover && (
           <div className="tip" style={{ left: `${(x(hover) / W) * 100}%`, top: 14 }}>
             <div style={{ opacity: .8, marginBottom: 2 }}>{fd(hover, { weekday: "short", month: "short", day: "numeric" })}</div>
-            {ls.map((l) => { const p = l.pts.find((q) => q.date === hover); return p ? <div className="row" key={l.key}><i className="dot" style={{ background: l.color }} />{l.label} <b>{num(p.v)}</b></div> : null; })}
+            {ls.map((l) => { const p = l.pts.find((q) => q.date === hover); return p ? <div className="row" key={l.key}><i className="dot" style={{ background: l.color }} />{l.label} <b>{val(p.v)}</b></div> : null; })}
+            {ms.filter((m) => m.x === hover).map((m) => <div key={m.label} style={{ opacity: .8 }}>{m.label}</div>)}
           </div>
         )}
       </div>
-      {ls.length > 1 && <div className="legend">{ls.map((l) => <span key={l.key}><i className="dot" style={{ background: l.color }} />{l.label} <b className="ps-lv">{num(l.pts.at(-1)!.v)}</b></span>)}</div>}
+      {ls.length > 1 && <div className="legend">{ls.map((l) => <span key={l.key}><i className="dot" style={{ background: l.color }} />{l.label} <b className="ps-lv">{val(l.pts.at(-1)!.v)}</b></span>)}</div>}
+      {ms.length > 0 && <div className="legend">{ms.map((m) => <span key={m.x + m.label}><i className="ps-mk" aria-hidden="true" />{fd(m.x)} · {m.label}</span>)}</div>}
       <details className="tabletoggle">
-        <summary>Show as a table</summary>
+        <summary data-track="Metrics as a table">Show as a table</summary>
         <div style={{ overflowX: "auto" }}>
           <table>
             <thead><tr><th></th>{ls.map((l) => <th key={l.key}>{l.label}</th>)}</tr></thead>
@@ -159,12 +165,12 @@ function WeekColumns({ weeks }: { weeks: Week[] }) {
           <div className="row"><i className="dot" />Finished <b>{weeks[tip.i].done}</b>{weeks[tip.i].done_late ? ` (${weeks[tip.i].done_late} late)` : ""}</div>
         </div>
       )}
-      <div className="legend" style={{ paddingTop: 6 }}>
+      <div className="legend" style={{ paddingTop: "var(--s-2)" }}>
         <span><i className="dot" style={{ background: "var(--ink-3)" }} />Added ({tot.added})</span>
         <span><i className="dot" />Finished ({tot.done})</span>
       </div>
       <details className="tabletoggle">
-        <summary>Show as a table</summary>
+        <summary data-track="Items added and finished as a table">Show as a table</summary>
         <table><thead><tr><th>Week of</th><th>Added</th><th>Finished</th><th>Late</th></tr></thead>
           <tbody>{[...weeks].reverse().map((w) => <tr key={w.date}><td>{fd(w.date)}</td><td>{w.added}</td><td>{w.done}</td><td>{w.done_late}</td></tr>)}</tbody></table>
       </details>
@@ -276,7 +282,7 @@ export default function ProjectStats({ project, product, delivery, today }: { pr
           </div>
           <section className="panel ps-wk">
             <div className="ph"><h3 className="ps-h">Added vs finished per week</h3><span className="sp" /><Link className="hint" href={`/?proj=${encodeURIComponent(project.id)}#box-daily`}>Day by day →</Link></div>
-            <div className="pb" style={{ paddingTop: 6 }}><WeekColumns weeks={delivery.weeks} /></div>
+            <div className="pb" style={{ paddingTop: "var(--s-2)" }}><WeekColumns weeks={delivery.weeks} /></div>
           </section>
         </div>
       </section>

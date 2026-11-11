@@ -2,7 +2,7 @@
 // plan and its double-push guard. The database side (lib/data.ts pushProposal) claims the key atomically on top of this.
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { filterHub, hubKind, hubList, isAcked, parseEntry, parseEstimate, pickSection, proposalKey, pushPlan, pushedAs, reviewProposals, topEntries, unackedCount } from "../lib/docsHub.ts";
+import { filterHub, hubKind, hubList, isAcked, messageReviewId, parseEntry, parseEstimate, pickSection, proposalKey, pushPlan, pushedAs, reviewDigest, reviewProposals, topEntries, unackedCount } from "../lib/docsHub.ts";
 
 const R = (o) => ({ id: "r1", type: "project", title: "Demo · week of 5 Oct", created_at: "2026-10-05T05:00:00Z", body_md: "", meta: {}, acked_at: null, pushed: {}, ...o });
 const SECTIONS = [{ id: "build", name: "Build", owner_default: "claude" }, { id: "launch", name: "Launch" }];
@@ -18,6 +18,16 @@ const BODY = `## Where they agree
 
 ## Questions for you
 - new item: Not a proposal, wrong section`;
+
+test("messageReviewId: meta.review_id, else meta.review from older review runs; nothing else", () => {
+  const a = "11111111-2222-3333-4444-555555555555", b = "66666666-7777-8888-9999-000000000000";
+  assert.equal(messageReviewId({ review_id: a, review: b }), a);
+  assert.equal(messageReviewId({ review: b }), b);
+  assert.equal(messageReviewId({ review_id: null, review: b }), b);
+  assert.equal(messageReviewId({ review: "not-an-id; drop" }), null);
+  assert.equal(messageReviewId({}), null);
+  assert.equal(messageReviewId(null), null);
+});
 
 test("hubKind: reviews, strategy docs, plans, setup, screenings, audits; cross-project ones are left out", () => {
   assert.equal(hubKind(R({})), "review");
@@ -132,4 +142,17 @@ test("double-push guard: a pushed key, an existing title or a text-only proposal
   const pending = R({ body_md: BODY, pushed: { [launch.key]: "pending:2026-10-07 10:00:00+00" } });
   assert.equal(pushedAs(pending, launch.key), null, "a claim still running is not a pushed item");
   assert.equal(reviewProposals(pending, []).find((p) => p.key === launch.key).state, "pushable");
+});
+
+test("reviewDigest: the summary's Top 3 first, with item codes, and how many proposals can still be pushed", () => {
+  const r = R({ body_md: BODY, meta: { tabs: [{ label: "CEO", body_md: "## Top 3\n1. new item: Raise the price for new users" }] } });
+  const d = reviewDigest(r, ITEMS);
+  assert.deepEqual(d.top.map((p) => p.source), ["Summary", "Summary", "Summary"]);
+  assert.deepEqual(d.top[0].items, ["onboarding-fix"]);
+  assert.equal(d.top[1].title, "Write the launch post for the beta");
+  assert.deepEqual(d.top[2].items, ["pricing-page"], "a proposal already on the checklist carries its code");
+  assert.equal(d.toPush, 2, "the launch post and the CEO's new item; the pricing page is already an item");
+  assert.deepEqual(reviewDigest(R({}), ITEMS), { top: [], toPush: 0 });
+  const tabOnly = reviewDigest(R({ meta: { tabs: [{ label: "PO", body_md: "## Top 3\n- `pricing-page` first" }] } }), ITEMS);
+  assert.deepEqual(tabOnly.top.map((p) => [p.source, p.items]), [["PO", ["pricing-page"]]], "no summary list: the advisors' fill in");
 });

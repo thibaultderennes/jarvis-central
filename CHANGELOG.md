@@ -17,6 +17,200 @@ All notable changes to Jarvis Central. Versions follow semver; see `CLAUDE.md` f
   and Tiny Dungeon packs (`app/public/map/`, licences included).
 
 
+- The weekly "record this week's product numbers" reminder is added once: if last week's is still open, no second one is stacked on top.
+- **Today's "late tasks waiting" list stays current.** The morning roll-forward saves it once, so an item you closed, cancelled or paused later that day stayed listed until the next morning. Today now drops those against the live checklist and shows each item once, even when several of its todos waited (split and weekend blocks). A paused project's todos also leave Today and the Week board, not only its items. A one-time fix on deploy ticks the todos left undone by items the agent closed before 0.7.5, when the agent API didn't tick linked todos yet: they counted as missed in "planned vs done".
+- **The Monday run checks before it spends anything, and catches up if it never started.** It first waits for the website (retrying for about 15 minutes after the Mac wakes, when the network or a cold database isn't ready yet), then makes one tiny Claude call. If Claude isn't signed in, it stops, posts one **Needs you** message ("run `claude` once in Terminal to sign in", at most every 12 hours) and charges nothing. The worker does the same check before it answers inbox messages, so a signed-out Mac no longer turns every message into an error. If the Monday run never got past these checks (Mac asleep or offline, site down, signed out), the next worker pass that week starts it again. A model answer with no JSON now shows its first line instead of "no JSON object in model output".
+- **SETUP.md rehearsed against the current code** before a clean-machine install test. Calendar and secrets commands now run from `app/` (the folder linked to Vercel; run from the repo root they failed), and `doctor`, `install.sh`, `security-check` and the docs print that path. The install now turns off the per-project setup session until the end (otherwise the worker's first pass queues one PR-opening session per project ahead of the inbox test), deletes the example config's placeholders, uses the production alias for `site_url`, and keeps the first session to two projects to stay inside 45 minutes. Also corrected: what the `scaffold` and `checklist` dry runs show, that `apple-feed` needs `apps-script` first, the Linux cron step, and which doctor and security-check lines may stay red at each phase. The example config no longer points to a schema file that doesn't exist.
+- **Pause a project** from its page (Pause project / Resume project). A paused project keeps its checklist and page, but drops out of the weekly plan, Today, the overdue queue, Needs you, the sidebar's counts (it reads "paused"), the Monday and scheduled reviews, Claude's automatic builds, metrics syncs and setup runs. Messages about it are still answered, and a merge you approve still lands. Its audits pause too: audit reports in its folder aren't synced, Screenings and "Run now" reviews are declined with a reply, and a routine review (`agent/routine.mjs start`) stops without posting. Scheduled audit routines on claude.ai can't see the switch: pause those on claude.ai. Resuming doesn't move due dates. New column `projects.paused_at`, added on deploy.
+
+- **Analysis reports on the Stats view.** A project's own analysis job (a stats digest, a growth review, an ads report) can post its conclusions with `jarvis analysis <project> --file report.json`: a title, a headline, the full text, headline numbers, dated series (a cohort view is a series whose x is the cohort's start, e.g. retention by publish week), dated markers (a change, when it first reached people) and the tools it read from and posted to. The newest report per job shows at the top of the project's Stats view with its charts and a **Connected tools** list; every report is under Docs and reviews → **Analyses**. Reports are review rows (`type: doc`, `meta.kind: analysis`), so there is no new table; re-posting the same job and date updates the report. Format: [`docs/analysis.md`](docs/analysis.md); two sample reports in `agent/fixtures/analysis-*.json`.
+- The Mac worker checks every hour by default instead of every minute (`worker.interval_seconds`, now 3600). Each check wakes the database, and checking every minute kept a free-tier Neon database awake around the clock until it ran out of compute hours. **Jarvis Check Now** (an app `agent/install.sh` puts in ~/Applications) and `jarvis check` run a check at once.
+- Each check now works through every waiting message, not just three.
+- Pages that refresh themselves while something runs (Inbox, threads, checklists, reviews) pause while their tab is hidden, so a forgotten tab doesn't keep the database awake.
+- The site reads the interval from the worker's heartbeat: "checks every hour" in the sidebar and the Inbox, and the worker counts as offline only after two missed checks.
+
+**Upgrade notes**
+- Re-run `agent/install.sh` to pick up the new interval and get Jarvis Check Now. If your `jarvis.config.json` sets `worker.interval_seconds`, that value still wins: raise it (3600 or more) on a free database plan.
+
+## 0.7.5 — 2026-10-21
+Version chosen for the 14 Oct builds plus the first audit's fixes (`docs/audits/2026-10-21-audit.md`).
+
+- **Security (audit H8.1–H8.4): headless Claude runs are locked down.** Every run is denied reading or writing
+  `~/.config/jarvis`, `~/.ssh`, `~/.config/gh`, `~/.aws` and `.env` files, and is told that what it reads is data,
+  not instructions. Build runs execute every shell command in the OS sandbox: no network except localhost, writes only
+  in the worktree and its git dir, no retry outside it. A headless run can no longer set an item in progress or change
+  its owner (your go for a build), the agent API refuses `build_status: merge_requested` (only Approve & merge on the
+  site) and refuses Apply on a settings suggestion, and the setup run can't create files that run code later
+  (`.claude/`, `.github/`, `.husky/`, `.envrc`, `package.json`, …).
+- **Security (audit H3.1/H3.2): sessions end when they should.** Log out signs out every device (a copied cookie stops
+  working), and a new password or authenticator (`setup.mjs login`) signs every session out with no second step.
+- **Security (audit H9.9):** `next` 16.4.2 (16.0.0–16.3.7 had six high advisories); `npm audit` is clean.
+- **Privacy (audit SUED):** the public site and `docs/security.md` now say exactly where data goes (Anthropic,
+  GitHub, Google, your metrics sources); a privacy page (`site/privacy.html`); advisor reviews and screenings on the
+  site are labelled as Claude's, screenings as not legal advice; the fonts ship the full OFL text; `docs/updating.md`
+  has uninstall steps.
+- **Fixes on merge:** a Run again on a failed cross-project report no longer ends as an error; a Run again message
+  isn't treated when its failed report is marked read (and the reverse); failed reviews stay out of Needs you; an
+  idle or failed week no longer hides the previous Top 3 from the follow-through ledger; the routine trial's prompt
+  drops web search and treats what it reads as data (`docs/routines.md` warns about the token in the environment).
+- **Upgrade notes:** you'll be asked to sign in once (the session cookie format changed). Re-run `agent/install.sh`
+  so the worker restarts with the sandboxed build runs and the settings applier. Build runs need the Claude Code
+  sandbox (macOS, Linux, WSL2); a test that needs the internet will fail inside it.
+- **The Monday run survives sleep and timeouts.** On a Mac, `weekly.mjs` now holds `caffeinate -is` until it exits
+  (one-project runs from the worker too), so the machine no longer sleeps mid-run and times out every step after it.
+  An advisor or report whose `claude` hits its time limit (including the exit-143 kill) is retried once on a shorter
+  copy of its bundle. The Jarvis project's review runs first among the projects, and the Jarvis review first among the
+  cross-project reports (before the recap and coaching, so it no longer quotes them in the Monday run). A step that
+  still dies is posted as a red **failed** report in its place, with **Run again**: the worker re-runs that week's
+  project review, or that one report from the project reviews already posted (`weekly.mjs --report jarvis|recap|coaching
+  --week YYYY-MM-DD`). A failed report never replaces one that finished.
+- **Jarvis as an MCP server for Claude Code** (`agent/mcp.mjs`, no dependencies). Triage in the terminal where the
+  work is: `jarvis_overdue` (open items due today or earlier, unticked todos of the last 14 days), `jarvis_tick_item`,
+  `jarvis_tick_todo`, `jarvis_digest` (the latest weekly recap and that week's reports, or one project's latest
+  review), `jarvis_proposals` and `jarvis_push_proposal`. It uses the same agent token as the CLI.
+- **Agent API ticks like the site.** `PATCH /api/agent/todos` takes `done` (a linked item follows), and an item set
+  to done, cancelled or todo through `PATCH /api/agent/items` ticks or unticks its linked todos, as the checklist
+  and Today page already did. The CLI's `set <project> <id> status=done` now ticks the item's todos too.
+- **Upgrade notes:** to use the MCP tools, register the server once:
+  `claude mcp add --scope user jarvis -- node /path/to/jarvis/agent/mcp.mjs` (then `/mcp` in Claude Code lists it).
+- **Trial: a project's advisor review as a Claude Code routine** (a cloud session, no awake computer). New
+  `agent/routine.mjs`: `prompt` prints the routine's instructions, `start` / `next` let the routine's own session answer
+  each advisor and the synthesis and post the review, `compare` lists routine runs next to this computer's (time,
+  cost, failed advisors, runs that never posted). Trial runs post a separate "Routine trial · …" report so they never
+  replace that week's review. Project reviews now record `meta.runner` and `meta.duration_s`; `JARVIS_AGENT_TOKEN=proxy-injected`
+  lets the CLI run behind a cloud environment's network secret. Setup and the trial plan: `docs/routines.md`.
+- **Treat inbox messages in bulk.** In the inbox lanes (below), "Got it for all" on a project bundle (⇧E) or on the
+  whole lane clears them in one update, with an Undo for a few seconds. Decisions (needs you, failed) and work still
+  with Claude are never swept up. `PATCH /api/agent/messages` takes
+  `{ids, treated}` (one update), and the CLI has `jarvis treat <id…>` / `jarvis treat --kind fyi --project P` and
+  `jarvis untreat <id…>`.
+- **Inbox lanes replace New / Pending / Treated.** Five lanes: Needs you, Shipped, Reports, FYI and With Claude,
+  picked from each conversation's status, mode, `meta.kind` and `meta.pr_url`. Inside a lane, conversations are
+  bundled by project, one line each: the reply's first bold sentence (the "due →" line for new-item notes), unread in
+  bold; open a line for the whole thread and the reply box. "Got it" treats a conversation (or a whole project
+  bundle), "Later" hides it until tomorrow at 8:00, "Unread" brings it back; got-it and later ones stay listed under
+  each lane. Keys: `j`/`k` move, `o` open, `e` got it, `⇧E` got it for the project, `r` reply, `h` later, `u`
+  unread, `1`–`5` lanes. On a phone, swipe a line right for got it, left for later.
+- **A report is cleared once, not twice.** Marking a report read also marks the inbox message that delivered it as
+  treated, and "Mark treated" on that message marks the report read (unread / back to pending work the same way).
+  Review runs now write `meta.review_id` on their reply, like plans, screenings and setup; older messages are matched
+  on `meta.review`.
+- **FYI inbox replies treat themselves.** Refine and comment notes and plain discussion answers no longer pile up in
+  Pending: once you opened one `inbox.auto_treat_fyi_days` days ago (default 3, `0` = off) the worker marks it
+  treated (hourly, `agent/inbox.mjs`). "Needs you", errors and anything with a branch or PR are never touched, and a
+  reply you move back to Pending stays there. `node agent/inbox.mjs auto-treat --dry-run` shows what it would mark.
+
+### Upgrade notes
+- Inbox auto-treat is on by default after updating the agent (`git pull`): replies you opened 3+ days ago that are
+  only FYI move to Treated on the next worker pass. Set `inbox.auto_treat_fyi_days` to `0` in `jarvis.config.json`
+  to keep the old behaviour. No site redeploy needed.
+- **From Claude digest on Home and atop the Inbox.** What Claude finished since you last looked, one line per
+  conversation (the reply's first bold sentence) grouped by project, each tagged Shipped, Report or FYI. "Got it"
+  clears one project or everything (kv `inbox.digest_at`); it never reaches back more than 7 days and hides itself
+  when there's nothing new.
+- **Home's Needs you shows only real decisions.** Reply rows now come only from conversations where Claude stopped and
+  needs you (needs-you or failed status, or a reply opening "NEEDS YOU:"), until you treat them or put them off; FYI,
+  shipped and report replies go to the digest instead. The sidebar's Inbox count leaves FYI replies out.
+- **One overdue queue across projects.** Every open item past its due date, from every project, in one list:
+  critical first, then the oldest. Re-date, Later (next Monday), Give to Claude (Claude becomes the owner) or Done on
+  one row, or tick several (or all) and do it once from the bar. It is a new Home box, **Overdue**, and a panel on
+  Today that replaces the Overdue group under Later. Date moves are logged like any other, so the Monday reviews still
+  see the slips. The Now rail's "N late" link opens the Today panel, and "Do next" falls back to the top of the queue.
+- **Upgrade notes:** if you saved a Home layout with Customize, the Overdue box isn't on it yet: Customize → Add box →
+  Overdue. A default layout gets it under Needs you.
+- **Monday digest in Needs you.** Each project's newest advisor review, while unread, is a "Review" row in Needs you
+  on Home (and in its count). The row opens in place to a short digest: the verdict, the Top 3 with their item codes,
+  Add all to checklist, Mark as read and a link to the review, with the full text folded below. Opening it logs
+  `review_open` for the Jarvis review. Marking it read (here or on the project's Docs and reviews) clears the row; a
+  newer review replaces it, and reviews older than 14 days drop out. Reviews appear only here, never in the inbox's
+  replies, so there is one digest of them, not two.
+- **Cleaner usage data for the Jarvis review.** Automated browsers (Playwright, headless Chrome, anything with
+  `navigator.webdriver`) no longer record page views or clicks, so a screenshot pass can't make pages look like dead
+  ends; open any page with `?notrack` to stop a browser recording (`?notrack=0` turns it back on). Calendar feed polls
+  and syncs are one "machine" line in the review's bundle instead of most of its events. `review_open` and
+  `calendar_view` are now logged (they were listed as "never used" because nothing wrote them). Every disclosure has a
+  name: no more "(disclosure)", and button labels keep spaces between their parts.
+- **Reviews skill pack v1.** The Monday reviews (and a project's own-schedule or Run now reviews) now load pinned,
+  MIT-licensed skills, one set per report, checked in the transcript like the build packs: hardikpandya/stop-slop on
+  every report as the last pass; garrytan/gstack openclaw ceo-review for the CEO (pick one scope mode, name one thing
+  to stop); phuryn/pm-skills north-star-metric for the PO and strategy-red-team for the synthesis ("Fails if", kill
+  criterion, cheapest test). The synthesis aims for 500 words or fewer. Every review prompt now says "headless: don't
+  ask, decide and note it". Each review records word counts before and after the stop-slop pass (`meta.words`);
+  `node agent/reviewrun.mjs words` lists them next to older reviews.
+- **Follow-through ledger in every review.** Advice used to repeat week after week with no record of what happened
+  to it. Now every advisor review's Top 3 is recorded in the database (new `advice` table), and the next project
+  review and the Monday recap open with **Last week's Top 3**: each entry marked done, started, ignored or rejected,
+  read from the checklist (an item it names or was pushed as) and written by the agent, not the model. On a review,
+  **Follow-through** lets you mark an entry done, reject it (with an optional reason) or reopen it. Rejected advice
+  is never proposed again: the advisors and the synthesis get the list, and an entry that repeats one in other words
+  is recorded as rejected at once. CLI: `advice <project> [--review ID] [--rejected]`, `advice <review-id> <key>
+  done|rejected|open [--reason T]`. API: `GET|PATCH /api/agent/advice`. Adapted from the decision-logger skill in
+  alirezarezvani/claude-skills (MIT), with the database as the log.
+  Upgrade notes: deploy the site together with the agent update (the table is created on deploy). Older reviews are
+  recorded the first time they're read, so the first Monday after the upgrade already opens with the previous Top 3.
+- **A lighter default Home.** It now opens on what asks for action: Needs you, a new **Overdue** box (open items past
+  their due date across projects, oldest first, critical first on the same day), this week's reviews, then your top 3.
+  The eight stats boxes start folded to their titles under the Stats section; unfold the ones you use.
+- **Upgrade notes:** a Home layout you already saved stays as it is. To get the new default, open Customize and press
+  **Reset layout**; or add the Overdue box from the library.
+- **Apply, Done and Dismiss on the Jarvis review's "Your settings".** Each suggestion is now a card under the review
+  (Reviews → Jarvis itself). Apply hands the config keys it names (e.g. `planner.hours` → `[["13:00","17:00"]]`) to
+  your Mac, which writes them into `jarvis.config.json` on the worker's next pass and reports applied or why not;
+  Done is for the ones you do by hand; Dismiss says no (Undo puts either back). The Mac only writes planner, reviews,
+  worker, project_setup, usage and calendars keys and a few metrics/audits timings, with the same type as before:
+  anything that points at a file, folder or command stays a hand edit. Next week's Jarvis review reads what you chose
+  and won't push a dismissed one again without new evidence. Older reviews get the cards too, parsed from their text.
+  The review now also returns its settings as data (`meta.settings`). CLI: `settings <review-id> [<key> done|dismiss|undo]` (Apply only from the review page: the agent token can't change your config).
+  API: `GET|POST|PATCH /api/agent/settings`. Database: `reviews.decisions` (additive).
+  Upgrade notes: deploy the site together with the agent update (an older site has no `/api/agent/settings`; the
+  worker skips it), then `agent/install.sh` so the worker restarts with `settingsapply.mjs`.
+
+## 0.7.4.9 — 2026-10-14
+- **Timeline: critical items are ink, not amber.** Amber means "now" (the today line) everywhere else, so critical due-date
+  ticks, their legend swatch and tooltip lines now use ink; overdue stays red.
+- **A live project with no product numbers is no longer silent.** Until now a project with no metrics source and
+  nothing typed by hand just showed an empty panel, and the Monday reviews said "none recorded" week after week.
+  Now `node agent/metrics.mjs status` lists every live project (a website that answers, or a state that says live)
+  with no snapshot in `metrics.stale_days` and why (no source, a source that never posted, one that stopped);
+  `doctor` names them; each project review is told whether a source exists, and the recap and Jarvis review bundles
+  get a "Live projects with no product numbers" section the Jarvis review must turn into a setting to fix. Once a
+  week the worker adds one todo, "Record this week's product numbers: …", for the projects with no source
+  (`metrics.remind: false` turns it off). `metrics.expect` / `metrics.skip` adjust which projects count as live.
+- **Several metrics sources per project.** `metrics.sources.<id>` may be a list (e.g. a funnel endpoint and a billing
+  endpoint): the numbers are merged into one snapshot, and one failing source no longer stops the others. In `map`
+  paths, a negative array index counts from the end (`weeks.-1.signups`).
+- **Public site for sentientdash.com** (`site/`): a static one-page site, separate from the app (plain HTML and CSS,
+  no JavaScript, no build step), with the app's tokens, fonts and mark in light and dark. It covers what Sentient Dash
+  does, who it's for, how it runs on your own Mac, Vercel and Neon, a 3-step install and an FAQ; the one call to action
+  is "Install from GitHub". Clean URLs, a `www` redirect and a strict CSP in `site/vercel.json`; robots, sitemap, Open
+  Graph card and a 404 page. `site/README.md` lists the steps to deploy it as its own Vercel project and attach the domain.
+
+### Upgrade notes
+- Metrics: nothing required. New optional keys `metrics.stale_days`, `metrics.remind`, `metrics.expect`,
+  `metrics.skip` (defaults in `agent/lib.mjs`); re-run `node agent/doctor.mjs` to see which projects have no numbers.
+- The public site is a second Vercel project (Root Directory `site`): see `site/README.md`.
+
+## 0.7.4.8 — 2026-10-14
+- **Spacing scale tokens** (`--s-1` … `--s-10`, 4px base) on `:root`. Every padding, margin and gap in the app now
+  sits on the scale (385 odd values rounded, e.g. 6/10/14px → 8/8/16px; hairlines of 0–2px and three documented
+  layout offsets stay). `app/test/spacing.test.mjs` fails on new off-scale values. DESIGN.md names the tokens. Most
+  visible: the page gutter is 24px (was 28px) and panels pad 12px 16px.
+
+## 0.7.4.7 — 2026-10-14
+- **The privacy guard no longer blocks re-pushing public commits.** Updating a branch with `main` pulled in GitHub's
+  merge commit of a PR (authored with your GitHub name), and the pre-push check flagged it although it was already
+  public. The push check now looks only at commits no remote has yet; everything new is checked as before.
+- **A PRD in `docs/` counts, and a PRD without dates is flagged.** Projects that keep `docs/PRD.md` instead of a
+  root `PRD.md` now get their milestones read (sync, plan, Timeline moves, first checklist). `sync` and `doctor` list
+  every PRD with no dated milestones table, whose Timeline deadlines were silently kept as they were.
+- **Screenshot pass** (Login, Home, Today, a project, Docs and reviews, Finance; desktop and phone; light and dark;
+  axe contrast check). Fixed what it found:
+  - A Home layout that held a box a release took out kept an empty band where it was: a saved layout now floats every
+    box up into free space when it's loaded.
+  - Contrast: past days on the timeline's day strip (1.5:1, now full ink-3), "Open project" on your top 3 (project
+    colours as text, 3.7:1: now ink with a project-colour underline), the "on track" pill (4.3:1) and the counts in a
+    project's menu in dark mode (4.5:1). Every checked page now has no contrast failure.
+
 ## 0.7.4.6 — 2026-10-07
 - **Skills are checked, not assumed.** Website, Lugh and project setup runs must open their skills first; afterwards the
   worker reads the run's transcript, and a run that skipped a required skill gets one follow-up turn (same session) to

@@ -50,7 +50,7 @@ export function BurnUp({ p, today }: { p: Insight; today: string }) {
           {!p.projected ? "Nothing finished yet" : late ? `At this pace: ${fmt(p.projected)} · due ${fmt(p.deadline!.date)}` : `On pace: done by ${fmt(p.projected)}`}
         </span>
       </div>
-      <div className="chart pb" ref={ref} onMouseMove={onMove} onMouseLeave={() => setHover(null)} style={{ paddingBottom: 6 }}>
+      <div className="chart pb" ref={ref} onMouseMove={onMove} onMouseLeave={() => setHover(null)} style={{ paddingBottom: "var(--s-2)" }}>
         <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`${p.name}: ${doneNow} of ${scopeNow} items done`}>
           <g className="grid">{[0, 0.5, 1].map((f) => <line key={f} x1={L} x2={W - R} y1={y(max * f / 1.1)} y2={y(max * f / 1.1)} />)}</g>
           <g className="axis">{[0, 0.5, 1].map((f) => <text key={f} x={L - 5} y={y(max * f / 1.1) + 3.5} textAnchor="end">{Math.round(max * f / 1.1)}</text>)}</g>
@@ -93,7 +93,7 @@ export function PaceBullets({ rows }: { rows: Insight[] }) {
     <div className="pb">
       {rows.map((r) => (
         <div key={r.id} className="bullet" data-c={r.color} title={`${r.name}: ${r.ratePerWeek.toFixed(1)} finished per week; ${r.neededPerWeek.toFixed(1)} per week needed for ${r.dueByDeadline} items due by ${r.deadline?.label || "no deadline"}`}>
-          <span style={{ display: "flex", gap: 7, alignItems: "center" }}><i className="dot" />{r.name}</span>
+          <span style={{ display: "flex", gap: "var(--s-2)", alignItems: "center" }}><i className="dot" />{r.name}</span>
           <span className="track">
             <span className="fill" style={{ width: `${(r.ratePerWeek / max) * 100}%` }} />
             {r.deadline && <span className="need" style={{ left: `calc(${(r.neededPerWeek / max) * 100}% - 1px)` }} />}
@@ -101,7 +101,7 @@ export function PaceBullets({ rows }: { rows: Insight[] }) {
           <span className="v"><b>{r.ratePerWeek.toFixed(1)}</b> vs <b className={r.neededPerWeek > r.ratePerWeek ? "bad" : ""}>{r.neededPerWeek.toFixed(1)}</b>/wk{r.slips7 ? <><br />{r.slips7} due date{r.slips7 > 1 ? "s" : ""} pushed</> : null}</span>
         </div>
       ))}
-      <div className="legend" style={{ padding: "10px 0 0" }}>
+      <div className="legend" style={{ padding: "var(--s-2) 0 0" }}>
         <span><i className="dot" style={{ background: "var(--ink-3)" }} />Bar: finished per week (recent)</span>
         <span><i style={{ width: 3, height: 12, background: "var(--ink)", borderRadius: 2, display: "inline-block" }} />Tick: needed per week to clear what&apos;s due by the next deadline</span>
       </div>
@@ -119,7 +119,7 @@ export function OwnerBars({ rows }: { rows: Insight[] }) {
         const n = r.owners.you + r.owners.claude + r.owners.both || 1;
         return (
           <div key={r.id} className="stack100" data-c={r.color}>
-            <span style={{ display: "flex", gap: 7, alignItems: "center" }}><i className="dot" />{r.name}</span>
+            <span style={{ display: "flex", gap: "var(--s-2)", alignItems: "center" }}><i className="dot" />{r.name}</span>
             <span className="bars" role="img" aria-label={`${r.name}: ${r.owners.you} on you, ${r.owners.both} on both, ${r.owners.claude} on Claude`}>
               {seg.map(([k, label, c]) => r.owners[k] > 0 && (
                 <span key={k} className={`own-${k}`} title={`${label}: ${r.owners[k]}`} style={{ width: `${(r.owners[k] / n) * 100}%`, background: c }}>{r.owners[k] / n > 0.12 ? r.owners[k] : ""}</span>
@@ -163,7 +163,7 @@ export function Heatmap({ days, today }: { days: { date: string; done: number; t
           }),
         ])}
       </div>
-      <div className="legend" style={{ padding: "10px 0 0", justifyContent: "space-between" }}>
+      <div className="legend" style={{ padding: "var(--s-2) 0 0", justifyContent: "space-between" }}>
         <span className="ramp">Less {shade.map((c, i) => <i key={i} style={{ background: c }} />)} More</span>
         <span>{tip || (tot(best) ? `Busiest: ${fmt(best.date)} (${tot(best)})` : "Nothing logged yet")}</span>
       </div>

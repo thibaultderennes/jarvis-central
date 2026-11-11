@@ -82,7 +82,7 @@ ${mine.map(line).join("\n") || "(empty)"}
 ## CLAUDE.md
 ${clip(st.claude, 15000) || "(missing)"}
 
-## PRD.md (repo root)
+## PRD (${/docs[\\/]PRD\.md$/.test(st.prdFile || "") ? "docs/PRD.md" : "PRD.md, repo root"})
 ${clip(st.prd, 20000) || "(missing)"}
 
 ## docs/audits/

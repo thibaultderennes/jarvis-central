@@ -5,6 +5,8 @@ import { execFileSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
 import { scanProjects } from "./projects.mjs";
+import { parseMilestones } from "./structure.mjs";
+import { currentGaps, gapLine, gapOptions } from "./metrics.mjs";
 import { CONFIG, CONFIG_EXISTS, CONFIG_ERROR, CONFIG_FILE, PROJECTS_ROOT, ENV_FILE, JARVIS_ROOT, TZ, loadConfig, api } from "./lib.mjs";
 
 let fails = 0, warns = 0;
@@ -54,18 +56,26 @@ if (fs.existsSync(PROJECTS_ROOT)) {
   const ps = scanProjects(), missing = ps.filter((p) => !p.hasClaude || !p.hasPrd);
   ok(`projects_root ${PROJECTS_ROOT} (${ps.length} projects)`);
   if (missing.length) warn(`${missing.length} project(s) without CLAUDE.md or PRD.md: ${missing.map((p) => p.id).join(", ")}`, "`node agent/setup.mjs queue <id>` (or `node agent/projects.mjs scaffold`, offline)");
+  const noTable = ps.filter((p) => p.prdFile && !parseMilestones(fs.readFileSync(p.prdFile, "utf8")).length);
+  if (noTable.length) warn(`${noTable.length} PRD(s) without a dated milestones table: ${noTable.map((p) => p.id).join(", ")}; their Timeline deadlines don't follow the file`, "add rows like `| YYYY-MM-DD | milestone |` to the PRD, then `node agent/projects.mjs sync`");
 } else bad(`projects_root ${PROJECTS_ROOT} doesn't exist`, "set projects_root in jarvis.config.json to the folder that holds one folder per project");
 
 // secrets + API
-if (!fs.existsSync(ENV_FILE)) bad(`${ENV_FILE} missing`, "`node app/scripts/setup.mjs secrets` (SETUP.md, website phase)");
+if (!fs.existsSync(ENV_FILE)) bad(`${ENV_FILE} missing`, "`cd app && node scripts/setup.mjs secrets` (SETUP.md, website phase)");
 else {
   const mode = fs.statSync(ENV_FILE).mode & 0o777;
   mode & 0o077 ? bad(`${ENV_FILE} is readable by other users (${mode.toString(8)})`, `chmod 600 ${ENV_FILE}`) : ok(`${ENV_FILE} (600)`);
   const env = loadConfig();
-  if (!env.JARVIS_URL || !env.JARVIS_AGENT_TOKEN) bad("JARVIS_URL or JARVIS_AGENT_TOKEN missing in the env file", "`node app/scripts/setup.mjs secrets`");
+  if (!env.JARVIS_URL || !env.JARVIS_AGENT_TOKEN) bad("JARVIS_URL or JARVIS_AGENT_TOKEN missing in the env file", "`cd app && node scripts/setup.mjs secrets`");
   else {
-    try { const ps = await api("GET", "/api/agent/projects"); ok(`API reachable at ${env.JARVIS_URL} (${ps.length} projects registered)`); if (!ps.length) warn("no projects registered yet", "`node agent/projects.mjs sync`"); }
-    catch (e) { bad(`API not reachable: ${e.message}`, e.status === 401 ? "the token doesn't match the website's JARVIS_AGENT_TOKEN: re-run `node app/scripts/setup.mjs secrets` then redeploy" : "deploy the website (SETUP.md) and check JARVIS_URL"); }
+    try {
+      const ps = await api("GET", "/api/agent/projects"); ok(`API reachable at ${env.JARVIS_URL} (${ps.length} projects registered)`); if (!ps.length) warn("no projects registered yet", "`node agent/projects.mjs sync`");
+      // Live projects with no product numbers: the Monday reviews can't cite one (docs/metrics.md).
+      const gaps = await currentGaps(ps).catch((e) => (warn(`product numbers not checked: ${e.message}`), null));
+      if (gaps?.length) warn(`${gaps.length} live project(s) with no product numbers in the last ${gapOptions().staleDays} days, so the reviews can't cite one:\n    - ${gaps.map(gapLine).join("\n    - ")}`, "connect a source (metrics.sources.<id> in jarvis.config.json) or type them: `node agent/jarvis.mjs metrics <id> --set users=… --set visits=…`; not a product? add the id to metrics.skip");
+      else if (gaps) ok("every live project has product numbers from the last week");
+    }
+    catch (e) { bad(`API not reachable: ${e.message}`, e.status === 401 ? "the token doesn't match the website's JARVIS_AGENT_TOKEN: re-run `cd app && node scripts/setup.mjs secrets` then redeploy" : "deploy the website (SETUP.md) and check JARVIS_URL"); }
   }
 }
 

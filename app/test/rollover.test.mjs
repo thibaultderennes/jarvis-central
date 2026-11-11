@@ -160,3 +160,28 @@ test("waitingFor: only that day, critical then most late first", () => {
   assert.equal(lateLabel(0), "due today");
   assert.equal(lateLabel(3), "3 days late");
 });
+
+test("a paused project's overdue items get no todo, and its carried todos are parked like a plan-off project's", () => {
+  const items = [item("late", { due: "2026-10-01" }), item("p1", { due: "2026-10-01", project_id: "zzz" })];
+  const todos = [todo({ date: MON, project_id: "zzz", item_id: "p1" })];
+  const projects = [{ id: "app" }, { id: "zzz", paused_at: "2026-10-04T09:00:00Z" }];
+  const paused = rollForward({ today: TUE, todos, items, projects, settings: S });
+  const off = rollForward({ today: TUE, todos, items, projects: [{ id: "app" }, { id: "zzz", plan_enabled: false }], settings: S });
+  assert.deepEqual(paused.adds.map((a) => a.item_id), ["late"]);
+  assert.deepEqual({ moves: paused.moves.map((m) => m.id), parks: paused.parks.map((p) => p.id) }, { moves: off.moves.map((m) => m.id), parks: off.parks.map((p) => p.id) });
+});
+
+test("waitingFor: drops items closed or paused since the morning, and repeats of one item", () => {
+  const r = "no room today (180 of 180 focus min used, needs 60)";
+  const v = { date: "2026-11-10", waiting: [
+    { title: "Setup (1/2)", key: "app/setup", critical: true, overdue: 34, reason: r },
+    { title: "Setup (weekend)", key: "app/setup", critical: true, overdue: 34, reason: r },
+    { title: "Paused project's", key: "paused/x", critical: false, overdue: 20, reason: r },
+    { title: "Still open", key: "site/y", critical: false, overdue: 2, reason: r },
+    { title: "Personal", key: null, critical: false, overdue: 1, reason: r } ] };
+  assert.deepEqual(waitingFor(v, "2026-11-10").tasks.map((t) => t.title), ["Setup (1/2)", "Paused project's", "Still open", "Personal"]);
+  const w = waitingFor(v, "2026-11-10", new Set(["site/y"]));
+  assert.deepEqual(w.tasks.map((t) => t.title), ["Still open", "Personal"]);
+  assert.equal(w.count, 2);
+  assert.equal(waitingFor({ date: "2026-11-10", waiting: v.waiting.slice(0, 3) }, "2026-11-10", new Set()), null);
+});

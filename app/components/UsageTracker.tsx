@@ -1,6 +1,7 @@
 "use client";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useEffect } from "react";
+import { isAutomatedUA } from "@/lib/automation";
 
 /*
  * First-party usage tracking for the Monday Jarvis review: page views and clicks on links, buttons, tabs, chips,
@@ -11,8 +12,11 @@ import { useEffect } from "react";
  * recorded by their path only. A page is its path plus the view keys (?v=, ?k=, ?tab=) and the checklist filter codes
  * (?sec=, ?own=, ?due=, ?crit=, ?done=); client-side changes to those (Next syncs history.replaceState into
  * useSearchParams) are new page views. `data-track-section="…"` names a region; `data-track-off` excludes one.
+ * Automated browsers (navigator.webdriver, a headless or Playwright user agent) record nothing, nor does a browser
+ * that opened any page with ?notrack (remembered in localStorage; ?notrack=0 turns tracking back on).
  */
 const URL_ = "/api/usage";
+const NOTRACK = "jarvis-notrack";
 const TARGETS = 'a[href], button, summary, select, [role="button"], [role="tab"], [role="menuitem"], [role="checkbox"], [role="switch"], [role="link"], input[type="checkbox"], input[type="radio"], input[type="submit"], [data-track]';
 const REGIONS = '[role="tabpanel"], [role="dialog"], [role="tablist"], [role="menu"], [role="group"], nav, section, aside, header, form';
 const ROWS = 'li, tr, article, [role="row"], [role="listitem"]';
@@ -22,7 +26,19 @@ const IDLE_MS = 30 * 60_000;
 
 type Ev = { t: number; k: "click" | "view"; p: string; l?: string; g?: string; s?: string; h?: string };
 const queue: Ev[] = [];
-let sid = "", lastAt = 0, lastView = "", timer: ReturnType<typeof setTimeout> | null = null;
+let sid = "", lastAt = 0, lastView = "", timer: ReturnType<typeof setTimeout> | null = null, off: boolean | null = null;
+
+/** True for a script driving the browser or a browser opted out with ?notrack: nothing it does is recorded. */
+export function untracked() {
+  if (off !== null) return off;
+  if (typeof window === "undefined") return true;
+  try {
+    const q = new URLSearchParams(location.search).get("notrack");
+    if (q !== null) { if (/^(0|false|off|no)$/i.test(q)) localStorage.removeItem(NOTRACK); else localStorage.setItem(NOTRACK, "1"); }
+    off = !!localStorage.getItem(NOTRACK);
+  } catch { off = false; }
+  return (off ||= !!navigator.webdriver || isAutomatedUA(navigator.userAgent));
+}
 
 function session() {
   const now = Date.now();
@@ -41,6 +57,7 @@ function flush() {
   if (queue.length) flush();
 }
 function push(e: Omit<Ev, "t">) {
+  if (untracked()) return;
   session();
   queue.push({ t: Date.now(), ...e });
   if (queue.length >= 25) flush();
@@ -80,6 +97,17 @@ function rowText(el: Element): string[] {
   }
   return [];
 }
+/** The element's visible text pieces, so "Project settings" + "planned" never run together as "Project settingsplanned". */
+function textOf(el: Element): string[] {
+  const out: string[] = [];
+  const w = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = w.nextNode(), i = 0; n && i < 60; n = w.nextNode(), i++) {
+    if (n.parentElement?.closest('[aria-hidden="true"]')) continue;
+    const t = (n.nodeValue || "").replace(/\s+/g, " ").trim();
+    if (t) out.push(t);
+  }
+  return out;
+}
 function labelOf(el: Element, kind: string): string {
   const explicit = el.getAttribute("data-track");
   if (explicit) return clean(explicit, 60);
@@ -87,10 +115,14 @@ function labelOf(el: Element, kind: string): string {
   const inChrome = !!el.closest('nav, header, [role="tablist"], [role="menu"]');
   // A content link's text is usually something you wrote (an item, a review): keep only its path (see href).
   if (kind === "link" && !inChrome) return "";
-  const text = (el.textContent || "").replace(/\s+/g, " ").trim();
-  let s = el.getAttribute("aria-label") || el.getAttribute("title") || (text.length <= 40 ? text : "");
+  const pieces = textOf(el), text = pieces.join(" ");
+  // A disclosure (<summary>, a button with aria-expanded) is named by its first words ("Later", "Agenda", "Done"), not its counts.
+  const disclosure = kind === "disclosure" || el.hasAttribute("aria-expanded");
+  let s = el.getAttribute("aria-label") || el.getAttribute("title") || (disclosure ? pieces[0] || "" : text.length <= 40 ? text : "");
   if (s && !inChrome) for (const t of rowText(el)) if (s.includes(t)) s = s.split(t).join("…");
-  return clean(s);
+  s = clean(s);
+  if (disclosure && !s.replace(/[…#\s·]/g, "")) s = clean(`Disclosure in ${sectionOf(el) || "page"}`, 60);
+  return s;
 }
 function kindOf(el: Element) {
   const role = el.getAttribute("role");

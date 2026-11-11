@@ -4,6 +4,7 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { isAuthError, firstLine } from "./weeklyrun.mjs";
 
 export const HOME = os.homedir();
 export const AGENT_DIR = path.dirname(new URL(import.meta.url).pathname);
@@ -34,12 +35,15 @@ function defaults() {
   // Unit-economics models: a project opts in with a model file; `models` maps a project id to a non-default path.
   ex.economics = { files: ["jarvis.economics.mjs", "jarvis.economics.cjs", "jarvis.economics.js"], sync_minutes: 60, timeout_seconds: 30, ...(ex.economics || {}), models: {} };
   // Product metrics: a project opts in with a source (url or command) under metrics.sources.<id>; daily by default.
-  ex.metrics = { sync_minutes: 1440, timeout_seconds: 30, ...(ex.metrics || {}), sources: {} };
+  // A live project with no numbers is named in doctor and the reviews; `remind` adds one todo a week for them.
+  ex.metrics = { sync_minutes: 1440, timeout_seconds: 30, stale_days: 7, remind: true, ...(ex.metrics || {}), sources: {}, expect: [], skip: [] };
   if (ex.planner) ex.planner = { ...ex.planner, project_caps: {} };
   // Page-view/click tracking for the Monday Jarvis review: on unless the owner's config says false.
   ex.usage = { track_clicks: true, retention_days: 90, ...(ex.usage || {}) };
   // Project setup session (setup.mjs): runs on its own when a project is created or loaded, and when one is updated with a gap.
   ex.project_setup = { auto_on_load: true, auto_on_update: true, cooldown_days: 7, check_minutes: 60, model: null, ...(ex.project_setup || {}) };
+  // FYI inbox replies opened this many days ago are marked treated by the worker (agent/inbox.mjs); 0 = off.
+  ex.inbox = { auto_treat_fyi_days: 3, ...(ex.inbox || {}) };
   return ex;
 }
 
@@ -59,9 +63,13 @@ const _settings = loadSettings();
 export const CONFIG = _settings.cfg;
 export const CONFIG_EXISTS = _settings.configExists;
 export const CONFIG_ERROR = _settings.configError;
+/** Seconds between worker passes. Every pass wakes the database, so a free-tier Neon plan wants hours, not minutes. */
+export const WORKER_INTERVAL = Math.max(30, Number(CONFIG.worker?.interval_seconds) || 3600);
 export const TZ = process.env.JARVIS_TZ || CONFIG.timezone || "UTC";
 export const PROJECTS_ROOT = CONFIG.projects_root;
 export const OWNER = CONFIG.owner_name || "the owner";
+/** Activity kinds written by machines (calendar feed polls and syncs), never by the owner: kept out of usage counts. */
+export const MACHINE_KINDS = new Set(["calendar_feed", "calendar_sync"]);
 export const ENV_FILE = path.join(HOME, ".config", "jarvis", "env");
 export const LOG_DIR = process.platform === "darwin" ? path.join(HOME, "Library", "Logs", "jarvis") : path.join(HOME, ".local", "state", "jarvis", "logs");
 const CACHE_DIR = path.join(HOME, ".cache", "jarvis");
@@ -89,12 +97,14 @@ export async function api(method, pathAndQuery, body) {
   const cfg = loadConfig();
   if (!cfg.JARVIS_URL || !cfg.JARVIS_AGENT_TOKEN)
     throw new ApiError(`Missing JARVIS_URL or JARVIS_AGENT_TOKEN in ${ENV_FILE}`, 0);
+  // "proxy-injected": a cloud session (a Claude Code routine) whose network proxy adds the token itself (a network secret).
+  const auth = cfg.JARVIS_AGENT_TOKEN === "proxy-injected" ? {} : { Authorization: `Bearer ${cfg.JARVIS_AGENT_TOKEN}` };
   const url = cfg.JARVIS_URL + pathAndQuery;
   let res;
   try {
     res = await fetch(url, {
       method,
-      headers: { Authorization: `Bearer ${cfg.JARVIS_AGENT_TOKEN}`, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
+      headers: { ...auth, ...(body !== undefined ? { "Content-Type": "application/json" } : {}) },
       body: body !== undefined ? JSON.stringify(body) : undefined,
       signal: AbortSignal.timeout(30_000),
     });
@@ -209,7 +219,10 @@ export function parseModelJSON(text) {
   let t = String(text).trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
   try { return JSON.parse(t); } catch {}
   const a = t.indexOf("{"), b = t.lastIndexOf("}");
-  if (a < 0 || b <= a) throw new Error("no JSON object in model output");
+  if (a < 0 || b <= a) {
+    if (isAuthError(t)) throw new Error(`Claude isn't signed in on this Mac (${firstLine(t)}). Run \`claude\` once in Terminal to sign in.`);
+    throw new Error(`no JSON object in model output; it began: "${firstLine(t)}"`);
+  }
   return JSON.parse(t.slice(a, b + 1));
 }
 

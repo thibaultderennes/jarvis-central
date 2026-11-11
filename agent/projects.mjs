@@ -14,7 +14,7 @@ import path from "node:path";
 import { api, qs, CONFIG, PROJECTS_ROOT, JARVIS_ROOT, OWNER, TZ, todayTZ, parseModelJSON, makeLog } from "./lib.mjs";
 import { runClaude } from "./claude.mjs";
 import { oneLiner } from "./advisors.mjs";
-import { DEFAULT_SECTIONS, parseMilestones, slugify } from "./structure.mjs";
+import { DEFAULT_SECTIONS, findPrd, parseMilestones, slugify } from "./structure.mjs";
 import { applyMilestoneMoves } from "./milestones.mjs";
 import { detectSite } from "./website.mjs";
 
@@ -52,9 +52,10 @@ export function scanProjects({ ignoreInclude = false, keep = [] } = {}) {
       const dir = o.dir ? path.resolve(PROJECTS_ROOT, e.name, o.dir) : path.join(PROJECTS_ROOT, e.name);
       const top = git(dir, "rev-parse", "--show-toplevel");
       const ownRepo = !!top && path.resolve(top) === path.resolve(dir);
+      const prdFile = findPrd(dir);
       return {
         id, folder: e.name, dir, name: o.name || e.name, kind: o.kind || "checklist", color: o.color || null, tagline: o.tagline || null, state: o.state || null, status: o.status || null,
-        hasClaude: fs.existsSync(path.join(dir, "CLAUDE.md")), hasPrd: fs.existsSync(path.join(dir, "PRD.md")),
+        hasClaude: fs.existsSync(path.join(dir, "CLAUDE.md")), hasPrd: !!prdFile, prdFile,
         remote: ownRepo ? git(dir, "remote", "get-url", "origin") : null, isRepo: ownRepo,
       };
     })
@@ -64,7 +65,7 @@ export function scanProjects({ ignoreInclude = false, keep = [] } = {}) {
 function taglineFor(p) {
   const fromClaude = oneLiner(p.dir);
   if (fromClaude && !/\{\{/.test(fromClaude) && !/^TODO/i.test(fromClaude)) return fromClaude.slice(0, 160);
-  const prd = read(path.join(p.dir, "PRD.md")) || "";
+  const prd = (p.prdFile && read(p.prdFile)) || "";
   const prob = prd.split(/^##\s+Problem\s*$/m)[1]?.split("\n").find((l) => l.trim() && !l.startsWith("#"));
   return (prob || "").replace(/\{\{.*?\}\}/g, "").trim().slice(0, 160);
 }
@@ -145,9 +146,10 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
   const nextColor = () => { const c = COLORS.find((x) => !used.has(x)) || COLORS[used.size % COLORS.length]; used.add(c); return c; };
   // What the folder says about the project's website (Docs and reviews → Build website / Try a new visual).
   const sites = await Promise.all(ps.map((p) => detectSite(p.dir, { remote: p.remote }).catch(() => null)));
+  const noTable = []; // a PRD with no dated milestones table: the site keeps its old deadlines, so say so
   const payloads = ps.map((p, i) => {
     const cur = byId[p.id];
-    const prd = read(path.join(p.dir, "PRD.md"));
+    const prd = p.prdFile ? read(p.prdFile) : null;
     const body = {
       // A name typed on the dashboard ("Start new project": "My App" in folder my-app) is kept over the bare folder name.
       id: p.id, name: p.name === p.folder && cur?.name && slugify(cur.name) === slugify(p.folder) ? cur.name : p.name, kind: p.kind, dir: p.dir, archived: false, ...(p.state ? { state: p.state } : {}), ...(p.status ? { status: p.status } : {}),
@@ -159,6 +161,7 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
     };
     const ms = parseMilestones(prd);
     body.deadlines = ms.length || !cur ? ms : cur.deadlines || [];
+    if (prd && !ms.length) noTable.push(p.id);
     if (cur?.state && !p.state) body.state = cur.state;
     if (cur?.status && !p.status) body.status = cur.status;
     if (!cur || !(cur.sections || []).length) body.sections = DEFAULT_SECTIONS; // never overwrite sections you edited
@@ -177,6 +180,7 @@ export async function syncProjects({ dry = false, print = console.log, addNew = 
   for (const b of toUpsert) { await api("PUT", "/api/agent/projects", b); print(`✓ ${b.id} (${b.kind}, ${b.color}${b.deadlines.length ? `, ${b.deadlines.length} deadline(s)` : ""})${byId[b.id] ? "" : "  new"}`); }
   for (const g of gone) { await api("PUT", "/api/agent/projects", { id: g.id, name: g.name, archived: true }); print(`archived ${g.id} (folder gone)`); }
   const noPrd = ps.filter((p) => !p.hasPrd).map((p) => p.id);
+  if (noTable.length) print(`\nPRD without a dated milestones table: ${noTable.join(", ")}. Their deadlines on the site are kept as they were and may be out of date; add rows like | YYYY-MM-DD | milestone | to the PRD.`);
   if (noPrd.length) print(`\nNo PRD.md yet: ${noPrd.join(", ")}. Their deadlines on the site are unchanged; add a PRD with a milestones table to manage them from the file (node agent/projects.mjs scaffold).`);
   if (proposed.length) print(`\nNew folders waiting for your approval on the Admin page: ${proposed.map((b) => b.id).join(", ")}`);
   return { upserted: toUpsert.map((b) => b.id), added, proposed, archived: gone.map((g) => g.id) };
@@ -192,7 +196,7 @@ async function checklist() {
   let items = [];
   try { items = await api("GET", "/api/agent/items" + qs({ project: id })); } catch (e) { if (!DRY) throw e; }
   if (items.length) return console.log(`${id} already has ${items.length} checklist items: nothing to do.`);
-  const prd = read(path.join(p.dir, "PRD.md")), claude = read(path.join(p.dir, "CLAUDE.md"));
+  const prd = p.prdFile ? read(p.prdFile) : null, claude = read(path.join(p.dir, "CLAUDE.md"));
   if (!prd) throw new Error(`${id} has no PRD.md: run scaffold first`);
   const next = parseMilestones(prd).find((m) => m.date >= todayTZ());
   const prompt = `Draft the first checklist for the project "${p.name}" (id ${id}) on Jarvis Central Dashboard. Today is ${todayTZ()} (${TZ}).

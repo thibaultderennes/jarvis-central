@@ -14,7 +14,7 @@ export default function WebsiteCard({ projectId, kind, summary, siteUrl, last }:
   const [ask, setAsk] = useState("");
   const [keep, setKeep] = useState(false);
   const running = !!last && ["new", "seen", "working"].includes(last.status);
-  useEffect(() => { if (!running) return; const t = setInterval(() => router.refresh(), 15000); return () => clearInterval(t); }, [running, router]);
+  useEffect(() => { if (!running) return; const t = setInterval(() => { if (!document.hidden) router.refresh(); }, 15000); return () => clearInterval(t); }, [running, router]);
   const label = kind === "redesign" ? "Try a new visual" : "Build website";
   const save = (e: React.FormEvent) => {
     e.preventDefault();
