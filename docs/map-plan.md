@@ -4,6 +4,11 @@ The Map draws every project as a settlement on one isometric colony map (`app/co
 `ColonyStage.tsx`, `MapView.tsx`; rules in `app/lib/villages.ts` and `app/lib/map.ts`). This file is the living plan:
 what the map is for, what is built, what comes next, and the evidence behind the choices. Update it with every round.
 
+## Status
+Beta. The map ships as its own tab under Home with a "Beta" pill, and is not a Home box, so Home stays fast while
+the map is tried out on real data. It leaves beta when the review loop below finds nothing slow or unclear for two
+rounds in a row, the screen-reader pass is done and the VibeCoded Screening has no fails.
+
 ## What it is for
 One look answers three questions: which project needs me, why, and what do I do about it. The map is a second way
 into the same data as the checklists. It is never the only way: the card list under it says the same things in text.

@@ -71,6 +71,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 .sb-a[aria-current="page"]::before { content: ""; position: absolute; left: calc(-1 * var(--s-2)); top: 7px; bottom: 7px; width: 3px; border-radius: 0 3px 3px 0; background: var(--pc, var(--signal)); }
 .sb-l { min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .sb-a > .sb-l { flex: 1; }
+.sb-sub { margin-left: var(--s-4); } .sb-beta { margin-left: var(--s-2); vertical-align: 1px; font-weight: 400; }
 .sb-n { margin-left: auto; font-family: var(--mono); font-size: 10.5px; font-weight: 400; color: var(--ink-3); font-variant-numeric: tabular-nums; flex: 0 0 auto; line-height: 17px; padding: 0 2px; }
 .sb-n.late { color: var(--bad); background: var(--bad-soft); border-radius: 9px; padding: 0 var(--s-2); font-weight: 600; }
 .sb-n.soon { color: var(--signal-ink); background: var(--signal-soft); border-radius: 9px; padding: 0 var(--s-2); font-weight: 600; }
@@ -93,7 +94,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .sb-worker { justify-content: center; padding: 2px 0 var(--s-2); }
   .sb-jump { justify-content: center; padding: var(--s-2) 0; }
   .sb-nav .sb-h ~ .sb-h { display: block; position: static !important; width: auto; height: 1px; margin: var(--s-2) var(--s-2); padding: 0; background: var(--line); clip-path: none; }
-  .sb-a { justify-content: center; padding: 0; height: 36px; }
+  .sb-a { justify-content: center; padding: 0; height: 36px; } .sb-sub { margin-left: 0; }
   .sb-a .sb-n { position: absolute; top: 2px; right: 1px; padding: 0 var(--s-1); font-size: 9.5px; line-height: 14px; border-radius: 7px; }
   .sb-a .sb-n:not(.hot):not(.late) { display: none; }
   .sb-p .sb-n { display: none !important; }
