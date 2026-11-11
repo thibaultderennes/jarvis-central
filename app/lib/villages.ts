@@ -299,3 +299,25 @@ export const LANDMARKS = ["windmill", "lighthouse", "obelisk", "oak"] as const;
 export type Landmark = (typeof LANDMARKS)[number];
 /** Each project keeps one landmark for life, picked from its id. */
 export const landmarkFor = (id: string): Landmark => LANDMARKS[hash(id) % LANDMARKS.length];
+
+// ---- Shipments: choices a settlement earns by weeks with on-time work. Earned for good: nothing is ever taken back. ----
+
+/** The Monday of a date's week. */
+const mondayOf = (d: string) => { const t = ms(d), wd = (new Date(t).getUTCDay() + 6) % 7; return new Date(t - wd * DAY).toISOString().slice(0, 10); };
+/** Distinct weeks, ever, in which at least one item was finished on or before its due date. */
+export function onTimeWeeks(items: DoneLike[]): number {
+  return new Set(items.filter((i) => i.status === "done" && i.due && i.done_on && i.done_on <= i.due).map((i) => mondayOf(i.done_on!))).size;
+}
+export const SHIPMENTS = {
+  landmark: { at: 1, label: "Landmark", options: LANDMARKS as readonly string[] },
+  square: { at: 3, label: "Square", options: ["fountain", "statue", "bandstand", "garden"] as readonly string[] },
+  banner: { at: 6, label: "Banners", options: ["plain", "striped", "gold"] as readonly string[] },
+} as const;
+export type Slot = keyof typeof SHIPMENTS;
+export type Choices = Partial<Record<Slot, string>>;
+/** A stored choice, if it is a real option and its slot is earned; otherwise nothing (the default shows). */
+export function validChoices(raw: unknown, weeks: number): Choices {
+  const out: Choices = {}, o = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+  for (const k of Object.keys(SHIPMENTS) as Slot[]) { const v = o[k]; if (typeof v === "string" && SHIPMENTS[k].options.includes(v) && weeks >= SHIPMENTS[k].at) out[k] = v; }
+  return out;
+}

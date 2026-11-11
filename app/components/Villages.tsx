@@ -16,6 +16,10 @@ export type Village = Region & {
   series?: { date: string; open: number; done: number }[];
   /** Deadlines already behind this project. */
   milestones?: number;
+  /** Weeks, ever, with on-time work, and the choices they earned (landmark, square, banners). */
+  earnedWeeks?: number; choices?: import("@/lib/villages").Choices;
+  /** Replies and decisions waiting for you in the inbox. */
+  mail?: { count: number; needs: number; first: string };
   hall: { tier: HallTier; since: number; next: number | null };
   police: PoliceState; bank: BankState; shop: ShopState; homes: HomesState; workshop: WorkshopState;
 };

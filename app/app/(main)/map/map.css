@@ -265,3 +265,26 @@
 .cs-view[data-far] .colony :is(.win, .shingle, .timber, .seam, .mortar, .pave, .furrow, .walker, .goods, .bush, .barrel, .lamp, .sparks, .scaf, .garden, .slit, .crow) { display: none; }
 .cs-ctl .chip.next:not(:disabled) { border-color: var(--signal); color: var(--signal); } .cs-ctl .chip:disabled { opacity: .5; cursor: default; }
 .colony .walker { cursor: help; }
+
+/* Calm map: the loud marks go; the words and the amber and red markers stay. */
+.cs.calm .colony :is(.fire, .rain, .bolt, .fw) { display: none; } .cs.calm .colony .wx.storm ellipse { fill: #c9ced6; } .cs.calm .colony .beacon.b-red, .cs.calm .colony .halo.b-red { animation: none; }
+/* Settings, toast, pins, shipments. */
+.cs-set { position: relative; } .cs-set summary { list-style: none; cursor: pointer; } .cs-set summary::-webkit-details-marker { display: none; }
+.cs-set-p { position: absolute; z-index: 6; right: 0; top: calc(100% + 4px); width: 280px; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-radius: 10px; font-size: 12px; }
+.cs-set-p label { display: flex; align-items: center; gap: 8px; } .cs-set-p p { margin: 0; color: var(--ink-3); } .cs-set-p select, .cs-slots select { font: inherit; font-size: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
+.cs-toast { position: absolute; z-index: 4; left: 50%; bottom: 16px; transform: translateX(-50%); padding: 8px 16px; font-size: 13px; font-weight: 600; background: var(--surface); color: var(--ink); border: 1px solid var(--done); border-radius: 6px; animation: toast .25s ease-out; pointer-events: none; max-width: calc(100% - 32px); }
+@keyframes toast { from { opacity: 0; transform: translate(-50%, 8px); } }
+.colony .pop-out { transform-box: fill-box; transform-origin: 50% 100%; animation: popout .28s ease-in forwards; }
+@keyframes popout { 30% { transform: translateY(-6px) scale(1.15); } 100% { transform: translateY(-26px) scale(.2); opacity: 0; } }
+.cs-more { font-size: 12px; } .cs-more summary { cursor: pointer; font-weight: 600; } .cs-more .cs-d { margin: 4px 0 8px; }
+.cs-slots { display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: center; } .cs-slots label { display: inline-flex; align-items: center; gap: 8px; } .cs-lock { color: var(--ink-3); }
+.cs-acts label { display: inline-flex; align-items: center; gap: 8px; font-size: 12px; } .cs-acts input[type="number"] { width: 96px; font: inherit; font-size: 12px; padding: 4px; border: 1px solid var(--line); border-radius: 4px; background: var(--surface); color: var(--ink); }
+.cs-pins { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr)); gap: 16px; padding: 12px 16px; border-top: 1px solid var(--line); background: var(--surface-2); }
+.cs-pin { min-width: 0; display: flex; flex-direction: column; gap: 8px; padding: 12px; background: var(--surface); border: 1px solid var(--line); border-top: 4px solid var(--pc, var(--other)); border-radius: 8px; }
+.cs-pin-n { border: 0; background: none; padding: 0; font: inherit; font-weight: 700; color: var(--ink); cursor: pointer; } .cs-pin-n:hover { text-decoration: underline; } .cs-h .chip { margin-left: auto; }
+/* The courier, banners, and focus you can see. */
+.colony .co-body { fill: #3f6fb5; stroke: #0006; stroke-width: .5; } .colony .co-hat { fill: #2c4a80; } .colony .letter { animation: bob 1.5s ease-in-out infinite; } .colony .letter rect { fill: #fff; stroke: var(--signal); stroke-width: 1.2; } .colony .letter path { fill: none; stroke: var(--signal); stroke-width: 1.2; }
+.colony .courier.urgent .letter rect, .colony .courier.urgent .letter path { stroke: var(--bad); }
+.colony .pen-stripe { fill: #fff; opacity: .85; } .colony .pen-gold { fill: var(--gold); }
+.colony .vil:focus-visible .sel-ring { stroke: var(--ink); } .colony .ib:focus-visible .f-t { stroke: var(--signal); stroke-width: 1.6; }
+.cs .chip { min-height: 28px; } .cs-view:focus-visible { outline: 2px solid var(--signal); }

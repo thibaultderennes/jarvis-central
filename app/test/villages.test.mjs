@@ -145,3 +145,13 @@ test("itemsAsOf, weekSeries, seasonOf, landmarkFor", async () => {
   assert.ok(LANDMARKS.includes(landmarkFor("some-project")));
   assert.equal(landmarkFor("x"), landmarkFor("x"));
 });
+
+test("shipments: weeks with on-time work unlock choices, and only real, earned choices count", async () => {
+  const { onTimeWeeks, validChoices } = await import("../lib/villages.ts");
+  const d = (done_on, due) => ({ status: "done", due, done_on });
+  // Mon 5 Oct and Wed 7 Oct are one week; a late item and an undated one don't count.
+  assert.equal(onTimeWeeks([d("2026-10-05", "2026-10-06"), d("2026-10-07", "2026-10-07"), d("2026-10-13", "2026-10-20"), d("2026-10-20", "2026-10-01"), d("2026-10-27", null)]), 2);
+  assert.deepEqual(validChoices({ landmark: "oak", square: "statue", banner: "gold" }, 3), { landmark: "oak", square: "statue" });
+  assert.deepEqual(validChoices({ landmark: "castle", extra: 1 }, 9), {});
+  assert.deepEqual(validChoices(null, 9), {});
+});

@@ -696,3 +696,32 @@ export async function savePrefs(p: Prefs) {
   await D.kvSet("prefs", next);
   done();
 }
+
+/* ---------- the Map ---------- */
+/** A settlement's earned choice (landmark, square, banners). Stored per project in kv "map.choices"; the map ignores a choice that isn't earned. */
+export async function setMapChoice(project_id: string, slot: string, value: string): Promise<{ error?: string }> {
+  await requireSession();
+  const { SHIPMENTS } = await import("./villages");
+  if (!ID_OK(project_id) || !(slot in SHIPMENTS)) return { error: "Unknown choice." };
+  const def = SHIPMENTS[slot as keyof typeof SHIPMENTS];
+  if (value && !def.options.includes(value)) return { error: "Unknown option." };
+  const all = ((await D.kvGet<Record<string, Record<string, string>>>("map.choices"))?.value || {}) as Record<string, Record<string, string>>;
+  const mine = { ...(all[project_id] || {}) };
+  if (value) mine[slot] = value; else delete mine[slot];
+  await D.kvSet("map.choices", { ...all, [project_id]: mine });
+  done();
+  return {};
+}
+/** Record today's product numbers from the map (the market and the homes): typed by hand, merged into today's snapshot. */
+export async function recordMapMetrics(project_id: string, numbers: Record<string, number>): Promise<{ error?: string }> {
+  await requireSession();
+  if (!ID_OK(project_id)) return { error: "Unknown project." };
+  const set: Record<string, number> = {};
+  for (const k of ["users", "visits"]) { const v = Number(numbers[k]); if (Number.isFinite(v) && v >= 0 && v < 1e12) set[k] = Math.round(v); }
+  if (!Object.keys(set).length) return { error: "Type at least one number." };
+  const { putMetrics } = await import("./metrics");
+  await putMetrics(project_id, today(), { set, drop: [] }, "manual");
+  await D.logActivity("metrics_manual", "/map", { project_id, keys: Object.keys(set) });
+  done();
+  return {};
+}

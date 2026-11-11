@@ -7,7 +7,7 @@ import type { ReactNode } from "react";
 import { partChip, partHref, plotStatus, type Village } from "@/components/Villages";
 import { Box, Roof, Tree, P, pts, TW, TH, ZH, PLOT, GAP, NAME, ORDER } from "@/components/iso";
 import ColonyStage, { type StageVillage } from "@/components/ColonyStage";
-import { hash, landmarkFor, rng, type PartKey, type Season } from "@/lib/villages";
+import { hash, landmarkFor, rng, SHIPMENTS, type PartKey, type Season, type Slot } from "@/lib/villages";
 import { fmtDate } from "@/lib/time";
 
 type El = { depth: number; el: ReactNode };
@@ -98,7 +98,7 @@ const SPOT: Record<Exclude<PartKey, "homes">, Spot> = {
 function part(v: Village, k: PartKey, x: number, y: number, w: number, d: number, depth: number, body: ReactNode, top: number): El {
   const chip = partChip(v, k), [mx, my] = P(x + w / 2, y + d / 2, top + 0.9);
   return { depth, el: (
-    <g key={`${v.id}-${k}-${x}`} className="ib" role="button" tabIndex={0} data-part={k} data-tip={`${NAME[k]}: ${chip.text}`} aria-label={`${v.name}, ${NAME[k]}: ${chip.text}`}>
+    <g key={`${v.id}-${k}-${x}`} className="ib" role="button" tabIndex={-1} data-part={k} data-tip={`${NAME[k]}: ${chip.text}`} aria-label={`${v.name}, ${NAME[k]}: ${chip.text}`}>
       {body}
       {(chip.tone === "bad" || chip.tone === "warn") && <g className={`mk t-${chip.tone}`}><circle cx={mx} cy={my} r={8} /><text x={mx} y={my + 4} textAnchor="middle">!</text></g>}
     </g>
@@ -211,20 +211,26 @@ function settlement(v: Village, today: string): { ground: ReactNode; els: El[] }
   // Open items: one crate each, the most pressing first. Red = overdue, amber = due this week. Click one to act on it.
   const open = v.openItems || [];
   open.forEach((it, i) => { const x = 3.4 + (i % 5) * 0.62, y = 5.9 + Math.floor(i / 5) * 0.62;
-    els.push({ depth: x + y + 0.4, el: <g key={k(`crate${it.id}`)} className="ib crate" role="button" tabIndex={0} data-item={it.id} data-tip={`${it.title}${it.due ? ` · due ${fmtDate(it.due)}` : ""}`} aria-label={`${v.name}, open item: ${it.title}${it.due ? `, due ${fmtDate(it.due)}` : ""}`}>
+    els.push({ depth: x + y + 0.4, el: <g key={k(`crate${it.id}`)} className="ib crate" role="button" tabIndex={-1} data-item={it.id} data-tip={`${it.title}${it.due ? ` · due ${fmtDate(it.due)}` : ""}`} aria-label={`${v.name}, open item: ${it.title}${it.due ? `, due ${fmtDate(it.due)}` : ""}`}>
       <Box x={x} y={y} w={0.45} d={0.45} h={0.4} c={it.tone === "bad" ? "c-bad" : it.tone === "warn" ? "c-warn" : "c-crate"} /></g> }); });
   if (v.open > open.length) { const [tx, ty] = P(6.9, 6.6, 0.4); els.push({ depth: 14, el: <text key={k("more")} className="more" x={tx} y={ty}>+{v.open - open.length}</text> }); }
   // Claude: at the anvil while a build runs, at the gate with a note when a pull request waits, puzzled when a build stopped.
   const cl = v.claude, clState = cl?.failed.length ? "stopped" : cl?.waiting.length ? "waiting" : cl?.working.length ? "building" : null;
   if (clState && !v.paused) { const at = clState === "building" ? P(2.0, 3.45) : clState === "waiting" ? P(5.9, 9.4) : P(3.6, 3.3);
     const text = clState === "building" ? `Claude is building: ${cl!.working[0]}` : clState === "waiting" ? `Claude has a pull request for you: ${cl!.waiting[0].title}` : `Claude's build stopped: ${cl!.failed[0]}`;
-    els.push({ depth: 97, el: <g key={k("claude")} className={`ib claude cl-${clState}`} role="button" tabIndex={0} data-part="workshop" data-tip={text} aria-label={`${v.name}: ${text}`} transform={`translate(${at[0]} ${at[1]})`}>
+    els.push({ depth: 97, el: <g key={k("claude")} className={`ib claude cl-${clState}`} role="button" tabIndex={-1} data-part="workshop" data-tip={text} aria-label={`${v.name}: ${text}`} transform={`translate(${at[0]} ${at[1]})`}>
       <ellipse className="shade" cx={0} cy={0} rx={5} ry={2.2} /><g className="cl-fig"><rect className="cl-body" x={-3} y={-13} width={6} height={10} rx={2} /><circle className="cl-head" cx={0} cy={-16} r={3.4} />
         <path className="cl-spark" d="M0 -27 l1.3 3 3 1.3 -3 1.3 -1.3 3 -1.3 -3 -3 -1.3 3 -1.3z" />{clState === "building" && <line className="cl-tool" x1={3} y1={-10} x2={8} y2={-15} />}</g>
       {clState !== "building" && <g className="bubble"><rect x={6} y={-36} width={clState === "waiting" ? 24 : 14} height={15} rx={4} /><text x={clState === "waiting" ? 18 : 13} y={-25} textAnchor="middle">{clState === "waiting" ? (cl!.waiting.length > 1 ? `${cl!.waiting.length} PR` : "PR") : "?"}</text></g>}
     </g> }); }
+  // A courier at the gate when a reply or a decision waits for you in the inbox.
+  if (v.mail?.count && !v.paused) { const at = P(4.2, 9.45), text = `${v.mail.count} message${v.mail.count === 1 ? "" : "s"} waiting for you${v.mail.needs ? ` (${v.mail.needs} need${v.mail.needs === 1 ? "s" : ""} a decision)` : ""}: ${v.mail.first}`;
+    els.push({ depth: 97, el: <g key={k("courier")} className={`ib courier${v.mail.needs ? " urgent" : ""}`} role="button" tabIndex={-1} data-mail="1" data-tip={text} aria-label={`${v.name}: ${text}`} transform={`translate(${at[0]} ${at[1]})`}>
+      <ellipse className="shade" cx={0} cy={0} rx={5} ry={2.2} /><rect className="co-body" x={-3} y={-13} width={6} height={10} rx={2} /><circle className="cl-head" cx={0} cy={-16} r={3.2} /><path className="co-hat" d="M-4 -18h8l-4 -5z" />
+      <g className="letter"><rect x={5} y={-30} width={13} height={9} rx={1.5} /><path d="M5 -30l6.5 5 6.5 -5" /></g>
+    </g> }); }
   // The landmark: this project's own, behind the hall. It rises with every deadline behind you.
-  { const kind = landmarkFor(v.id), m = Math.min(6, v.milestones || 0), x = 4.5, y = 0.45, h = 2.6 + m * 0.35, tip = `${v.name}'s ${kind}: ${m ? `${v.milestones} deadline${v.milestones === 1 ? "" : "s"} behind you` : "it rises with every deadline behind you"}`;
+  { const kind = v.choices?.landmark || landmarkFor(v.id), m = Math.min(6, v.milestones || 0), x = 4.5, y = 0.45, h = 2.6 + m * 0.35, tip = `${v.name}'s ${kind}: ${m ? `${v.milestones} deadline${v.milestones === 1 ? "" : "s"} behind you` : "it rises with every deadline behind you"}`;
     const topP = P(x + 0.6, y + 0.6, h);
     els.push({ depth: x + y + 1.2, el: <g key={k("landmark")} className={`landmark lm-${kind}`} data-tip={tip}>
       {kind === "windmill" && <><Box x={x + 0.15} y={y + 0.15} w={0.9} d={0.9} h={h - 0.5} c="c-wall" /><Roof x={x + 0.15} y={y + 0.15} w={0.9} d={0.9} z={h - 0.5} h={0.7} c="c-wood" />
@@ -246,7 +252,13 @@ function settlement(v: Village, today: string): { ground: ReactNode; els: El[] }
   for (const [x, y] of [[3.9, 9.6], [6.1, 9.6], [3.2, 5.5], [7, 5.5]]) els.push({ depth: x + y, el: <Lamp key={k(`lamp${x}${y}`)} x={x} y={y} /> });
   if (v.onTime28 > 0) { els.push({ depth: 3 + 4.6, el: <g key={k("hay")}><Box x={2.95} y={4} w={0.4} d={0.55} h={0.35} c="c-wheat" /><Box x={2.95} y={4.65} w={0.4} d={0.55} h={0.35} c="c-wheat" /></g> });
     const a = P(0.4, 3.5), b = P(0.4, 3.5, 1); els.push({ depth: 3.9, el: <g key={k("crow")} className="crow"><line className="pole" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} /><line className="pole" x1={b[0] - 6} y1={b[1] + 5} x2={b[0] + 6} y2={b[1] + 5} /><circle cx={b[0]} cy={b[1]} r={2.6} /></g> }); }
-  if (v.hall.tier !== "small") els.push({ depth: 5 + 7.7 + 0.5, el: <g key={k("fount")}><Box x={4.65} y={7.35} w={0.7} d={0.7} h={0.22} c="c-rock" /><ellipse className="water" cx={P(5, 7.7, 0.22)[0]} cy={P(5, 7.7, 0.22)[1]} rx={7.5} ry={3.7} /><Box x={4.92} y={7.62} w={0.16} d={0.16} h={0.6} z={0.22} c="c-snow" /><circle className="jet" cx={P(5, 7.7, 0.95)[0]} cy={P(5, 7.7, 0.95)[1]} r={2.5} /></g> });
+  { const sq = v.choices?.square || (v.hall.tier !== "small" ? "fountain" : null), c = P(5, 7.7, 0.22);
+    if (sq) els.push({ depth: 5 + 7.7 + 0.5, el: <g key={k("square")} className="square" data-tip={`The square: ${sq}`}>
+      {sq === "fountain" && <><Box x={4.65} y={7.35} w={0.7} d={0.7} h={0.22} c="c-rock" /><ellipse className="water" cx={c[0]} cy={c[1]} rx={7.5} ry={3.7} /><Box x={4.92} y={7.62} w={0.16} d={0.16} h={0.6} z={0.22} c="c-snow" /><circle className="jet" cx={P(5, 7.7, 0.95)[0]} cy={P(5, 7.7, 0.95)[1]} r={2.5} /></>}
+      {sq === "statue" && <><Box x={4.7} y={7.4} w={0.6} d={0.6} h={0.5} c="c-rock" /><Box x={4.88} y={7.58} w={0.24} d={0.24} h={0.8} z={0.5} c="c-gold" /><circle className="coin" cx={P(5, 7.7, 1.5)[0]} cy={P(5, 7.7, 1.5)[1]} r={3} /></>}
+      {sq === "bandstand" && <><Box x={4.5} y={7.2} w={1} d={1} h={0.2} c="c-plank" />{[[4.5, 7.2], [5.4, 7.2], [4.5, 8.1], [5.4, 8.1]].map(([x, y]) => <Box key={`${x}${y}`} x={x} y={y} w={0.1} d={0.1} h={0.8} z={0.2} c="c-wood" />)}<Roof x={4.45} y={7.15} w={1.1} d={1.1} z={1} h={0.5} c="c-pc" /></>}
+      {sq === "garden" && <><polygon className="garden" points={quad(P(4.4, 7.1), P(5.6, 7.1), P(5.6, 8.3), P(4.4, 8.3))} />{[[4.6, 7.3], [5.3, 7.4], [4.8, 7.9], [5.35, 8.05], [5, 7.6]].map(([x, y], i) => <circle key={i} className="goods" fill={["#e8a21d", "#d2452f", "#fff", "#8a4fa0", "#e8a7c0"][i]} cx={P(x, y)[0]} cy={P(x, y)[1] - 2} r={2} />)}<Tree x={5} y={7.75} s={0.55} /></>}
+    </g> }); }
   for (let i = 0; i < 5; i++) { const x = 0.5 + r() * 9, y = 0.4 + r() * 9; if ((x > 0.6 && x < 9.2 && y > 0.7 && y < 9.3) && !(y > 4.3 && y < 5.3 && x > 8.3)) continue; const [sx, sy] = P(x, y); els.push({ depth: x + y, el: <ellipse key={k(`bush${i}`)} className="bush" cx={sx} cy={sy - 3} rx={6} ry={4} /> }); }
   fresh.forEach((e, i) => els.push({ depth: 99.5, el: <Wagon key={k(`wagon${e.id}`)} title={e.text} delay={i * 5.3} /> }));
   for (let i = 0; i < 4; i++) { const x = 0.5 + r() * 9, y = r() < 0.5 ? 0.3 + r() * 0.5 : 9.2 + r() * 0.5; if (y > 9 && x > 3.6 && x < 6.4) continue; els.push({ depth: x + y, el: <Tree key={k(`t${i}`)} x={x} y={y} s={0.75} /> }); }
@@ -271,6 +283,9 @@ function settlement(v: Village, today: string): { ground: ReactNode; els: El[] }
     {[[PLOT - 0.25, -0.35], [-0.35, PLOT - 0.25], [PLOT - 0.25, PLOT - 0.25]].map(([x, y]) => <Box key={`${x}${y}`} x={x} y={y} w={0.6} d={0.6} h={1.3} c="c-wood" />)}
     <Box x={3.8} y={PLOT - 0.05} w={0.3} d={0.3} h={1.5} c="c-wood" /><Box x={5.9} y={PLOT - 0.05} w={0.3} d={0.3} h={1.5} c="c-wood" />
     <polygon className="pennant" points={quad(P(4.1, PLOT + 0.1, 1.5), P(5.9, PLOT + 0.1, 1.5), P(5.9, PLOT + 0.1, 1.15), P(4.1, PLOT + 0.1, 1.15))} />
+    {v.choices?.banner === "striped" && [4.4, 5, 5.6].map((u) => <polygon key={u} className="pen-stripe" points={quad(P(u, PLOT + 0.1, 1.5), P(u + 0.3, PLOT + 0.1, 1.5), P(u + 0.3, PLOT + 0.1, 1.15), P(u, PLOT + 0.1, 1.15))} />)}
+    {v.choices?.banner === "gold" && <polygon className="pen-gold" points={quad(P(4.1, PLOT + 0.1, 1.22), P(5.9, PLOT + 0.1, 1.22), P(5.9, PLOT + 0.1, 1.15), P(4.1, PLOT + 0.1, 1.15))} />}
+    {v.choices?.banner && [0.5, 2.5, 7.5, 9.5].map((u) => { const a = P(u, PLOT + 0.1, 0.8), b = P(u, PLOT + 0.1, 1.5); return <g key={`wb${u}`}><line className="pole" x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} /><polygon className="flag pennant" points={`${b[0]},${b[1]} ${b[0] + 10},${b[1] + 3} ${b[0]},${b[1] + 6}`} /></g>; })}
     {v.paused && <Box x={4.1} y={PLOT} w={1.8} d={0.15} h={1} c="c-plank" />}
   </g> });
   // The road to the next deadline: a stone per item due before it, a flag at the end.
@@ -316,7 +331,7 @@ function weather(v: Village) {
   </g>;
 }
 
-export default function Colony({ villages, today, now, season, past, full, weeks }: { villages: Village[]; today: string; now: string; season: Season; past: boolean; full: boolean; weeks: number }) {
+export default function Colony({ villages, today, now, season, seasonSouth, past, full, weeks }: { villages: Village[]; today: string; now: string; season: Season; seasonSouth: Season; past: boolean; full: boolean; weeks: number }) {
   const cols = villages.length <= 4 ? 2 : 3, rows = Math.ceil(villages.length / cols), step = PLOT + GAP;
   const X = cols * step + GAP, Y = rows * step + GAP, lift = 0.3 * ZH;
   const at = (i: number) => [GAP + (i % cols) * step, GAP + Math.floor(i / cols) * step] as const;
@@ -339,7 +354,7 @@ export default function Colony({ villages, today, now, season, past, full, weeks
           <Box x={ox + 6.6} y={oy + 7.4} w={0.5} d={1.6} h={0.12} c="c-plank" /></g> }); });
   villages.forEach((v, i) => { const [ox, oy] = at(i), o = P(ox, oy), c = P(ox + 5, oy + 5), s = settlement(v, today), lz = lensOf(v);
     groups.push({ depth: ox + oy + PLOT, el: (
-      <g key={v.id} className={`vil${v.paused ? " paused" : ""}${v.fog && !v.paused ? " quiet" : ""}`} data-vil={v.id} data-c={v.color} data-cx={c[0]} data-cy={c[1] - lift} {...Object.fromEntries(LENSES.map((l) => [`data-lz-${l}`, lz[l].tone]))} transform={`translate(${o[0]} ${o[1] - lift})`}>
+      <g key={v.id} role="button" tabIndex={0} aria-label={`${v.name}: ${plotStatus(v).text}. ${v.open} open, ${v.overdue} overdue.`} className={`vil${v.paused ? " paused" : ""}${v.fog && !v.paused ? " quiet" : ""}`} data-vil={v.id} data-c={v.color} data-cx={c[0]} data-cy={c[1] - lift} {...Object.fromEntries(LENSES.map((l) => [`data-lz-${l}`, lz[l].tone]))} transform={`translate(${o[0]} ${o[1] - lift})`}>
         {s.ground}{s.els.sort((a, b) => a.depth - b.depth).map((e) => e.el)}
         {v.fog && !v.paused && <g className="mist" data-tip={v.quietDays === null ? "Mist: nothing finished here yet" : `Mist: nothing finished here for ${v.quietDays} days`}>{[0, 1, 2].map((j) => <ellipse key={j} cx={P(3 + j * 2.2, 4 + j)[0]} cy={P(3 + j * 2.2, 4 + j, 0.8)[1]} rx={95} ry={22} fill="url(#mist-g)" style={{ animationDelay: `${-j * 4}s` }} />)}</g>}
         {weather(v)}{banner(v, lz)}
@@ -359,12 +374,14 @@ export default function Colony({ villages, today, now, season, past, full, weeks
       items: (v.openItems || []).map((it) => ({ id: it.id, title: it.title, due: it.due ? fmtDate(it.due) : null, tone: it.tone, owner: it.owner })),
       claude: v.claude && (v.claude.working.length || v.claude.waiting.length || v.claude.failed.length) ? v.claude : null,
       series: v.series || [], landmark: `${landmarkFor(v.id)}, ${v.milestones || 0} deadline${v.milestones === 1 ? "" : "s"} behind you`,
-      lens: lensOf(v),
+      lens: lensOf(v), mail: v.mail?.count ? v.mail : null, weeks: v.earnedWeeks || 0, paused: !!v.paused,
+      slots: (Object.keys(SHIPMENTS) as Slot[]).map((sl) => ({ key: sl, label: SHIPMENTS[sl].label, at: SHIPMENTS[sl].at, options: [...SHIPMENTS[sl].options], value: v.choices?.[sl] || (sl === "landmark" ? landmarkFor(v.id) : "") })),
+      numbers: !v.shop.built || !v.homes.built,
       events: (v.events || []).slice(0, 6).map((e) => ({ id: e.id, kind: e.kind, text: e.text, ago: e.ago, part: e.part, at: e.at })),
       parts: ORDER.map((p) => ({ key: p, name: NAME[p], ...partChip(v, p), href: partHref(v, p) })) }; });
   return (
     <div className="iso look-colony">
-      <ColonyStage villages={stage} view={view} cols={cols} rows={rows} season={season} today={today} now={now} past={past} full={full} weeks={weeks}>
+      <ColonyStage villages={stage} view={view} cols={cols} rows={rows} season={season} seasonSouth={seasonSouth} today={today} now={now} past={past} full={full} weeks={weeks}>
         <svg className="iso-svg colony" viewBox={`${view.x} ${view.y} ${view.w} ${view.h}`} role="group" aria-label="Colony map: one settlement per project">
           <defs><radialGradient id="mist-g"><stop offset="0" stopColor="#fff" stopOpacity=".75" /><stop offset=".6" stopColor="#fff" stopOpacity=".35" /><stop offset="1" stopColor="#fff" stopOpacity="0" /></radialGradient></defs>
           <Box x={0} y={0} w={X} d={Y} h={1.6} z={-1.6} c="c-wild soil" />

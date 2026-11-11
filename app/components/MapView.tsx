@@ -1,8 +1,8 @@
 import Link from "next/link";
-import { displayColor, getCosts, getItems, getProjects, getReviews, splitFeatured } from "@/lib/data";
+import { displayColor, getCosts, getItems, getMessages, getProjects, getReviews, kvGet, splitFeatured } from "@/lib/data";
 import { getMetrics } from "@/lib/metrics";
 import { buildRegions, FOG_DAYS, nextStop, SOON_DAYS, totals, trailPoints, WINDOW_DAYS, type Region, type Trail } from "@/lib/map";
-import { agoWords, eventsFor, areaWeight, bankState, hallTier, HALL, homesState, itemsAsOf, LAND_DAYS, onTimeCount, policeState, seasonOf, shopState, TOWN_HALL, weekSeries, workshopState, type Snap } from "@/lib/villages";
+import { agoWords, eventsFor, areaWeight, bankState, hallTier, HALL, homesState, itemsAsOf, LAND_DAYS, onTimeCount, onTimeWeeks, policeState, seasonOf, validChoices, shopState, TOWN_HALL, weekSeries, workshopState, type Snap } from "@/lib/villages";
 import { regionLabel, type OpenItem, type Village } from "@/components/Villages";
 import Colony from "@/components/Colony";
 import { fmtDate, isoInTZ, today } from "@/lib/time";
@@ -103,11 +103,14 @@ export default async function MapView({ at = null, full = false }: { at?: string
   const now = today(), t = at && at < now ? at : now, past = t !== now;
   const nowIso = past ? `${t}T23:59:59.999Z` : new Date().toISOString();
   const since = new Date(Date.parse(nowIso) - 90 * 86_400_000).toISOString().slice(0, 10);
-  const [projects, allItems, allReviews, allSecurity, allScreenings, costs, allMetrics] = await Promise.all([
+  const [projects, allItems, allReviews, allSecurity, allScreenings, costs, allMetrics, stored, messages] = await Promise.all([
     getProjects(), getItems(), getReviews({ type: "project", limit: 500 }),
     getReviews({ type: "security", limit: 500, light: true }), getReviews({ type: "screening", limit: 500, light: true }),
     getCosts(), getMetrics({ since, limit: 2000 }),
+    kvGet<Record<string, unknown>>("map.choices").catch(() => null), past ? Promise.resolve([]) : getMessages({ limit: 200 }).catch(() => []),
   ]);
+  // Replies and decisions you haven't dealt with yet, per project: the courier at the gate.
+  const waiting = messages.filter((m) => m.project_id && !m.archived && !m.treated_at && !["new", "seen", "working"].includes(m.status));
   const day = (iso: string | null) => (iso ? isoInTZ(new Date(iso)) : null);
   const before = <T extends { created_at: string }>(xs: T[]) => (past ? xs.filter((x) => x.created_at <= nowIso) : xs);
   const reviews = before(allReviews), security = before(allSecurity), screenings = before(allScreenings);
@@ -149,6 +152,8 @@ export default async function MapView({ at = null, full = false }: { at?: string
       shop: shopState(snaps, t), homes: homesState(snaps),
       workshop: workshopState(its, !!p?.site?.code),
       paused: !!p?.paused_at, openItems,
+      ...(() => { const weeks = onTimeWeeks(datedBy.get(r.id) || []); return { earnedWeeks: weeks, choices: validChoices(stored?.value?.[r.id], weeks) }; })(),
+      mail: (() => { const m = waiting.filter((x) => x.project_id === r.id); return { count: m.length, needs: m.filter((x) => x.status === "needs_you").length, first: (m.find((x) => x.status === "needs_you") || m[0])?.text?.slice(0, 120) || "" }; })(),
       claude: {
         working: open.filter((x) => x.build_status === "working").map((x) => x.title),
         waiting: open.filter((x) => x.build_status === "pr_open" || x.build_status === "merge_requested").map((x) => ({ title: x.title, url: x.pr_url })),
@@ -168,7 +173,7 @@ export default async function MapView({ at = null, full = false }: { at?: string
   if (!regions.length) return <div className="panel empty">No active projects yet. Approve a project folder in <Link href="/admin">Admin</Link> and it appears here.</div>;
   return (
     <div className="mapv">
-      <Colony villages={plots} today={t} now={now} season={seasonOf(t)} past={past} full={full} weeks={HISTORY_WEEKS} />
+      <Colony villages={plots} today={t} now={now} season={seasonOf(t)} seasonSouth={seasonOf(t, true)} past={past} full={full} weeks={HISTORY_WEEKS} />
       <details className="map-how">
         <summary>The same as a list ({sum.regions} {sum.regions === 1 ? "project" : "projects"}, {sum.open} open, {sum.overdue} overdue)</summary>
         <div className="mapv-list">
